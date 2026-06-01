@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>SimCoach.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SimCoach.Adapters.ACC\SimCoach.Adapters.ACC.csproj" />
+    <ProjectReference Include="..\SimCoach.Audio\SimCoach.Audio.csproj" />
+    <ProjectReference Include="..\SimCoach.Coach\SimCoach.Coach.csproj" />
+    <ProjectReference Include="..\SimCoach.LLM\SimCoach.LLM.csproj" />
+    <ProjectReference Include="..\SimCoach.Overlay\SimCoach.Overlay.csproj" />
+    <ProjectReference Include="..\SimCoach.Pipeline\SimCoach.Pipeline.csproj" />
+    <ProjectReference Include="..\SimCoach.Reference\SimCoach.Reference.csproj" />
+    <ProjectReference Include="..\SimCoach.Storage\SimCoach.Storage.csproj" />
+    <ProjectReference Include="..\SimCoach.Voice\SimCoach.Voice.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
+    <PackageReference Include="Serilog.Extensions.Hosting" />
+    <PackageReference Include="Serilog.Settings.Configuration" />
+    <PackageReference Include="Serilog.Sinks.File" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+  </ItemGroup>
+
+</Project>

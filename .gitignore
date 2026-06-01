@@ -1,0 +1,59 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+.vs/
+.vscode/
+.idea/
+
+# Build output
+*.dll
+*.exe
+*.pdb
+*.cache
+artifacts/
+
+# Test output
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+# Local data
+data/
+sessions/
+*.mcap
+*.parquet
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Secrets
+secrets.json
+*.secret
+appsettings.Development.json
+appsettings.Local.json
+.env
+.env.local
+local.settings.json
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+logs/
+*.log
+
+# Plan/Claude artifacts
+.claude/
+CLAUDE.local.md
+
+# Generated protobuf
+*.pb.cs

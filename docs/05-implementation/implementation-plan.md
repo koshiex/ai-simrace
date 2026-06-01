@@ -1,0 +1,128 @@
+# Implementation Plan — SimCoach
+
+This file expands `peaceful-tumbling-firefly.md` phases into concrete tasks.
+
+---
+
+## Phase 0 — Foundation (week 1)
+
+- [x] Repo skeleton + `.gitignore`
+- [x] Architecture docs v1 (PRD, competitive-analysis, architecture, ADRs 0001-0007, telemetry-schema, action-registry, FRs, privacy)
+- [ ] `SimCoach.sln` + project skeletons (csproj per module)
+- [ ] CI workflow (`dotnet test`, `dotnet format --verify-no-changes`)
+- [ ] Protobuf schema generation hooked into `SimCoach.Contracts.csproj`
+- [ ] Generic Host wiring in `SimCoach.App/Program.cs`
+
+## Phase 1 — ACC Telemetry + MCAP Capture (week 2)
+
+- [ ] Port ACC shared-memory struct layouts to C# (`AccPhysicsStruct`, `AccGraphicsStruct`, `AccStaticStruct`)
+- [ ] `AccSharedMemoryReader` busy-poll loop at 333 Hz
+- [ ] `AccFrameMapper` → `TelemetryFrame`
+- [ ] `IngestService` channel + MCAP rotating writer
+- [ ] Replay tool that re-emits MCAP at real time
+- [ ] Tests: capture fixture, replay, byte-identical events
+
+## Phase 2 — Reference Laps + Deterministic Compute (week 3)
+
+- [ ] SQLite schema (`sessions`, `laps`, `references`, `settings`, `llm_usage`)
+- [ ] Parquet writer for per-lap channels, resampled to 1m position
+- [ ] `ReferenceStore` PB lookup by `(trackId, carId, weatherBucket)`
+- [ ] `ComputeService`: brake-on/off, peak-brake, trail-brake-%, throttle-on, min-speed, racing-line deviation
+- [ ] Domain event emission (`CornerEvent`, `SectorEvent`, `LapEvent`, `SessionEvent`)
+- [ ] Unit tests on synthetic + replay fixtures
+
+## Phase 3 — Coach Engine + LLM (week 4)
+
+- [ ] `GoldArtifactBuilder` per cadence
+- [ ] `ActionRegistry` with ~20 actions + RU templates
+- [ ] `PromptBuilder` system + few-shot
+- [ ] `OpenRouterClient` with HTTP/2 streaming + structured output
+- [ ] `CostMeter` to SQLite
+- [ ] `CircuitBreaker` per-provider
+- [ ] `RuleEngine` quiet zones
+- [ ] Fallback template path
+- [ ] Tests: mock OpenRouter, golden fixtures
+
+## Phase 4 — Voice (week 5)
+
+- [ ] Bundle Silero v5 RU ONNX model in installer
+- [ ] `SileroOnnxSynthesizer` streaming PCM chunks
+- [ ] `YandexSpeechKitClient` (behind feature flag, gRPC bidi)
+- [ ] `PriorityAudioQueue` preemption + fade-out
+- [ ] `NAudioPlayer` WASAPI shared
+- [ ] Hotkey to mute
+- [ ] Tests: cancellation latency, fade-out continuity
+
+## Phase 5 — Overlay (week 6)
+
+- [ ] Avalonia transparent topmost window with click-through interop
+- [ ] Delta bar / sector bars / current tip / lap counter
+- [ ] Settings panel for layout + opacity + font size
+- [ ] Race mode toggle
+- [ ] Auto-hide when game loses focus
+- [ ] Cap at 30 Hz refresh
+
+## Phase 6 — Post-Session Debrief (week 7)
+
+- [ ] Session-aggregate Gold artifact
+- [ ] DeepSeek V3.2 debrief prompt
+- [ ] Debrief window: sector chart, trace overlay, TTS playback
+- [ ] PDF/MD export
+
+## Phase 7 — Beta polish (week 8)
+
+- [ ] Velopack installer + auto-update channel
+- [ ] First-run wizard
+- [ ] Crash reporting (Sentry, opt-in)
+- [ ] Closed beta with 5–10 ACC drivers
+- [ ] Metrics: lap-time delta week 1 → week 4, mute rate
+
+## Phase 8 — iRacing adapter (week 9-10)
+
+- [ ] Port IRSDK shared-memory shape to C#
+- [ ] `Adapters.IRacing` reader using `LapDeltaTo*Lap` channels directly
+- [ ] EAC compatibility test
+- [ ] iRacing-specific corner registry
+
+## Phase 9 — LMU adapter
+
+- [ ] TheIronWolf rF2 plugin variant detection
+- [ ] LMU native 1.3+ shared memory if present
+- [ ] `Adapters.LMU` reader
+
+## Phase 10 — F1 25 adapter + race-craft coaching
+
+- [ ] UDP listener on `127.0.0.1:20777` with packet format v2025 gate
+- [ ] ERS / DRS-aware coaching
+- [ ] Race-craft actions: overtake/defend/fuel/tyre management
+
+---
+
+## Module Ownership (solo dev, but for clarity)
+
+| Module | Phase first touched | Notes |
+|---|---|---|
+| Contracts | 0 | Schema must be stable before Phase 1 |
+| Adapters.ACC | 1 | |
+| Pipeline | 1, 2 | |
+| Storage | 1, 2 | MCAP → Parquet → SQLite |
+| Reference | 2 | |
+| Coach | 3, 6 | Cadences phased in |
+| LLM | 3 | Mocked first |
+| Voice | 4 | Silero first, Yandex behind flag |
+| Audio | 4 | |
+| Overlay | 5 | |
+| App | 0, 5, 7 | Settings UI grows over time |
+
+---
+
+## Risk Register
+
+| Risk | Phase | Mitigation |
+|---|---|---|
+| Silero v5 RU ONNX export missing / not as listed | 4 | Validate before phase 4; fall back to PyTorch via Python sidecar; Yandex SpeechKit always works |
+| `mcap` C# bindings unstable | 1 | Hand-roll a minimal MCAP writer over the spec (it's a simple chunked file format) |
+| Avalonia transparency click-through quirks on Windows 11 | 5 | Win32 P/Invoke fallback path; small spike before phase 5 |
+| OpenRouter structured-output spec drift | 3 | Pin model IDs; add response post-validation; fall back to template |
+| ACC's anti-cheat changes mid-MVP | 1+ | We never inject; should be unaffected |
+| Solo dev velocity | all | Cut scope: skip phase 6/7 if needed and beta with phases 0-5 |

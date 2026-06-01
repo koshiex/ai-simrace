@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>SimCoach.Coach</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SimCoach.Contracts\SimCoach.Contracts.csproj" />
+    <ProjectReference Include="..\SimCoach.Reference\SimCoach.Reference.csproj" />
+    <ProjectReference Include="..\SimCoach.LLM\SimCoach.LLM.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Serilog.Extensions.Hosting" />
+  </ItemGroup>
+
+</Project>

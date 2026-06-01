@@ -1,0 +1,130 @@
+syntax = "proto3";
+
+package simcoach.contracts.v1;
+
+option csharp_namespace = "SimCoach.Contracts.V1";
+
+import "google/protobuf/timestamp.proto";
+
+// 3D vector — used for g-force and similar quantities.
+message Vec3 {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+// Per-tick telemetry frame from a sim adapter.
+// Target rate: ACC ~333 Hz, iRacing/F1 25 ~60 Hz, LMU ~50-90 Hz.
+message TelemetryFrame {
+  google.protobuf.Timestamp t = 1;
+
+  // Sim identity and session context.
+  string sim = 2;                          // "acc", "iracing", "lmu", "f125"
+  string track_id = 3;                     // normalised, e.g., "spa"
+  string car_id = 4;                       // normalised, e.g., "audi_r8_lms_evo_ii"
+  string weather_bucket = 5;               // "dry-cool", "dry-warm", "damp", "wet"
+
+  // Lap context.
+  int32 lap_number = 6;                    // 1-based
+  float lap_distance_m = 7;
+  float normalized_car_position = 8;       // 0..1 along lap
+
+  // Vehicle state.
+  float speed_mps = 9;
+  float throttle_pct = 10;                 // 0..1
+  float brake_pct = 11;                    // 0..1
+  float clutch_pct = 12;                   // 0..1
+  float steer_rad = 13;                    // left negative, right positive
+  int32 gear = 14;                         // 0=N, -1=R, 1..8
+  float rpm = 15;
+
+  // Tyres / brakes. [FL, FR, RL, RR]
+  repeated float tyre_temp_c = 16;
+  repeated float tyre_pressure_kpa = 17;
+  repeated float tyre_wear_pct = 18;       // 0..1
+  repeated float brake_temp_c = 19;
+  repeated float wheel_slip = 20;
+  repeated float wheel_load_n = 21;
+  repeated float suspension_travel_m = 22;
+
+  // Forces & environment.
+  Vec3 g_force_g = 23;                     // x = lat, y = vert, z = long
+  float air_temp_c = 24;
+  float track_temp_c = 25;
+  float wind_speed_mps = 26;
+
+  // Fuel.
+  float fuel_l = 27;
+  float fuel_per_lap_l = 28;
+
+  // Driver aids and flags.
+  bool tc_active = 29;
+  bool abs_active = 30;
+  int32 flags_active = 31;                 // bit flags (yellow, blue, green, etc.)
+}
+
+// Per-corner derivation emitted by Pipeline.Compute.
+message CornerEvent {
+  google.protobuf.Timestamp t = 1;
+  string corner_id = 2;                    // e.g., "spa_t05_eau_rouge"
+  int32 delta_ms = 3;                      // vs reference (positive = slower)
+  float brake_point_diff_m = 4;            // negative = braked too early
+  float min_speed_diff_kmh = 5;            // negative = slower min speed
+  float trail_brake_pct_self = 6;          // 0..1
+  float trail_brake_pct_ref = 7;           // 0..1
+  float throttle_resume_diff_m = 8;        // negative = throttle later than ref
+  float racing_line_deviation_m = 9;       // RMS distance to ref racing line
+  bool off_track = 10;
+  float understeer_score = 11;             // 0..1
+  float oversteer_score = 12;              // 0..1
+}
+
+// Per-sector summary emitted at sector cross.
+message SectorEvent {
+  google.protobuf.Timestamp t = 1;
+  int32 sector_idx = 2;                    // 0, 1, 2
+  int32 sector_time_ms = 3;
+  int32 delta_ms = 4;                      // vs reference sector
+  repeated CornerLoss top_losses = 5;      // up to 3
+}
+
+// Per-lap summary emitted at finish line.
+message LapEvent {
+  google.protobuf.Timestamp t = 1;
+  int32 lap_number = 2;
+  int32 lap_time_ms = 3;
+  int32 delta_ms = 4;                      // vs reference lap
+  bool is_pb = 5;
+  bool is_clean = 6;                       // no off-tracks, no contact
+  repeated CornerLoss top_losses = 7;      // up to 3
+}
+
+message CornerLoss {
+  string corner_id = 1;
+  int32 delta_ms = 2;
+  string reason = 3;                       // e.g., "late_throttle", "early_brake"
+}
+
+// Session-level aggregate emitted at session end.
+message SessionEvent {
+  google.protobuf.Timestamp t = 1;
+  string session_id = 2;
+  string sim = 3;
+  string track_id = 4;
+  string car_id = 5;
+  string weather_bucket = 6;
+  int32 lap_count = 7;
+  int32 clean_lap_count = 8;
+  int32 pb_time_ms = 9;
+  int32 average_lap_ms = 10;
+  float understeer_trend = 11;             // -1..1 (negative = oversteer)
+  repeated StintSummary stints = 12;
+}
+
+message StintSummary {
+  int32 start_lap = 1;
+  int32 end_lap = 2;
+  int32 tyre_compound = 3;
+  float tyre_degradation_pct = 4;          // 0..1
+  int32 avg_lap_ms = 5;
+}
