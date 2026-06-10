@@ -15,7 +15,7 @@ This file expands `peaceful-tumbling-firefly.md` phases into concrete tasks.
 
 ## Phase 1 — ACC Telemetry + MCAP Capture (week 2)
 
-- [ ] Port ACC shared-memory struct layouts to C# (`AccPhysicsStruct`, `AccGraphicsStruct`, `AccStaticStruct`)
+- [x] Port ACC shared-memory struct layouts to C# (`AccPhysicsPage`, `AccGraphicsPage`, `AccStaticPage`)
 - [ ] `AccSharedMemoryReader` busy-poll loop at 333 Hz
 - [ ] `AccFrameMapper` → `TelemetryFrame`
 - [ ] `IngestService` channel + MCAP rotating writer

@@ -22,7 +22,7 @@ Goal: `SimCoach.sln` restores, builds, formats clean, tests pass — locally and
 - [x] **A5. Protobuf smoke test.** Round-trip `TelemetryFrame` serialize → parse in
   `SimCoach.Pipeline.Tests` — proves Grpc.Tools codegen is hooked correctly.
 - [x] **A6. `dotnet format --verify-no-changes`** clean; `dotnet test` green.
-- [ ] **A7. Tick Phase 0 checkboxes** in `implementation-plan.md`; commit.
+- [x] **A7. Tick Phase 0 checkboxes** in `implementation-plan.md`; commit.
 
 Definition of done: fresh clone + `bootstrap.sh` + `dotnet build && dotnet test` succeeds
 on macOS and on CI (windows + macos matrix).
@@ -36,7 +36,7 @@ segments; on any OS, a replay source re-emits a recorded session through the sam
 
 Dependency order: B1 → B2 (B3 parallel) → B4 → B5 → B6 → B7.
 
-### B1. ACC shared-memory struct layouts (`Adapters.ACC`)
+### B1. ACC shared-memory struct layouts (`Adapters.ACC`) — done (real Windows SHM dumps still pending)
 
 - `AccPhysicsPage`, `AccGraphicsPage`, `AccStaticPage` — `[StructLayout(LayoutKind.Sequential,
   CharSet.Unicode, Pack = 4)]`, fields per the official ACC shared-memory documentation

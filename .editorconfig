@@ -77,6 +77,15 @@ dotnet_naming_symbols.interfaces_symbols.applicable_kinds = interface
 dotnet_naming_style.interface_style.required_prefix = I
 dotnet_naming_style.interface_style.capitalization = pascal_case
 
+# Order is load-bearing: a private const matches both this rule and private_fields_underscore;
+# first match wins, so constants must be declared before the private-field rule.
+dotnet_naming_rule.constants_pascal_case.severity = warning
+dotnet_naming_rule.constants_pascal_case.symbols = constants_symbols
+dotnet_naming_rule.constants_pascal_case.style = pascal_case_style
+
+dotnet_naming_symbols.constants_symbols.applicable_kinds = field
+dotnet_naming_symbols.constants_symbols.required_modifiers = const
+
 dotnet_naming_rule.private_fields_underscore.severity = warning
 dotnet_naming_rule.private_fields_underscore.symbols = private_fields_symbols
 dotnet_naming_rule.private_fields_underscore.style = underscore_style
