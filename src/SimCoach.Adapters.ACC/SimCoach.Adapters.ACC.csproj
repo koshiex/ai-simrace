@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SimCoach.Contracts\SimCoach.Contracts.csproj" />
+    <ProjectReference Include="..\SimCoach.Pipeline\SimCoach.Pipeline.csproj" />
   </ItemGroup>
 
   <ItemGroup>

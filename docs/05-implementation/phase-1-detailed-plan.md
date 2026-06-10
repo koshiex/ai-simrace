@@ -48,7 +48,7 @@ Dependency order: B1 → B2 (B3 parallel) → B4 → B5 → B6 → B7.
 - **Fixtures:** synthetic binary pages built in test code first; real SHM dumps captured on a
   Windows machine later (drop into `tests/SimCoach.Adapters.ACC.Tests/Fixtures/`).
 
-### B2. `AccSharedMemoryReader : ITelemetrySource`
+### B2. `AccSharedMemoryReader : ITelemetrySource` — done (real-rig verification deferred to B7)
 
 - Opens `Local\acpmf_physics`, `Local\acpmf_graphics`, `Local\acpmf_static` via
   `MemoryMappedFile.OpenExisting`.
