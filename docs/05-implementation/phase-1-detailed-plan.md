@@ -62,7 +62,7 @@ Dependency order: B1 → B2 (B3 parallel) → B4 → B5 → B6 → B7.
   seqlock/dedup/reconnect logic is unit-testable with a fake page source; real MMF path is a
   thin adapter verified manually on Windows.
 
-### B3. `AccFrameMapper` (pure function)
+### B3. `AccFrameMapper` (pure function) — done
 
 - Native structs → `TelemetryFrame`: unit conversions (km/h → m/s, normalized pedals, gear
   offset — ACC gear 0=R,1=N,2=first → contract -1/0/1), `[FL,FR,RL,RR]` ordering.
