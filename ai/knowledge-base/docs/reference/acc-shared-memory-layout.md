@@ -42,8 +42,15 @@ odd-length: the four consecutive `wchar_t[15]` at the top of graphics end at 132
 ## Useful runtime facts
 
 - `smVersion` reports the shared-memory layout version ("1.8"), not the game version.
-- `static.trackSPlineLength` is not populated by ACC (returns 0) — lap distance cannot be
-  derived from it; `physics.clutch` is engagement (0 = pedal pressed, 1 = released).
+- `static.trackSPlineLength` is not populated by ACC (returns 0) — lap distance comes from
+  `AccTrackCatalog`; `physics.clutch` is engagement (0 = pedal pressed, 1 = released).
+- `physics.steerAngle` is a NORMALIZED steering input [-1..1] of full lock (Kunos doc: "Steering
+  input value"), not radians/degrees. Wheel angle = steerAngle × lock-to-lock/2 — per-car locks
+  live in `AccCarCatalog`. Two cars where the official doc is wrong: bmw_m4_gt3 is 516° (doc 540),
+  honda_nsx_gt3_evo is 436° after the 1.9 update (doc 620). Source of truth: Race Element /
+  acc-steering-lock plugin tables.
+- `static.track` ids are MIXED case ("Spa", "Paul_Ricard", "brands_hatch"); ACC server configs
+  and results JSON use all-lowercase ids — different namespaces, normalize case-insensitively.
 - `graphics.surfaceGrip` always returns 0 in ACC.
 - `physics.suspensionDamage` works (PyAcc's "not used" comment is wrong).
 - Static page has no `packetId` — seqlock applies to physics/graphics only

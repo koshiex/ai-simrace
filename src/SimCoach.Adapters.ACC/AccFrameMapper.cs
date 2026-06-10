@@ -14,6 +14,7 @@ public static class AccFrameMapper
 {
     private const float KmhToMps = 1f / 3.6f;
     private const float PsiToKpa = 6.894757f;
+    private const float DegToRad = MathF.PI / 180f;
 
     /// <summary>Below this track temperature a dry track counts as "dry-cool".</summary>
     private const float DryCoolMaxTrackTempC = 25f;
@@ -61,18 +62,20 @@ public static class AccFrameMapper
         SharedMemory.AccGraphicsPage graphics = snapshot.Graphics;
         SharedMemory.AccStaticPage staticPage = snapshot.Static;
 
+        string trackId = NormalizeId(staticPage.Track);
+        string carId = NormalizeId(staticPage.CarModel);
+
         TelemetryFrame frame = new()
         {
             T = Timestamp.FromDateTimeOffset(snapshot.CapturedAt),
             Sim = AccSharedMemoryReader.SimId,
-            TrackId = NormalizeId(staticPage.Track),
-            CarId = NormalizeId(staticPage.CarModel),
+            TrackId = trackId,
+            CarId = carId,
             WeatherBucket = DeriveWeatherBucket(graphics.RainIntensity, graphics.TrackGripStatus, physics.RoadTemp),
             LapNumber = graphics.CompletedLaps + 1,
-            // ACC does not populate trackSPlineLength (see KB: acc-shared-memory-layout), so this
-            // stays 0 until Phase 2 derives lap distance from track data.
-            LapDistanceM = staticPage.TrackSplineLength > 0f
-                ? graphics.NormalizedCarPosition * staticPage.TrackSplineLength
+            // ACC does not populate trackSPlineLength, so lap length comes from the track catalog.
+            LapDistanceM = AccTrackCatalog.TryGetLapLengthM(trackId, out float lapLengthM)
+                ? graphics.NormalizedCarPosition * lapLengthM
                 : 0f,
             NormalizedCarPosition = graphics.NormalizedCarPosition,
             SpeedMps = physics.SpeedKmh * KmhToMps,
@@ -81,10 +84,9 @@ public static class AccFrameMapper
             // ACC reports clutch ENGAGEMENT (0 = pedal fully pressed, 1 = released) — inverted
             // so all three pedal fields uniformly mean application: pressed pedal → 1.
             ClutchPct = 1f - physics.Clutch,
-            // ACC reports a normalized steering value; per-car conversion to radians needs the
-            // steering lock, which shared memory does not expose. Passed through as-is and
-            // verified against a real dump in B7.
-            SteerRad = physics.SteerAngle,
+            // ACC steerAngle is normalized [-1..1] of full lock (Kunos doc V1.8.12: "Steering
+            // input value"); steering-wheel radians = input × half the car's lock-to-lock.
+            SteerRad = physics.SteerAngle * (AccCarCatalog.GetSteerLockDeg(carId) / 2f) * DegToRad,
             Gear = physics.Gear - 1,
             Rpm = physics.Rpm,
             GForceG = new Vec3 { X = physics.AccG[0], Y = physics.AccG[1], Z = physics.AccG[2] },

@@ -62,12 +62,14 @@ public sealed class AccFrameMapperTests
         frame.CarId.Should().Be("audi_r8_lms_evo_ii");
         frame.WeatherBucket.Should().Be("dry-warm"); // road 28.5 °C ≥ 25 °C threshold
         frame.LapNumber.Should().Be(6);
+        frame.LapDistanceM.Should().BeApproximately(0.42f * 7004f, 0.01f); // spa lap length from catalog
         frame.NormalizedCarPosition.Should().Be(0.42f);
         frame.SpeedMps.Should().BeApproximately(60f, 0.001f);
         frame.ThrottlePct.Should().Be(0.8f);
         frame.BrakePct.Should().Be(0.2f);
         frame.ClutchPct.Should().Be(0.75f); // ACC engagement 0.25 inverted to pedal application
-        frame.SteerRad.Should().Be(-0.31f);
+        // audi_r8_lms_evo_ii lock 720° → ±360°; -0.31 × 360° in radians
+        frame.SteerRad.Should().BeApproximately(-0.31f * 360f * (MathF.PI / 180f), 0.0001f);
         frame.Gear.Should().Be(4); // native 5 → contract 4
         frame.Rpm.Should().Be(7200f);
         frame.TyreTempC[1].Should().Be(82.5f);
@@ -208,21 +210,41 @@ public sealed class AccFrameMapperTests
     }
 
     [Theory]
-    [InlineData(0f, 0.42f, 0f)]          // ACC: spline length not populated → no lap distance
-    [InlineData(7004f, 0.5f, 3502f)]     // populated length → fraction of it
-    public void Lap_distance_derives_from_spline_length_only_when_populated(
-        float splineLengthM, float normalizedPosition, float expectedDistanceM)
+    [InlineData("monza", 0.5f, 2896.5f)]      // 5793 m × 0.5
+    [InlineData("Paul_Ricard", 0.1f, 577f)]   // mixed-case shared-memory id resolves via normalization
+    [InlineData("moon_ring", 0.5f, 0f)]       // unknown track → no lap distance
+    public void Lap_distance_derives_from_track_catalog(
+        string nativeTrack, float normalizedPosition, float expectedDistanceM)
     {
         // Arrange
         AccTelemetrySnapshot snapshot = AccSnapshotFixture.Build(
             graphics: page => page.WithSingle(248, normalizedPosition),
-            @static: page => page.WithSingle(520, splineLengthM));
+            @static: page => page.WithUtf16(134, nativeTrack, 33));
 
         // Act
         TelemetryFrame frame = AccFrameMapper.Map(snapshot);
 
         // Assert
-        frame.LapDistanceM.Should().Be(expectedDistanceM);
+        frame.LapDistanceM.Should().BeApproximately(expectedDistanceM, 0.01f);
+    }
+
+    [Theory]
+    [InlineData("ferrari_488_gt3", 1f, 240f)]   // lock 480° → full right = +240°
+    [InlineData("ferrari_488_gt3", -0.5f, -120f)]
+    [InlineData("spaceship_gt1", 1f, 180f)]     // unknown car → fallback 360° lock
+    public void Steer_angle_converts_to_wheel_radians_via_car_lock(
+        string nativeCar, float steerInput, float expectedWheelDeg)
+    {
+        // Arrange
+        AccTelemetrySnapshot snapshot = AccSnapshotFixture.Build(
+            physics: page => page.WithSingle(24, steerInput),
+            @static: page => page.WithUtf16(68, nativeCar, 33));
+
+        // Act
+        TelemetryFrame frame = AccFrameMapper.Map(snapshot);
+
+        // Assert
+        frame.SteerRad.Should().BeApproximately(expectedWheelDeg * (MathF.PI / 180f), 0.0001f);
     }
 
     [Fact]
