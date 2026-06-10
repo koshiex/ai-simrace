@@ -1,8 +1,8 @@
-namespace SimCoach.Adapters.ACC.Tests;
+namespace SimCoach.Pipeline.Tests;
 
 /// <summary>
 /// Manually advanced <see cref="TimeProvider"/> for deterministic interval tests.
-/// Thread-safe: tests advance it while a reader thread reads timestamps.
+/// Thread-safe: tests advance it while a service thread reads timestamps.
 /// </summary>
 internal sealed class FakeClock : TimeProvider
 {

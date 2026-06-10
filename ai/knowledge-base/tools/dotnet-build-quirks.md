@@ -28,6 +28,14 @@ Keep the classic `.sln`: `dotnet format` on SDK 9 is unreliable with `.slnx`.
 Use explicit types (`HostApplicationBuilder`, `IHost`) unless the type is apparent
 (`var x = new Foo()` is fine).
 
+## Naming rule IDE1006 covers `private static readonly` fields too
+
+The repo's `.editorconfig` private-field rule (`_camelCase`) has no static carve-out, so
+`private static readonly TimeSpan CollectTimeout` fails `dotnet format --verify-no-changes`
+with IDE1006. Use `_collectTimeout`. Only `const` fields are exempt (separate PascalCase rule
+via `required_modifiers = const`). Note: plain `dotnet build` does not surface IDE1006 —
+only `dotnet format` does; CI runs both.
+
 ## NuGet packages that do not exist (verified against nuget.org)
 
 - **MCAP**: no C# package at all (`Mcap.Core` was a scaffold placeholder, removed).

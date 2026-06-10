@@ -71,7 +71,7 @@ Dependency order: B1 → B2 (B3 parallel) → B4 → B5 → B6 → B7.
   damp | wet` (thresholds as named constants).
 - **Tests:** golden mapping on fixture pages; edge cases (gear=0 reverse, wet bucket cutoffs).
 
-### B4. `IngestService` (`Pipeline`)
+### B4. `IngestService` (`Pipeline`) — done
 
 - `Channel.CreateBounded<TelemetryFrame>(256)` with `BoundedChannelFullMode.DropOldest`.
 - `BackgroundService`: consumes `ITelemetrySource.ReadAsync`, writes to channel; fan-out
