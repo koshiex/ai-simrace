@@ -8,10 +8,10 @@ This file expands `peaceful-tumbling-firefly.md` phases into concrete tasks.
 
 - [x] Repo skeleton + `.gitignore`
 - [x] Architecture docs v1 (PRD, competitive-analysis, architecture, ADRs 0001-0007, telemetry-schema, action-registry, FRs, privacy)
-- [ ] `SimCoach.sln` + project skeletons (csproj per module)
-- [ ] CI workflow (`dotnet test`, `dotnet format --verify-no-changes`)
-- [ ] Protobuf schema generation hooked into `SimCoach.Contracts.csproj`
-- [ ] Generic Host wiring in `SimCoach.App/Program.cs`
+- [x] `SimCoach.sln` + project skeletons (csproj per module)
+- [x] CI workflow (`dotnet test`, `dotnet format --verify-no-changes`)
+- [x] Protobuf schema generation hooked into `SimCoach.Contracts.csproj`
+- [x] Generic Host wiring in `SimCoach.App/Program.cs`
 
 ## Phase 1 — ACC Telemetry + MCAP Capture (week 2)
 

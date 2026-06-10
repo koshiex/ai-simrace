@@ -12,7 +12,8 @@ SLN=SimCoach.sln
 if [[ -f "$SLN" ]]; then
   echo "Solution already exists. Skipping create."
 else
-  dotnet new sln -n SimCoach
+  # --format sln: SDK 10+ creates .slnx by default; fall back for SDKs without the option.
+  dotnet new sln -n SimCoach --format sln || dotnet new sln -n SimCoach
 fi
 
 # Add all src projects.

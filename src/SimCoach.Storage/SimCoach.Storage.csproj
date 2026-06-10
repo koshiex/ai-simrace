@@ -13,7 +13,6 @@
     <PackageReference Include="Dapper" />
     <PackageReference Include="Apache.Arrow" />
     <PackageReference Include="ParquetSharp" />
-    <PackageReference Include="Mcap.Core" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Serilog.Extensions.Hosting" />
   </ItemGroup>

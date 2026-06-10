@@ -27,10 +27,12 @@ Pre-alpha. Project scaffold + design docs only.
 `ACC SHM → Protobuf → MCAP capture + deterministic compute → Gold-tier JSON → OpenRouter LLM (Gemini 2.5 Flash / DeepSeek V3.2) → Silero v5 RU TTS → Avalonia transparent overlay + audio.`
 
 ## Quick Start (post-scaffold)
-1. Install .NET 9 SDK.
-2. `dotnet restore && dotnet build`.
-3. Configure API keys in `%APPDATA%/SimCoach/secrets.json` (template in `docs/`).
-4. Run `SimCoach.App` while ACC is running.
+1. Install .NET 9 SDK (or newer — `global.json` rolls forward across majors).
+2. `./scripts/bootstrap.sh` (macOS/Linux) or `./scripts/bootstrap.ps1` (Windows) — only needed after adding new projects; `SimCoach.sln` is committed.
+3. `dotnet build && dotnet test`.
+   On a machine with only a newer runtime installed (e.g. .NET 10), run tests with `DOTNET_ROLL_FORWARD=LatestMajor dotnet test` — the VSTest host pins the 9.0 runtime otherwise.
+4. Configure API keys in `%APPDATA%/SimCoach/secrets.json` (template in `docs/`).
+5. Run `SimCoach.App` while ACC is running.
 
 ## License
 TBD.

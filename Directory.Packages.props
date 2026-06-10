@@ -24,10 +24,9 @@
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="9.0.0" />
     <PackageVersion Include="Dapper" Version="2.1.35" />
     <PackageVersion Include="Apache.Arrow" Version="18.0.0" />
-    <PackageVersion Include="ParquetSharp" Version="16.0.0" />
+    <PackageVersion Include="ParquetSharp" Version="16.1.0" />
 
-    <!-- MCAP — placeholder, validate latest C# bindings -->
-    <PackageVersion Include="Mcap.Core" Version="0.0.1" />
+    <!-- MCAP: no C# package on NuGet (checked 2026-06-10) — minimal writer hand-rolled in SimCoach.Storage per ADR-0003 risk mitigation -->
 
     <!-- ONNX Runtime for Silero -->
     <PackageVersion Include="Microsoft.ML.OnnxRuntime" Version="1.20.1" />

@@ -12,7 +12,9 @@ $sln = "SimCoach.sln"
 if (Test-Path $sln) {
     Write-Host "Solution already exists. Skipping create."
 } else {
-    dotnet new sln -n SimCoach
+    # --format sln: SDK 10+ creates .slnx by default; fall back for SDKs without the option.
+    dotnet new sln -n SimCoach --format sln
+    if ($LASTEXITCODE -ne 0) { dotnet new sln -n SimCoach }
 }
 
 # Add all src projects.

@@ -8,7 +8,7 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
-        var builder = Host.CreateApplicationBuilder(args);
+        HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 
         builder.Configuration
             .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
@@ -20,7 +20,7 @@ public static class Program
 
         // TODO Phase 0+: register hosted services here as modules come online.
 
-        using var host = builder.Build();
+        using IHost host = builder.Build();
         await host.RunAsync();
         return 0;
     }
