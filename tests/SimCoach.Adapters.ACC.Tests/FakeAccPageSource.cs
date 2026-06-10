@@ -39,8 +39,6 @@ internal sealed class FakeAccPageSource : IAccPageSource
         set => _isDisconnected = value;
     }
 
-    public bool IsDisposed { get; private set; }
-
     public void SetPhysicsPage(byte[] page) => _physicsPage = page;
 
     public void SetGraphicsPage(byte[] page) => _graphicsPage = page;
@@ -111,7 +109,10 @@ internal sealed class FakeAccPageSource : IAccPageSource
         return true;
     }
 
-    public void Dispose() => IsDisposed = true;
+    public void Dispose()
+    {
+        // Nothing to release; the fake exists only to script page reads.
+    }
 
     private byte[] BufferFor(AccPage page) => page switch
     {

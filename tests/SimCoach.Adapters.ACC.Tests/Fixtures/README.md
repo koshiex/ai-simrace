@@ -26,8 +26,19 @@ foreach ($name in $pages.Keys) {
 Get-ChildItem acc_*.bin
 ```
 
-5. Проверь размеры: `acc_physics.bin` = **800** байт, `acc_graphics.bin` = **1588**,
-   `acc_static.bin` = **820**. Другой размер = что-то пошло не так, дамп не годится.
+5. Проверь содержимое (размер файлов проверять бессмысленно — его задаёт сам скрипт):
+
+```powershell
+foreach ($name in 'physics', 'graphics') {
+    $bytes = [System.IO.File]::ReadAllBytes("$PWD\acc_$name.bin")
+    "{0}: packetId = {1}" -f $name, [BitConverter]::ToInt32($bytes, 0)
+}
+$static = [System.IO.File]::ReadAllBytes("$PWD\acc_static.bin")
+"static: smVersion = " + [System.Text.Encoding]::Unicode.GetString($static, 0, 30).TrimEnd([char]0)
+```
+
+   `packetId` должен быть > 0, `smVersion` — начинаться с «1.» (например, `1.8`).
+   Нули/пустые строки = страницы пустые, дамп снят вне сессии — не годится.
 
 ## Что записать вместе с дампом
 

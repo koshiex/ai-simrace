@@ -44,12 +44,17 @@ public sealed class AccReaderOptionsTests
         act.Should().Throw<ArgumentOutOfRangeException>();
     }
 
-    [Fact]
-    public void Negative_intervals_fail_fast()
+    public static TheoryData<AccReaderOptions> NegativeIntervalOptions => new()
     {
-        // Arrange
-        AccReaderOptions options = new() { ReconnectDelay = TimeSpan.FromSeconds(-1) };
+        new AccReaderOptions { PollInterval = TimeSpan.FromMilliseconds(-1) },
+        new AccReaderOptions { ReconnectDelay = TimeSpan.FromSeconds(-1) },
+        new AccReaderOptions { StaticRefreshInterval = TimeSpan.FromSeconds(-1) },
+    };
 
+    [Theory]
+    [MemberData(nameof(NegativeIntervalOptions))]
+    public void Negative_intervals_fail_fast(AccReaderOptions options)
+    {
         // Act
         Action act = options.EnsureValid;
 

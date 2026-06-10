@@ -8,8 +8,9 @@ namespace SimCoach.Adapters.ACC.Tests;
 /// <summary>
 /// Golden layout tests for <see cref="AccGraphicsPage"/> against the Kunos shared-memory
 /// documentation V1.8.12 (SPageFileGraphic, pack 4, 1588 bytes). Pack=4 inserts 2 padding
-/// bytes after each odd-length wchar_t array followed by an int/float — those spots are the
-/// historically bug-prone offsets and are all asserted below.
+/// bytes when a wchar_t array ends at an offset not divisible by 4 AND the next field needs
+/// 4-byte alignment (arrays ending 4-aligned get no pad — e.g. the four wchar_t[15] at the top
+/// end at 132). Those pad spots are the historically bug-prone offsets, all asserted below.
 /// </summary>
 public sealed class AccGraphicsPageLayoutTests
 {

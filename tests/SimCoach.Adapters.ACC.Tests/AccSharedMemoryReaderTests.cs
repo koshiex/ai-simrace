@@ -145,6 +145,32 @@ public sealed class AccSharedMemoryReaderTests
     }
 
     [Fact]
+    public async Task Mapper_failure_faults_the_stream_with_the_original_exception()
+    {
+        // Arrange — a throwing mapper is the only way the poll loop can fail; the contract is
+        // that the consumer's enumeration observes that original exception
+        _source.SetPhysicsPage(PhysicsPageBytes(packetId: 1));
+        AccSharedMemoryReader reader = new(
+            _source,
+            _ => throw new InvalidDataException("mapper boom"),
+            _fastOptions,
+            TimeProvider.System,
+            NullLogger<AccSharedMemoryReader>.Instance);
+        using var cts = new CancellationTokenSource(_collectTimeout);
+
+        // Act
+        Func<Task> act = async () =>
+        {
+            await foreach (TelemetryFrame _ in reader.ReadAsync(cts.Token))
+            {
+            }
+        };
+
+        // Assert
+        await act.Should().ThrowAsync<InvalidDataException>().WithMessage("mapper boom");
+    }
+
+    [Fact]
     public async Task Second_concurrent_enumeration_throws()
     {
         // Arrange

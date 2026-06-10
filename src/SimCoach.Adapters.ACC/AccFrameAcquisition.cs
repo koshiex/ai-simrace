@@ -24,7 +24,7 @@ public sealed class AccFrameAcquisition
     private int _lastGraphicsPacketId;
     private AccGraphicsPage _graphics;
     private bool _hasStatic;
-    private DateTimeOffset _staticRefreshedAt;
+    private long _staticRefreshedAtTimestamp;
     private AccStaticPage _static;
 
     public AccFrameAcquisition(IAccPageSource pageSource, TimeProvider timeProvider, AccReaderOptions options)
@@ -148,8 +148,8 @@ public sealed class AccFrameAcquisition
 
     private bool TryRefreshStatic()
     {
-        DateTimeOffset now = _timeProvider.GetUtcNow();
-        if (_hasStatic && now - _staticRefreshedAt < _options.StaticRefreshInterval)
+        // Monotonic time: a wall-clock NTP step must not stall or double-trigger the refresh.
+        if (_hasStatic && _timeProvider.GetElapsedTime(_staticRefreshedAtTimestamp) < _options.StaticRefreshInterval)
         {
             return true;
         }
@@ -160,7 +160,7 @@ public sealed class AccFrameAcquisition
         }
 
         _static = AccPageMarshaller.Read<AccStaticPage>(_staticBuffer);
-        _staticRefreshedAt = now;
+        _staticRefreshedAtTimestamp = _timeProvider.GetTimestamp();
         _hasStatic = true;
         return true;
     }

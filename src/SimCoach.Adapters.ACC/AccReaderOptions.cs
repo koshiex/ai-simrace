@@ -40,10 +40,16 @@ public sealed record AccReaderOptions
                 nameof(ChannelCapacity), ChannelCapacity, "The frame channel needs a positive capacity.");
         }
 
-        if (PollInterval < TimeSpan.Zero || ReconnectDelay < TimeSpan.Zero || StaticRefreshInterval < TimeSpan.Zero)
+        EnsureNonNegative(PollInterval, nameof(PollInterval));
+        EnsureNonNegative(ReconnectDelay, nameof(ReconnectDelay));
+        EnsureNonNegative(StaticRefreshInterval, nameof(StaticRefreshInterval));
+    }
+
+    private static void EnsureNonNegative(TimeSpan interval, string name)
+    {
+        if (interval < TimeSpan.Zero)
         {
-            throw new ArgumentOutOfRangeException(
-                nameof(PollInterval), "Poll, reconnect and static-refresh intervals must be non-negative.");
+            throw new ArgumentOutOfRangeException(name, interval, "Intervals must be non-negative.");
         }
     }
 }

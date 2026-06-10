@@ -9,5 +9,9 @@ internal sealed class FakeClock : TimeProvider
 
     public override long GetTimestamp() => _utcNow.Ticks;
 
+    // GetTimestamp returns DateTimeOffset ticks, so the frequency must match (10 MHz), not the
+    // base Stopwatch.Frequency — otherwise GetElapsedTime distorts durations ~100x.
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
     public void Advance(TimeSpan delta) => _utcNow += delta;
 }

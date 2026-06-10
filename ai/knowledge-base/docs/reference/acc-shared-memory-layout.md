@@ -31,11 +31,13 @@ from the code: where the layout came from and which traps exist in third-party s
 
 ## Padding rules (the only 7 pad spots)
 
-Pack=4 inserts 2 bytes after an odd-length `wchar_t[N]` array **only when the next field is
-int/float**. Consecutive wchar arrays get no padding (e.g. the four `wchar_t[15]` at the top of
-graphics). Pad spots: graphics after `tyreCompound[33]`, `deltaLapTime[15]`,
-`estimatedLapTime[15]`, `trackStatus[33]`; static after `playerNick[33]`,
-`trackConfiguration[33]`, `carSkin[33]`.
+Pack=4 inserts 2 bytes when a `wchar_t[N]` array **ends at an offset not divisible by 4** and
+the next field needs 4-byte alignment (int/float). An array ending 4-aligned gets no pad even if
+odd-length: the four consecutive `wchar_t[15]` at the top of graphics end at 132, and
+`acVersion[15]` in static ends at 60 — no padding there. Pad spots: graphics after
+`tyreCompound[33]` (242→244), `deltaLapTime[15]` (1358→1360), `estimatedLapTime[15]`
+(1394→1396), `trackStatus[33]` (1482→1484); static after `playerNick[33]` (398→400),
+`trackConfiguration[33]` (590→592), `carSkin[33]` (670→672).
 
 ## Useful runtime facts
 
