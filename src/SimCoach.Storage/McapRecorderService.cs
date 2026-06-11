@@ -72,7 +72,12 @@ public sealed class McapRecorderService : BackgroundService
                     || _timeProvider.GetElapsedTime(segmentStartedAt) >= _options.SegmentDuration;
                 if (needsRotation)
                 {
-                    writer?.Dispose();
+                    if (writer is not null)
+                    {
+                        LogSegmentFinished(segmentIndex - 1, sequence, segmentStartedAt);
+                        writer.Dispose();
+                    }
+
                     (writer, channelId) = StartSegment(sessionDirectory, segmentIndex, schemaData);
                     sequence = 0;
                     segmentStartedAt = _timeProvider.GetTimestamp();
@@ -89,12 +94,30 @@ public sealed class McapRecorderService : BackgroundService
         }
         finally
         {
-            writer?.Dispose();
+            if (writer is not null)
+            {
+                LogSegmentFinished(segmentIndex - 1, sequence, segmentStartedAt);
+                writer.Dispose();
+            }
+
             _logger.LogInformation(
                 "Recorder stopped: {SegmentCount} segment(s) in {SessionDirectory}",
                 segmentIndex,
                 sessionDirectory);
         }
+    }
+
+    /// <summary>The effective rate in this line is the manual live-ACC verification signal (~333 Hz).</summary>
+    private void LogSegmentFinished(int segmentIndex, uint frameCount, long segmentStartedAt)
+    {
+        TimeSpan elapsed = _timeProvider.GetElapsedTime(segmentStartedAt);
+        double effectiveHz = elapsed > TimeSpan.Zero ? frameCount / elapsed.TotalSeconds : 0;
+        _logger.LogInformation(
+            "Segment {SegmentIndex} finished: {FrameCount} frames in {ElapsedSeconds:F1} s (~{EffectiveHz:F0} Hz)",
+            segmentIndex,
+            frameCount,
+            elapsed.TotalSeconds,
+            effectiveHz);
     }
 
     private (McapWriter Writer, ushort ChannelId) StartSegment(

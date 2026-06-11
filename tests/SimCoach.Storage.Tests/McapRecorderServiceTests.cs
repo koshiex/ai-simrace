@@ -110,6 +110,34 @@ public sealed class McapRecorderServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Finished_segments_log_frame_count_and_effective_rate()
+    {
+        // Arrange — the manual live-ACC verification reads the rate from this log line
+        CollectingLogger<McapRecorderService> logger = new();
+        McapRecorderService service = new(
+            _fanOut,
+            new RecordingOptions { BasePath = _basePath, SegmentDuration = TimeSpan.FromSeconds(60) },
+            _clock,
+            logger);
+        await service.StartAsync(CancellationToken.None);
+
+        // Act — two frames into segment 0, rotate, one frame into segment 1
+        _fanOut.Publish(Frame(1));
+        _fanOut.Publish(Frame(2));
+        await WaitForAsync(() => Directory.Exists(_basePath) && SegmentCount() == 1);
+        _clock.Advance(TimeSpan.FromSeconds(61));
+        _fanOut.Publish(Frame(3));
+        _fanOut.Complete();
+        await service.ExecuteTask!.WaitAsync(_waitTimeout);
+
+        // Assert
+        IReadOnlyList<(Microsoft.Extensions.Logging.LogLevel Level, string Message)> entries = logger.Snapshot();
+        entries.Should().Contain(entry => entry.Message.Contains("Segment 0 finished: 2 frames"));
+        entries.Should().Contain(entry => entry.Message.Contains("Segment 1 finished: 1 frames"));
+        await service.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
     public async Task No_frames_means_no_session_directory()
     {
         // Arrange
