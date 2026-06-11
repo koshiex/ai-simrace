@@ -79,7 +79,7 @@ Dependency order: B1 → B2 (B3 parallel) → B4 → B5 → B6 → B7.
 - Dropped-frame counter, logged at most once per 10 s.
 - **Tests:** backpressure drops oldest; fan-out delivers to all subscribers; cancellation clean.
 
-### B5. Minimal MCAP writer (`Storage`)
+### B5. Minimal MCAP writer (`Storage`) — done (no summary section: `mcap doctor` passes, `mcap cat` needs the zstd+summary follow-up)
 
 - Hand-rolled per the [MCAP spec](https://mcap.dev/spec): magic, `Header`, `Schema`
   (protobuf descriptor bytes), `Channel`, `Message` records, `Chunk` + CRC32, `Footer`.

@@ -27,6 +27,7 @@
     <PackageVersion Include="ParquetSharp" Version="16.1.0" />
 
     <!-- MCAP: no C# package on NuGet (checked 2026-06-10) — minimal writer hand-rolled in SimCoach.Storage per ADR-0003 risk mitigation -->
+    <PackageVersion Include="System.IO.Hashing" Version="9.0.0" />
 
     <!-- ONNX Runtime for Silero -->
     <PackageVersion Include="Microsoft.ML.OnnxRuntime" Version="1.20.1" />

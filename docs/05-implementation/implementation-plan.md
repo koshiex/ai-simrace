@@ -18,7 +18,7 @@ This file expands `peaceful-tumbling-firefly.md` phases into concrete tasks.
 - [x] Port ACC shared-memory struct layouts to C# (`AccPhysicsPage`, `AccGraphicsPage`, `AccStaticPage`)
 - [x] `AccSharedMemoryReader` busy-poll loop at 333 Hz
 - [x] `AccFrameMapper` → `TelemetryFrame`
-- [ ] `IngestService` channel + MCAP rotating writer
+- [x] `IngestService` channel + MCAP rotating writer
 - [ ] Replay tool that re-emits MCAP at real time
 - [ ] Tests: capture fixture, replay, byte-identical events
 

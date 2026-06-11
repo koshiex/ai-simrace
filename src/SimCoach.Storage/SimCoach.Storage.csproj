@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SimCoach.Contracts\SimCoach.Contracts.csproj" />
+    <ProjectReference Include="..\SimCoach.Pipeline\SimCoach.Pipeline.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -15,6 +16,7 @@
     <PackageReference Include="ParquetSharp" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Serilog.Extensions.Hosting" />
+    <PackageReference Include="System.IO.Hashing" />
   </ItemGroup>
 
 </Project>
