@@ -36,6 +36,20 @@ with IDE1006. Use `_collectTimeout`. Only `const` fields are exempt (separate Pa
 via `required_modifiers = const`). Note: plain `dotnet build` does not surface IDE1006 —
 only `dotnet format` does; CI runs both.
 
+## HostApplicationBuilder: re-adding appsettings.json kills CLI/env overrides
+
+`Host.CreateApplicationBuilder(args)` already loads appsettings.json + env vars + command-line
+args in the correct precedence order. Appending another `AddJsonFile("appsettings.json")` puts
+JSON *after* CLI args — command-line overrides silently stop working. To load config from the
+executable directory, set `ContentRootPath = AppContext.BaseDirectory` via
+`HostApplicationBuilderSettings` instead (see `src/SimCoach.App/Program.cs`).
+
+## SDK 10 file-based apps are great for smoke scripts
+
+`dotnet run script.cs` with a `#:project ../path/to/Project.csproj` directive compiles and runs
+a single file referencing repo projects — no throwaway csproj needed. Used for generating
+sample MCAP sessions when smoke-testing the app.
+
 ## NuGet packages that do not exist (verified against nuget.org)
 
 - **MCAP**: no C# package at all (`Mcap.Core` was a scaffold placeholder, removed).
