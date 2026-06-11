@@ -19,7 +19,7 @@ This file expands `peaceful-tumbling-firefly.md` phases into concrete tasks.
 - [x] `AccSharedMemoryReader` busy-poll loop at 333 Hz
 - [x] `AccFrameMapper` → `TelemetryFrame`
 - [x] `IngestService` channel + MCAP rotating writer
-- [ ] Replay tool that re-emits MCAP at real time
+- [x] Replay tool that re-emits MCAP at real time
 - [ ] Tests: capture fixture, replay, byte-identical events
 
 ## Phase 2 — Reference Laps + Deterministic Compute (week 3)

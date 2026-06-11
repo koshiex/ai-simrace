@@ -91,7 +91,7 @@ Dependency order: B1 → B2 (B3 parallel) → B4 → B5 → B6 → B7.
 - **Tests:** write N frames → read back → payload byte-identical; segment rotation at boundary;
   (optional, CI-skippable) validate output with the `mcap` CLI if present.
 
-### B6. `McapReplaySource : ITelemetrySource`
+### B6. `McapReplaySource : ITelemetrySource` — done
 
 - Reads MCAP segments, re-emits frames honoring original inter-frame timing
   (`speed` multiplier in config; `0` = as fast as possible for tests).
