@@ -44,7 +44,12 @@ public sealed class McapReplaySource : ITelemetrySource
             _options.Path,
             _options.SpeedMultiplier);
 
+        // Pacing runs against an absolute schedule (start timestamp + accumulated target),
+        // not per-frame relative delays — timer overshoot must not accumulate into drift
+        // (3 ms gaps at 333 Hz vs ~16 ms Windows timer granularity would replay ~5x slow).
         ulong? previousLogTimeNs = null;
+        long replayStartTimestamp = 0;
+        TimeSpan targetElapsed = TimeSpan.Zero;
         foreach (string segmentPath in segmentPaths)
         {
             McapSegment segment = ReadSegment(segmentPath);
@@ -55,13 +60,21 @@ public sealed class McapReplaySource : ITelemetrySource
                     yield break;
                 }
 
-                TimeSpan delay = ComputeDelay(previousLogTimeNs, message.LogTimeNs);
-                previousLogTimeNs = message.LogTimeNs;
-                if (delay > TimeSpan.Zero && !await TryDelayAsync(delay, ct).ConfigureAwait(false))
+                if (previousLogTimeNs is null)
                 {
-                    yield break; // cancelled mid-wait — end the stream gracefully
+                    replayStartTimestamp = _timeProvider.GetTimestamp();
+                }
+                else
+                {
+                    targetElapsed += ScaledGap(previousLogTimeNs.Value, message.LogTimeNs);
+                    TimeSpan remaining = targetElapsed - _timeProvider.GetElapsedTime(replayStartTimestamp);
+                    if (remaining > TimeSpan.Zero && !await TryDelayAsync(remaining, ct).ConfigureAwait(false))
+                    {
+                        yield break; // cancelled mid-wait — end the stream gracefully
+                    }
                 }
 
+                previousLogTimeNs = message.LogTimeNs;
                 yield return TelemetryFrame.Parser.ParseFrom(message.Data);
             }
         }
@@ -82,7 +95,8 @@ public sealed class McapReplaySource : ITelemetrySource
                 throw new FileNotFoundException($"No .mcap segments found in '{path}'.");
             }
 
-            Array.Sort(segments, StringComparer.Ordinal); // segment-NNNN names sort chronologically
+            // segment-NNNN names sort chronologically up to 9999 segments (~7 days at 60 s rotation)
+            Array.Sort(segments, StringComparer.Ordinal);
             return segments;
         }
 
@@ -95,18 +109,19 @@ public sealed class McapReplaySource : ITelemetrySource
         return McapSegment.Read(stream);
     }
 
-    private TimeSpan ComputeDelay(ulong? previousLogTimeNs, ulong currentLogTimeNs)
+    private const double NanosPerSecond = 1e9;
+
+    /// <summary>The capped, speed-scaled recorded gap between two consecutive frames.</summary>
+    private TimeSpan ScaledGap(ulong previousLogTimeNs, ulong currentLogTimeNs)
     {
-        if (_options.SpeedMultiplier <= 0
-            || previousLogTimeNs is null
-            || currentLogTimeNs <= previousLogTimeNs.Value)
+        if (_options.SpeedMultiplier <= 0 || currentLogTimeNs <= previousLogTimeNs)
         {
             return TimeSpan.Zero;
         }
 
-        double seconds = (currentLogTimeNs - previousLogTimeNs.Value) / 1e9 / _options.SpeedMultiplier;
-        var delay = TimeSpan.FromSeconds(seconds);
-        return delay <= _options.MaxFrameDelay ? delay : _options.MaxFrameDelay;
+        double seconds = (currentLogTimeNs - previousLogTimeNs) / NanosPerSecond / _options.SpeedMultiplier;
+        var gap = TimeSpan.FromSeconds(seconds);
+        return gap <= _options.MaxFrameDelay ? gap : _options.MaxFrameDelay;
     }
 
     private async Task<bool> TryDelayAsync(TimeSpan delay, CancellationToken ct)

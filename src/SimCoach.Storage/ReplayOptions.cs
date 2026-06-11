@@ -8,13 +8,16 @@ public sealed record ReplayOptions
 
     /// <summary>
     /// Replay speed: 1 = original inter-frame timing, 2 = twice as fast,
-    /// 0 = as fast as possible (tests, batch compute).
+    /// 0 = as fast as possible (tests, batch compute). Extremes degrade gracefully:
+    /// very high speeds approach the speed-0 behavior; very low speeds are bounded by
+    /// <see cref="MaxFrameDelay"/> per frame.
     /// </summary>
     public double SpeedMultiplier { get; init; } = 1.0;
 
     /// <summary>
     /// Cap on a single inter-frame wait — recorded pauses (pits, menus) must not stall
-    /// the replay for their full real duration.
+    /// the replay for their full real duration. Also the effective maximum per-frame
+    /// slowdown regardless of how small <see cref="SpeedMultiplier"/> is.
     /// </summary>
     public TimeSpan MaxFrameDelay { get; init; } = TimeSpan.FromSeconds(1);
 

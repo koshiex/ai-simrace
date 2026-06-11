@@ -32,7 +32,21 @@ Pre-alpha. Project scaffold + design docs only.
 3. `dotnet build && dotnet test`.
    On a machine with only a newer runtime installed (e.g. .NET 10), run tests with `DOTNET_ROLL_FORWARD=LatestMajor dotnet test` — the VSTest host pins the 9.0 runtime otherwise.
 4. Configure API keys in `%APPDATA%/SimCoach/secrets.json` (template in `docs/`).
-5. Run `SimCoach.App` while ACC is running.
+5. Run `SimCoach.App` while ACC is running (Windows; reads `Local\acpmf_*` shared memory).
+
+## Dev loop without ACC (any OS)
+
+Replay a recorded MCAP session through the full pipeline instead of live shared memory:
+
+```bash
+SIMCOACH_Telemetry__Source=replay \
+SIMCOACH_Telemetry__Replay__Path=/path/to/recordings/<sessionId> \
+dotnet run --project src/SimCoach.App -p:RuntimeIdentifier=osx-arm64
+```
+
+`Telemetry:Replay:SpeedMultiplier`: `1` = original timing, `0` = as fast as possible.
+Recordings land in `<Storage:DataRoot>/recordings/<sessionId>/segment-NNNN.mcap` and validate
+with the official CLI: `mcap doctor <file>`.
 
 ## License
 TBD.

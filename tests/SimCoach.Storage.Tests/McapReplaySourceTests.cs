@@ -137,7 +137,7 @@ public sealed class McapReplaySourceTests : IDisposable
             await Task.Delay(1, CancellationToken.None);
         }
 
-        CountOf(frames).Should().Be(2);
+        await WaitForCountAsync(frames, 2); // the released timer may still be propagating
         await consumer.WaitAsync(_waitTimeout);
     }
 
@@ -184,8 +184,8 @@ public sealed class McapReplaySourceTests : IDisposable
             await Task.Delay(1, CancellationToken.None);
         }
 
-        // Assert
-        CountOf(frames).Should().Be(2, "a 10-minute recorded pause must not stall the replay");
+        // Assert — a 10-minute recorded pause must not stall the replay
+        await WaitForCountAsync(frames, 2);
         await consumer.WaitAsync(_waitTimeout);
     }
 

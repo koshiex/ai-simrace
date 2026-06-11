@@ -17,6 +17,7 @@ public sealed class IngestService : BackgroundService
     private readonly IngestOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<IngestService> _logger;
+    private readonly IHostApplicationLifetime? _applicationLifetime;
     private long _lastDropLogTimestamp;
     private long _lastLoggedDropTotal;
     private bool _hasLoggedDrops;
@@ -26,7 +27,8 @@ public sealed class IngestService : BackgroundService
         TelemetryFanOut fanOut,
         IngestOptions options,
         TimeProvider timeProvider,
-        ILogger<IngestService> logger)
+        ILogger<IngestService> logger,
+        IHostApplicationLifetime? applicationLifetime = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(fanOut);
@@ -39,6 +41,7 @@ public sealed class IngestService : BackgroundService
         _options = options;
         _timeProvider = timeProvider;
         _logger = logger;
+        _applicationLifetime = applicationLifetime;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -50,6 +53,13 @@ public sealed class IngestService : BackgroundService
             {
                 _fanOut.Publish(frame);
                 LogDropsThrottled();
+            }
+
+            if (!stoppingToken.IsCancellationRequested)
+            {
+                // A finite source (replay) ended on its own — stop the host instead of idling.
+                _logger.LogInformation("Telemetry source {Sim} ended; requesting application stop", _source.Sim);
+                _applicationLifetime?.StopApplication();
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

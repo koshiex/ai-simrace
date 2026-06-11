@@ -98,7 +98,7 @@ Dependency order: B1 → B2 (B3 parallel) → B4 → B5 → B6 → B7.
 - This is the macOS dev loop and the test harness for Phase 2 compute work.
 - **Tests:** replayed stream equals recorded stream (frame count, payloads); timing multiplier.
 
-### B7. Wiring + end-to-end
+### B7. Wiring + end-to-end — done (manual Windows verification with live ACC still pending)
 
 - `Program.cs`: register source by config — `Telemetry:Source = "acc" | "replay"` —
   plus `IngestService` and `McapRecorderService`. `appsettings.json`: recordings path,

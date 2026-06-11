@@ -20,7 +20,7 @@ This file expands `peaceful-tumbling-firefly.md` phases into concrete tasks.
 - [x] `AccFrameMapper` → `TelemetryFrame`
 - [x] `IngestService` channel + MCAP rotating writer
 - [x] Replay tool that re-emits MCAP at real time
-- [ ] Tests: capture fixture, replay, byte-identical events
+- [x] Tests: capture fixture, replay, byte-identical events (real-ACC capture fixture still pending — needs a Windows machine)
 
 ## Phase 2 — Reference Laps + Deterministic Compute (week 3)
 
