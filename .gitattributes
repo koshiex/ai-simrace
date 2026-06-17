@@ -1,0 +1,10 @@
+# Force LF in the working tree for all text files on every platform. Without this the
+# windows-latest CI runner checks out with core.autocrlf=true, rewriting files to CRLF, and
+# `dotnet format --verify-no-changes` then fails on every line vs .editorconfig's end_of_line = lf.
+* text=auto eol=lf
+
+# Binary fixtures: never normalize line endings, never diff as text.
+*.bin binary
+*.mcap binary
+*.onnx binary
+*.png binary
