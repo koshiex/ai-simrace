@@ -50,6 +50,26 @@ executable directory, set `ContentRootPath = AppContext.BaseDirectory` via
 a single file referencing repo projects — no throwaway csproj needed. Used for generating
 sample MCAP sessions when smoke-testing the app.
 
+## windows-latest CI fails `dotnet format` with mass ENDOFLINE — needs `.gitattributes`
+
+The `actions/checkout` step on the windows-latest runner uses git's default
+`core.autocrlf=true`, so every text file is rewritten to CRLF in the working tree. The CI
+"Verify formatting" step (`dotnet format --verify-no-changes`) then fails against
+`.editorconfig`'s `end_of_line = lf` — hundreds of `ENDOFLINE` errors plus `WHITESPACE` on
+wrapped continuation lines (the message "Replace 14 characters with '\n␣␣…'" = `\r\n` + 12
+spaces wanting `\n` + 12 spaces; it's the same CRLF, not real indent drift). macOS/Linux pass
+because checkout keeps LF there.
+
+Fix is a committed `.gitattributes` forcing LF on checkout everywhere:
+
+```gitattributes
+* text=auto eol=lf
+*.bin binary
+```
+
+Not a code-formatting problem — verify locally with `dotnet format SimCoach.sln
+--verify-no-changes` on an LF working tree (it passes), and the diff is purely the checkout EOL.
+
 ## NuGet packages that do not exist (verified against nuget.org)
 
 - **MCAP**: no C# package at all (`Mcap.Core` was a scaffold placeholder, removed).
