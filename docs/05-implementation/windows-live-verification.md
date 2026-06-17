@@ -54,15 +54,16 @@ dotnet run --project src/SimCoach.App
 Проедь 2–3 минуты. Каждые 60 секунд в логе:
 
 ```
-[INF] Segment 0 finished: 19980 frames in 60.0 s (~333 Hz)
+[INF] Segment 0 finished: 23990 frames in 60.0 s (~400 Hz)
 [INF] Recording telemetry to ...\segment-0001.mcap
 ```
 
 Критерии:
 
-- **частота в строке `Segment N finished` — 300–333 Hz.** Существенно ниже (например ~64 Hz)
-  = известный риск гранулярности Windows-таймера в поллере (см.
-  `AccReaderOptions.PollInterval`) — это главный сигнал, который нужен; зафиксируй число;
+- **частота в строке `Segment N finished` — ~400 Hz** (реально измерено на железе; «333» в доке
+  Kunos — номинал, фактический темп обновления страницы выше). Существенно ниже (например ~64 Hz)
+  = риск гранулярности Windows-таймера в поллере; лечится подъёмом разрешения таймера
+  (`WinTimerResolution`, см. `AccReaderOptions.PollInterval`) — зафиксируй число;
 - сегменты нумеруются подряд (`segment-0000`, `0001`, ...), каждый ~60 секунд;
 - предупреждений `Slow telemetry consumers dropped...` нет (или единичные).
 

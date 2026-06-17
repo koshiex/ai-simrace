@@ -5,8 +5,10 @@ public sealed record AccReaderOptions
 {
     /// <summary>
     /// Pause between poll ticks. ACC's physics page updates at 333 Hz (~3 ms); 1 ms keeps us
-    /// ahead of it. Windows timer granularity can stretch short sleeps — the effective frame
-    /// rate must be verified on real hardware (plan B7). Zero means yield-only busy polling.
+    /// ahead of it. Windows would otherwise round a 1 ms wait up to the ~15.6 ms scheduler tick,
+    /// capping the emit rate at ~64 Hz — B7 verification on real hardware confirmed this, so the
+    /// poll loop raises the timer resolution to 1 ms (<see cref="WinTimerResolution"/>) for the
+    /// 1 ms wait to hold. Zero means yield-only busy polling.
     /// </summary>
     public TimeSpan PollInterval { get; init; } = TimeSpan.FromMilliseconds(1);
 

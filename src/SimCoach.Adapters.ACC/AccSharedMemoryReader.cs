@@ -93,6 +93,10 @@ public sealed class AccSharedMemoryReader : ITelemetrySource
     {
         var acquisition = new AccFrameAcquisition(_pageSource, _timeProvider, _options);
         bool isConnected = false;
+
+        // Raise the Windows timer resolution so the sub-tick PollInterval waits aren't rounded
+        // up to ~15.6 ms (which would cap the emit rate at ~64 Hz). No-op off Windows.
+        using var timerResolution = new WinTimerResolution();
         try
         {
             while (!ct.IsCancellationRequested)
