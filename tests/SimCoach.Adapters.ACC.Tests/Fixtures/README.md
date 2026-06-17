@@ -11,55 +11,48 @@
 ## Шаги
 
 1. Запусти ACC, зайди в **практику** на любой трассе, выезжай на трек.
-2. Проедь 1–2 поворота (чтобы physics-поля были «живыми»: скорость, передача, температуры).
-3. Поставь игру на **паузу** (Esc) — страницы замёрзнут, дамп гарантированно не будет «порванным»
-   (torn read).
-4. Не выходя из игры, открой PowerShell и выполни:
+2. Доведи physics-поля до «живого» состояния: проедь пару поворотов, чтобы прогреть шины
+   (температуры, давления станут реалистичными).
+3. **НЕ ставь паузу (Esc).** На паузе ACC обнуляет всю physics-страницу — остаётся тикать
+   только `packetId`, а `gear/rpm/speed/fuel/температуры` становятся нулями (см. «Подводные
+   камни» ниже). Снимай в статусе **LIVE**:
+   - проще и надёжнее — **встань на трассе с заведённым двигателем** (значения стабильны,
+     torn read исключён); скорость будет ≈0, но физика живая и ненулевая;
+   - либо снимай **на ходу** (3-я передача и т.п.) — чтение 800 байт почти атомарно,
+     риск torn read крошечный.
+4. Не выходя из игры, открой PowerShell и из корня репозитория запусти скрипт — он снимет
+   все три страницы рядом с собой и сразу напечатает валидацию:
 
 ```powershell
-$pages = @{ physics = 800; graphics = 1588; static = 820 }
-foreach ($name in $pages.Keys) {
-    $mmf = [System.IO.MemoryMappedFiles.MemoryMappedFile]::OpenExisting("Local\acpmf_$name")
-    $stream = $mmf.CreateViewStream(0, $pages[$name])
-    $bytes = New-Object byte[] $pages[$name]
-    $null = $stream.Read($bytes, 0, $bytes.Length)
-    [System.IO.File]::WriteAllBytes("$PWD\acc_$name.bin", $bytes)
-    $stream.Dispose(); $mmf.Dispose()
-}
-Get-ChildItem acc_*.bin
+./scripts/snap-acc-shm.ps1
 ```
 
-5. Проверь содержимое (размер файлов проверять бессмысленно — его задаёт сам скрипт):
+   Если PowerShell ругается на политику выполнения:
 
 ```powershell
-foreach ($name in 'physics', 'graphics') {
-    $bytes = [System.IO.File]::ReadAllBytes("$PWD\acc_$name.bin")
-    "{0}: packetId = {1}" -f $name, [BitConverter]::ToInt32($bytes, 0)
-}
-$static = [System.IO.File]::ReadAllBytes("$PWD\acc_static.bin")
-"static: smVersion = " + [System.Text.Encoding]::Unicode.GetString($static, 0, 30).TrimEnd([char]0)
+powershell -ExecutionPolicy Bypass -File ./scripts/snap-acc-shm.ps1
 ```
 
-   `packetId` должен быть > 0, `smVersion` — начинаться с «1.» (например, `1.8`).
-   Нули/пустые строки = страницы пустые, дамп снят вне сессии — не годится.
+5. Критерий годности — в выводе скрипта:
+   - `status = 2 (LIVE)` — **не** `3 (PAUSE)`;
+   - `fuel > 0` и `packetId > 0`;
+   - `smVersion` начинается с «1.».
 
-## Что записать вместе с дампом
-
-Тесты будут assert'ить известные значения, поэтому зафиксируй контекст на момент снятия:
-
-- машина (точное имя из меню, например Audi R8 LMS Evo II)
-- трасса
-- тип сессии (практика), погода (ясно/дождь), примерное время суток
-- передача и примерная скорость в момент паузы (если помнишь)
+   Нули по физике / `status = PAUSE` / пустой `smVersion` = дамп снят на паузе или вне сессии —
+   не годится, снимай заново.
 
 ## Куда положить
 
-- Файлы — сюда: `tests/SimCoach.Adapters.ACC.Tests/Fixtures/`
-- Контекст — сообщи агенту (или допиши сюда в раздел ниже), он добавит тесты
-  `*_real_dump_*` с assert'ами на известные значения.
+- Файлы — сюда: `tests/SimCoach.Adapters.ACC.Tests/Fixtures/` (`acc_physics.bin`,
+  `acc_graphics.bin`, `acc_static.bin`).
+- Контекст — допиши в раздел «Контекст снятых дампов» ниже (или сообщи агенту), чтобы тесты
+  `*_real_dump_*` ассертили известные значения.
 
-## Возможные проблемы
+## Подводные камни
 
+- **Пауза обнуляет physics.** Главный камень: естественный соблазн поставить паузу «чтобы
+  не порвать чтение» делает physics-дамп бесполезным (все поля = 0, кроме `packetId`).
+  Static и graphics паузу переживают, physics — нет. Снимай только в `LIVE`.
 - `OpenExisting` бросает `FileNotFoundException` — ACC не запущена или ты ещё не вошёл
   в сессию (страницы создаются при входе в сессию, не на старте игры).
 - PowerShell должен быть запущен от того же пользователя, что и игра (обычный случай);
@@ -67,4 +60,31 @@ $static = [System.IO.File]::ReadAllBytes("$PWD\acc_static.bin")
 
 ## Контекст снятых дампов
 
-_(заполняется при снятии)_
+Снято: BMW M4 GT3, трасса **Spa**, сессия **практика**. Машина стояла на трассе с заведённым
+двигателем (статус LIVE, не пауза), холостые обороты.
+
+Условия (из меню сессии): средняя темп. воздуха 20 °C, облачность 20 %, влажность 0 %,
+стоячей воды нет, сцепление оптимальное; стартовое время 14:00; на момент снятия воздух 24 °C,
+трасса 31 °C.
+
+Известные значения (для assert'ов):
+
+| Страница | Поле | Значение |
+|---|---|---|
+| static | `SmVersion` | `1.9` |
+| static | `AcVersion` | `1.7` |
+| static | `CarModel` | `bmw_m4_gt3` |
+| static | `Track` | `Spa` |
+| static | `NumCars` | `1` |
+| graphics | `Status` | `2` (AC_LIVE) |
+| graphics | `Session` | `0` (PRACTICE) |
+| graphics | `IsInPit` | `0` |
+| physics | `PacketId` | `349885` (> 0; конкретное значение не ассертить — счётчик) |
+| physics | `Gear` (raw) | `2` → 1-я передача |
+| physics | `Rpm` | `1661` (холостые) |
+| physics | `SpeedKmh` | `≈ 0` (стоял на месте) |
+| physics | `Fuel` | `≈ 21.2` L |
+| physics | `WheelsPressure` [FL,FR,RL,RR] | `≈ 27.3 / 27.7 / 27.1 / 27.6` psi |
+| physics | `TyreCoreTemperature` [FL,FR,RL,RR] | `≈ 77.6 / 79.0 / 76.9 / 78.9` °C |
+
+> Floating-point поля ассертить с допуском (например `±0.5`), а `PacketId` — только `> 0`.
