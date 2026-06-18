@@ -79,11 +79,13 @@ Dependency order: B1 → B2 (B3 parallel) → B4 → B5 → B6 → B7.
 - Dropped-frame counter, logged at most once per 10 s.
 - **Tests:** backpressure drops oldest; fan-out delivers to all subscribers; cancellation clean.
 
-### B5. Minimal MCAP writer (`Storage`) — done (no summary section: `mcap doctor` passes, `mcap cat` needs the zstd+summary follow-up)
+### B5. Minimal MCAP writer (`Storage`) — done (zstd + full summary section: `mcap doctor`, `mcap cat`, `mcap info` all pass)
 
 - Hand-rolled per the [MCAP spec](https://mcap.dev/spec): magic, `Header`, `Schema`
-  (protobuf descriptor bytes), `Channel`, `Message` records, `Chunk` + CRC32, `Footer`.
-  Iteration 1: `compression: ""` (none); zstd via `ZstdSharp.Port` as a follow-up step.
+  (protobuf descriptor bytes), `Channel`, `Message` records, `Chunk` + CRC32, `MessageIndex`,
+  `DataEnd`, summary section (repeated `Schema`/`Channel`, `Statistics`, `ChunkIndex`),
+  `SummaryOffset` section, populated `Footer`. Chunks are zstd-compressed via `ZstdSharp.Port`
+  in the recorder (writer default is uncompressed); reader auto-detects `zstd` vs none.
 - `McapRecorderService` (`BackgroundService`): subscribes to ingest fan-out, rotates segments
   every 60 s, files at `%LOCALAPPDATA%/SimCoach/recordings/<sessionId>/segment-NNN.mcap`
   (path from config; cross-platform base dir via `Environment.SpecialFolder.LocalApplicationData`).
@@ -118,7 +120,7 @@ recorded fixture session committed for Phase 2 use.
 | Decision | Rationale |
 |---|---|
 | Hand-roll MCAP writer | No C# MCAP package on NuGet (checked 2026-06-10); spec is simple; risk register pre-approved this path |
-| No compression in MCAP v1, zstd later | Cuts scope; format allows `compression: ""`; reader/writer stay symmetric |
+| zstd in the recorder, summary section for tooling | 333 Hz telemetry compresses well; full summary (Statistics + ChunkIndex + MessageIndex) lets `mcap cat`/Foxglove index-seek; reader/writer stay symmetric |
 | `rollForward: latestMajor` in global.json | Dev machine has SDK 10.x; TFM stays net9.0 so output is unchanged; CI still pins 9.0.x |
 | `IAccPageSource` seam in reader | SHM is Windows-only; seam keeps seqlock/reconnect logic unit-testable on macOS/CI |
 | Replay source in Phase 1 (not later) | Primary dev machine is macOS; without replay, nothing past B2 is locally testable |

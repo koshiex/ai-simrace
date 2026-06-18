@@ -1,4 +1,5 @@
 using System.IO.Hashing;
+using ZstdSharp;
 
 namespace SimCoach.Storage.Mcap;
 
@@ -10,9 +11,9 @@ public sealed record McapMessage(ushort ChannelId, uint Sequence, ulong LogTimeN
 
 /// <summary>
 /// Minimal MCAP reader for files produced by <see cref="McapWriter"/> (and any spec-compliant
-/// writer that uses uncompressed chunks). Loads a whole segment into memory — recorder segments
-/// are ~60 s of telemetry, a few megabytes. Verifies magic framing and chunk CRC32; skips
-/// unknown record types for forward compatibility.
+/// writer that uses uncompressed or zstd-compressed chunks). Loads a whole segment into memory —
+/// recorder segments are ~60 s of telemetry, a few megabytes. Verifies magic framing and chunk
+/// CRC32 (over the uncompressed records); skips unknown record types for forward compatibility.
 /// </summary>
 public sealed class McapSegment
 {
@@ -37,7 +38,7 @@ public sealed class McapSegment
     public IReadOnlyList<McapMessage> Messages => _messages;
 
     /// <exception cref="InvalidDataException">Malformed, truncated or corrupted file.</exception>
-    /// <exception cref="NotSupportedException">Compressed chunks (not produced by our writer).</exception>
+    /// <exception cref="NotSupportedException">Chunk compression other than <c>zstd</c> or none.</exception>
     public static McapSegment Read(Stream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
@@ -97,7 +98,8 @@ public sealed class McapSegment
                 case McapFormat.ChunkOpcode when isTopLevel:
                     ParseChunk(content);
                     break;
-                case McapFormat.DataEndOpcode:
+                case McapFormat.DataEndOpcode when isTopLevel:
+                    return; // data section ends here — the summary repeats Schema/Channel; skip it
                 case McapFormat.FooterOpcode:
                     break;
                 default:
@@ -150,17 +152,21 @@ public sealed class McapSegment
         int position = 0;
         _ = McapFormat.ReadUInt64(content, ref position); // message_start_time
         _ = McapFormat.ReadUInt64(content, ref position); // message_end_time
-        _ = McapFormat.ReadUInt64(content, ref position); // uncompressed_size
+        ulong uncompressedSize = McapFormat.ReadUInt64(content, ref position);
         uint expectedCrc = McapFormat.ReadUInt32(content, ref position);
         string compression = McapFormat.ReadString(content, ref position);
         int recordsLength = McapFormat.ReadLength64(content, ref position);
-        ReadOnlySpan<byte> records = content.Slice(position, recordsLength);
+        ReadOnlySpan<byte> stored = content.Slice(position, recordsLength);
 
-        if (compression.Length > 0)
+        // CRC32 is computed over the uncompressed records (spec), so decompress before verifying.
+        byte[]? decompressed = compression switch
         {
-            throw new NotSupportedException(
-                $"Chunk compression '{compression}' is not supported by this minimal reader.");
-        }
+            "" => null,
+            "zstd" => Decompress(stored, uncompressedSize),
+            _ => throw new NotSupportedException(
+                $"Chunk compression '{compression}' is not supported by this minimal reader."),
+        };
+        ReadOnlySpan<byte> records = decompressed ?? stored;
 
         if (expectedCrc != 0)
         {
@@ -174,5 +180,27 @@ public sealed class McapSegment
 
         ChunkCount++;
         ParseRecords(records, isTopLevel: false);
+    }
+
+    private static byte[] Decompress(ReadOnlySpan<byte> compressed, ulong expectedSize)
+    {
+        // uncompressed_size is attacker-controlled: validate before the int cast so an oversized
+        // value surfaces as InvalidDataException, not an Overflow/ArgumentOutOfRange from the
+        // decompressor buffer (matches the ReadLength/EnsureAvailable anti-overflow discipline).
+        if (expectedSize > int.MaxValue)
+        {
+            throw new InvalidDataException(
+                $"Chunk uncompressed_size {expectedSize} exceeds the supported maximum of {int.MaxValue} bytes.");
+        }
+
+        try
+        {
+            using var decompressor = new Decompressor();
+            return decompressor.Unwrap(compressed.ToArray(), (int)expectedSize).ToArray();
+        }
+        catch (ZstdException exception)
+        {
+            throw new InvalidDataException("Failed to zstd-decompress an MCAP chunk.", exception);
+        }
     }
 }
