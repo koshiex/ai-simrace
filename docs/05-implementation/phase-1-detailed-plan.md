@@ -109,6 +109,9 @@ Dependency order: B1 → B2 (B3 parallel) → B4 → B5 → B6 → B7.
   to input (the Phase 1 checklist's "byte-identical events" criterion).
 - Manual verification on a Windows machine with ACC: segments appear, frame rate ≈ 333 Hz,
   reconnect survives game restart.
+- Post-B7 fix (issues #1/#2, ADR-0008): the reader records only LIVE frames with populated
+  `track_id`/`car_id` (drops dormant box/menu/replay/pause frames), and the weather bucket
+  treats `roadTemp <= 0` as no-data instead of spurious `dry-cool`.
 
 Definition of done: Phase 1 checklist in `implementation-plan.md` fully ticked; CI green;
 recorded fixture session committed for Phase 2 use.

@@ -19,6 +19,7 @@ public sealed class AccSharedMemoryReader : ITelemetrySource
 
     private readonly IAccPageSource _pageSource;
     private readonly Func<AccTelemetrySnapshot, TelemetryFrame> _frameMapper;
+    private readonly Func<AccTelemetrySnapshot, bool> _shouldRecord;
     private readonly AccReaderOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<AccSharedMemoryReader> _logger;
@@ -27,18 +28,21 @@ public sealed class AccSharedMemoryReader : ITelemetrySource
     public AccSharedMemoryReader(
         IAccPageSource pageSource,
         Func<AccTelemetrySnapshot, TelemetryFrame> frameMapper,
+        Func<AccTelemetrySnapshot, bool> shouldRecord,
         AccReaderOptions options,
         TimeProvider timeProvider,
         ILogger<AccSharedMemoryReader> logger)
     {
         ArgumentNullException.ThrowIfNull(pageSource);
         ArgumentNullException.ThrowIfNull(frameMapper);
+        ArgumentNullException.ThrowIfNull(shouldRecord);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
         options.EnsureValid();
         _pageSource = pageSource;
         _frameMapper = frameMapper;
+        _shouldRecord = shouldRecord;
         _options = options;
         _timeProvider = timeProvider;
         _logger = logger;
@@ -126,7 +130,9 @@ public sealed class AccSharedMemoryReader : ITelemetrySource
                     continue;
                 }
 
-                if (status == AccAcquisitionStatus.NewFrame && snapshot is not null)
+                // Gate before mapping: dormant box/menu/replay/pause frames (issue #1) are
+                // dropped at the source, so they never reach the channel, pipeline or recorder.
+                if (status == AccAcquisitionStatus.NewFrame && snapshot is not null && _shouldRecord(snapshot))
                 {
                     writer.TryWrite(_frameMapper(snapshot));
                 }

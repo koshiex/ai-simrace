@@ -84,6 +84,7 @@ internal static class TelemetryComposition
         builder.Services.AddSingleton<ITelemetrySource>(provider => new AccSharedMemoryReader(
             provider.GetRequiredService<IAccPageSource>(),
             AccFrameMapper.Map,
+            AccFrameMapper.IsRecordable,
             provider.GetRequiredService<AccReaderOptions>(),
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<ILogger<AccSharedMemoryReader>>()));
