@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  administration: write
 
 jobs:
   apply:
@@ -20,7 +19,7 @@ jobs:
 
       - name: Apply rulesets (create or update by name)
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RULESET_TOKEN }}
           REPO: ${{ github.repository }}
         shell: bash
         run: |
