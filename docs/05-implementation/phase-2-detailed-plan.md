@@ -45,7 +45,11 @@ All targets are **already marshalled** by the struct ports — this is mapper-on
   `int32 current_sector_index = 33;` (0-based), `int32 sector_count = 34;`,
   `int32 tyres_out = 35;` (off-track wheel count) and `bool is_valid_lap = 36;` (the sim's own
   lap-validity flag — backs the clean-lap predicate; see C3, fixes the prior "wheels-off proxy").
-- `AccFrameMapper`: `world_pos` from `graphics.CarCoordinates[PlayerCarId*3 + {0,1,2}]`,
+- `AccFrameMapper`: `world_pos` from `graphics.CarCoordinates[slot*3 + {0,1,2}]` where
+  `slot = Array.IndexOf(graphics.CarId, graphics.PlayerCarId)` — `PlayerCarId` is a car *id value*,
+  not a slot index (verified: `AccGraphicsPageLayoutTests` pins `CarId[0]=PlayerCarId=1001`); using
+  it directly would index out of bounds and zero `world_pos` on every live frame. Slot `< 0` (id
+  absent) → zeroed `world_pos`,
   `current_sector_index` from `graphics.CurrentSectorIndex`, `sector_count` from
   `static.SectorCount`, `tyres_out` from `physics.NumberOfTyresOut`, `is_valid_lap` from
   `graphics.IsValidLap` (ACC `int`; map `!= 0 → true`, mirroring the existing `tc_active`/`abs_active`
@@ -235,3 +239,49 @@ verified end-to-end on macOS.
 | Landmark ranges (CrewChief lap-length assumption) mismatch a track version → corner placed wrong | Range sanity check (`0 ≤ start < end ≤ lapLength`) drops the offending track to the derive fallback instead of emitting a misplaced corner. |
 | **Uncovered tracks derive geometry from the driver's own lap → a weak driver can misplace corner windows** (the rookie-reference risk, confined to the fallback) | Geometry is decoupled from skill only on dataset-*covered* tracks. On uncovered tracks, derive from the fastest *clean* lap (best available), rebuild on improvement, and keep the corner set advisory for coaching — not a correctness gate. Expanding dataset coverage shrinks this surface. |
 | Derived-fallback corner geometry also misses flat/long corners (no clear braking zone) | Sector-relative windows backstop it; advisory only. Covered tracks use the dataset and are unaffected. |
+
+---
+
+## Mergeable chunking (PR plan)
+
+Phase 2 ships as small PRs (~500-line diffs) that each merge to `main` without breaking it.
+Merge order = build order. A chunk is **mergeable** when CI stays green (build +
+`dotnet format --verify` + xUnit on windows+macos) and Phase-1 runtime
+(`ITelemetrySource → IngestService → TelemetryFanOut → McapRecorderService`) is not regressed.
+
+Safety classes:
+- **Additive** — append-only proto fields / new mapper lines / new code that does not modify a live
+  class. Old MCAP fixtures replay new fields as `0`.
+- **Dead-until-wired** — new libraries / unregistered `BackgroundService`s **fully exercised by their
+  own tests in the same PR**. The "self-tested" qualifier is load-bearing: `Directory.Build.props`
+  sets `TreatWarningsAsErrors=true` + analyzers + `EnforceCodeStyleInBuild=true`, so an unreferenced
+  member / stray `using` fails the build.
+- **Runtime-touching** — changes a live Phase-1 class or the App composition; guarded by the
+  existing record/replay e2e plus chunk-specific tests.
+
+| PR | Task | Scope | Safety class |
+|----|------|-------|--------------|
+| 1 | C1a | Proto fields (`world_pos`, `current_sector_index`, `sector_count`, `tyres_out`, `is_valid_lap`) + `AccFrameMapper` (corrected `PlayerCarId`→slot indexing) + mapper goldens + schema doc | Additive |
+| 2 | C1b | Track-parametric synthesized multi-lap fixture (`SimCoach.TestKit` → Contracts only; lap length injected) + smoke test | Dead-until-wired |
+| 3 | C2a | SQLite schema + idempotent migration runner + `SqliteConnectionFactory` + migration tests | Dead-until-wired |
+| 4 | C2b | Dapper repos (`Session`/`Lap`/`Reference`/`Settings`) + CRUD/FK/UNIQUE tests | Dead-until-wired |
+| 5 | C2c-1 | `SessionContext` + `SessionManager` + `McapRecorderService` refactor (dir from `SessionContext`) + wiring | Runtime-touching |
+| 6 | C2c-2 | `IngestService` allocate-before-publish (`Ready` TCS) + blocking identity-race tests | Runtime-touching |
+| 7 | C3 | `LapSegmenter`/`SectorSegmenter` + clean-lap predicate + tests | Dead-until-wired |
+| 8 | C4 | Compute kernels + tests | Dead-until-wired |
+| 9 | C5a | Vendored `trackLandmarksData.json` + `LandmarkDataset` + `TrackModelStore` dataset path + tests | Dead-until-wired |
+| 10 | C5b | `TrackModelBuilder` derive fallback + persistence + resolution-order tests | Dead-until-wired |
+| 11 | C6a | **New** `McapSegmentEnumerator` (does NOT modify `McapReplaySource`; `segment-*.mcap` filter) + Parquet lap writer (incl. `world_x/y/z`) + round-trip tests | Dead-until-wired |
+| 12 | C6b | `PositionResampler` (1 m grid) + monotonicity tests | Dead-until-wired |
+| 13 | C7 | Reference store + PB selection + tests | Dead-until-wired |
+| 14 | C8a | `DomainEventFanOut` + `ComputeService` skeleton + `LapEvent`/`SectorEvent` + tests | Dead-until-wired |
+| 15 | C8b | `CornerEvent` (corner-exit trigger) + reference deltas + `SessionEvent` (`stints=[]`) + tests | Dead-until-wired |
+| 16 | C9 | App wiring (stop-ordering: `SessionManager` before `ComputeService`), `appsettings`, session-end Parquet conversion, dedupe `McapReplaySource` onto the shared enumerator, e2e golden | Runtime-touching |
+
+Notes:
+- The original C1/C2c are pre-split (C1a/C1b, C2c-1/C2c-2) to hit ~500 lines and to isolate the
+  `IngestService` race change behind its own blocking tests.
+- C6a is **additive**: it adds the shared enumerator as new code; the dedupe of
+  `McapReplaySource.ResolveSegmentPaths` onto it is deferred to C9 (keeps the refactor of a live
+  class out of an otherwise dead-until-wired PR).
+- **split-on-overrun** applies at PR time: any chunk exceeding ~600 lines is split further.
