@@ -130,7 +130,7 @@ public sealed class McapRecorderService : BackgroundService
         FileStream stream = File.Create(segmentPath);
         try
         {
-            McapWriter writer = new(stream);
+            McapWriter writer = new(stream, new McapWriterOptions { Compression = McapCompression.Zstd });
             ushort schemaId = writer.AddSchema(TelemetryFrame.Descriptor.FullName, ProtobufEncoding, schemaData);
             ushort channelId = writer.AddChannel(schemaId, Topic, ProtobufEncoding);
             _logger.LogInformation("Recording telemetry to {SegmentPath}", segmentPath);

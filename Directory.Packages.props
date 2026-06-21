@@ -28,6 +28,7 @@
 
     <!-- MCAP: no C# package on NuGet (checked 2026-06-10) — minimal writer hand-rolled in SimCoach.Storage per ADR-0003 risk mitigation -->
     <PackageVersion Include="System.IO.Hashing" Version="9.0.0" />
+    <PackageVersion Include="ZstdSharp.Port" Version="0.8.8" />
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.0.0" />
 
     <!-- ONNX Runtime for Silero -->

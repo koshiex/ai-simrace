@@ -15,6 +15,10 @@ internal static class McapFormat
     public const byte ChannelOpcode = 0x04;
     public const byte MessageOpcode = 0x05;
     public const byte ChunkOpcode = 0x06;
+    public const byte MessageIndexOpcode = 0x07;
+    public const byte ChunkIndexOpcode = 0x08;
+    public const byte StatisticsOpcode = 0x0B;
+    public const byte SummaryOffsetOpcode = 0x0E;
     public const byte DataEndOpcode = 0x0F;
 
     public static ReadOnlySpan<byte> Magic => [0x89, 0x4D, 0x43, 0x41, 0x50, 0x30, 0x0D, 0x0A];
@@ -55,6 +59,36 @@ internal static class McapFormat
         byte[] encoded = Encoding.UTF8.GetBytes(value);
         WriteUInt32(target, (uint)encoded.Length);
         target.Write(encoded);
+    }
+
+    /// <summary>
+    /// Writes a uint32 byte-length-prefixed map of <c>&lt;uint16 key, uint64 value&gt;</c>
+    /// entries (ChunkIndex.message_index_offsets, Statistics.channel_message_counts).
+    /// </summary>
+    public static void WriteUInt16ToUInt64Map(Stream target, IReadOnlyCollection<KeyValuePair<ushort, ulong>> entries)
+    {
+        const int entrySize = sizeof(ushort) + sizeof(ulong);
+        WriteUInt32(target, (uint)(entries.Count * entrySize));
+        foreach (KeyValuePair<ushort, ulong> entry in entries)
+        {
+            WriteUInt16(target, entry.Key);
+            WriteUInt64(target, entry.Value);
+        }
+    }
+
+    /// <summary>
+    /// Writes a uint32 byte-length-prefixed array of <c>(uint64, uint64)</c> tuples
+    /// (MessageIndex.records: log_time + offset pairs).
+    /// </summary>
+    public static void WriteUInt64PairArray(Stream target, IReadOnlyCollection<(ulong First, ulong Second)> pairs)
+    {
+        const int pairSize = sizeof(ulong) * 2;
+        WriteUInt32(target, (uint)(pairs.Count * pairSize));
+        foreach ((ulong first, ulong second) in pairs)
+        {
+            WriteUInt64(target, first);
+            WriteUInt64(target, second);
+        }
     }
 
     public static ushort ReadUInt16(ReadOnlySpan<byte> source, ref int position)

@@ -111,6 +111,8 @@ public sealed class AccFrameMapperTests
     [Theory]
     [InlineData(0, 0, 24.9f, "dry-cool")] // boundary: just under the threshold
     [InlineData(0, 0, 25.0f, "dry-warm")] // boundary: at the threshold
+    [InlineData(0, 0, 0f, "dry-warm")]    // roadTemp 0 = sensor not ready, not a cold track (#2)
+    [InlineData(0, 0, -1f, "dry-warm")]   // negative temp = no data → never dry-cool (#2)
     [InlineData(0, 2, 32.0f, "dry-warm")] // optimum grip stays dry
     [InlineData(0, 3, 28.0f, "dry-warm")] // greasy still counts as dry
     [InlineData(0, 4, 28.0f, "damp")]     // damp track without rain (drying line)
@@ -134,6 +136,27 @@ public sealed class AccFrameMapperTests
 
         // Assert
         frame.WeatherBucket.Should().Be(expectedBucket);
+    }
+
+    [Theory]
+    [InlineData(2, "bmw_m4_gt3", "spa", true)]   // LIVE + identity → recordable
+    [InlineData(0, "bmw_m4_gt3", "spa", false)]  // OFF
+    [InlineData(1, "bmw_m4_gt3", "spa", false)]  // REPLAY
+    [InlineData(3, "bmw_m4_gt3", "spa", false)]  // PAUSE
+    [InlineData(2, "", "spa", false)]            // LIVE but no car identity yet (box/pre-live)
+    [InlineData(2, "bmw_m4_gt3", "", false)]     // LIVE but no track identity yet
+    public void Recordable_requires_live_status_and_populated_identity(
+        int status, string carModel, string track, bool expectedRecordable)
+    {
+        // Arrange — Status at graphics offset 4; CarModel at static 68, Track at static 134
+        AccTelemetrySnapshot snapshot = AccSnapshotFixture.Build(
+            graphics: page => page.WithInt32(4, status),
+            @static: page => page
+                .WithUtf16(68, carModel, 33)
+                .WithUtf16(134, track, 33));
+
+        // Act / Assert
+        AccFrameMapper.IsRecordable(snapshot).Should().Be(expectedRecordable);
     }
 
     [Theory]

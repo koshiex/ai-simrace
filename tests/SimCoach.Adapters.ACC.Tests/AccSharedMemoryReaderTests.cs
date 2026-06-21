@@ -63,6 +63,33 @@ public sealed class AccSharedMemoryReaderTests
     }
 
     [Fact]
+    public async Task Frames_rejected_by_the_predicate_are_not_emitted()
+    {
+        // Arrange — the predicate drops packet 1 (a dormant non-live frame) and accepts packet 2
+        _source.SetPhysicsPage(PhysicsPageBytes(packetId: 1));
+        AccSharedMemoryReader reader = CreateReader(snapshot => snapshot.Physics.PacketId >= 2);
+        List<TelemetryFrame> frames = [];
+        using var cts = new CancellationTokenSource(_collectTimeout);
+
+        // Bump to packet 2 once the poll loop has had a chance to see (and reject) packet 1.
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(50);
+            _source.SetPhysicsPage(PhysicsPageBytes(packetId: 2));
+        });
+
+        // Act
+        await foreach (TelemetryFrame frame in reader.ReadAsync(cts.Token))
+        {
+            frames.Add(frame);
+            cts.Cancel();
+        }
+
+        // Assert — packet 1 was silently dropped; only the accepted packet-2 frame surfaced
+        frames.Select(frame => frame.LapNumber).Should().Equal(2);
+    }
+
+    [Fact]
     public async Task Retries_connection_until_the_game_appears()
     {
         // Arrange
@@ -153,6 +180,7 @@ public sealed class AccSharedMemoryReaderTests
         AccSharedMemoryReader reader = new(
             _source,
             _ => throw new InvalidDataException("mapper boom"),
+            _ => true,
             _fastOptions,
             TimeProvider.System,
             NullLogger<AccSharedMemoryReader>.Instance);
@@ -202,10 +230,11 @@ public sealed class AccSharedMemoryReaderTests
         }
     }
 
-    private AccSharedMemoryReader CreateReader() =>
+    private AccSharedMemoryReader CreateReader(Func<AccTelemetrySnapshot, bool>? shouldRecord = null) =>
         new(
             _source,
             MapSnapshot,
+            shouldRecord ?? (_ => true),
             _fastOptions,
             TimeProvider.System,
             NullLogger<AccSharedMemoryReader>.Instance);

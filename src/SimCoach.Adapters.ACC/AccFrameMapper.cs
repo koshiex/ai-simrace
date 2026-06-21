@@ -32,6 +32,9 @@ public static class AccFrameMapper
     // documented range (see KB: penalty 22), so anything outside 1..8 maps to no flags.
     private const int MaxFlagValue = 8;
 
+    // AC_STATUS (graphics page): 0 OFF, 1 REPLAY, 2 LIVE, 3 PAUSE.
+    private const int AccStatusLive = 2;
+
     private const string WeatherDryCool = "dry-cool";
     private const string WeatherDryWarm = "dry-warm";
     private const string WeatherDamp = "damp";
@@ -117,6 +120,25 @@ public static class AccFrameMapper
     }
 
     /// <summary>
+    /// True only for frames worth recording: ACC is LIVE and the static page has populated
+    /// track/car identity. Dormant box/menu/replay/pause frames carry empty ids and zeroed
+    /// sensors (issue #1) and would poison Phase 2 compute keyed on track_id/car_id — reject
+    /// them at the source. Cheap and array-free, so it is safe to call before <see cref="Map"/>.
+    /// </summary>
+    /// <exception cref="ArgumentNullException">The snapshot is null.</exception>
+    public static bool IsRecordable(AccTelemetrySnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (snapshot.Graphics.Status != AccStatusLive)
+        {
+            return false;
+        }
+
+        return NormalizeId(snapshot.Static.Track).Length > 0
+            && NormalizeId(snapshot.Static.CarModel).Length > 0;
+    }
+
+    /// <summary>
     /// AC_FLAG_TYPE (single value 1..8) → contract bit flags: flag N sets bit N-1
     /// (bit assignment defined in telemetry.proto). Out-of-range values map to no flags —
     /// C# masks shift counts to 5 bits, so e.g. flag 33 would otherwise alias bit 0.
@@ -141,6 +163,9 @@ public static class AccFrameMapper
             return WeatherDamp;
         }
 
-        return roadTempC < DryCoolMaxTrackTempC ? WeatherDryCool : WeatherDryWarm;
+        // roadTemp == 0 means the sensor is not ready (non-live / early frame), not a cold
+        // track (issue #2) — treat <= 0 as "no data" and fall to the dry-warm branch rather
+        // than misclassifying it as dry-cool.
+        return roadTempC is > 0f and < DryCoolMaxTrackTempC ? WeatherDryCool : WeatherDryWarm;
     }
 }
