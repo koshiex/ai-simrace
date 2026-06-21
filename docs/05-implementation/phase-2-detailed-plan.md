@@ -249,8 +249,9 @@ it. A PR is **mergeable** when CI stays green (build + `dotnet format --verify` 
 windows+macos) and Phase-1 runtime (`ITelemetrySource → IngestService → TelemetryFanOut →
 McapRecorderService`) is not regressed.
 
-**Прогресс:** PR-A в работе — C1a влит/на ревью (PR #8), та же ветка расширяется до C1b+C2a+C2b.
-Остальные — `todo`.
+**Прогресс:** PR-A готов (PR #8) — C1a ✅ (контракт+маппер), C1b ✅ (`SimCoach.TestKit` фикстура),
+C2a ✅ (SQLite схема+мигратор+фабрика), C2b ✅ (Dapper-репозитории). Всё dead-until-wired, не
+зарегистрировано в App. Остальные (B–E) — `todo`.
 
 Safety classes:
 - **Additive** — append-only proto fields / new mapper lines / new code that does not modify a live
@@ -267,7 +268,7 @@ Safety classes:
 
 | PR | Группа | Задачи | Состав | Safety class | ~Диф |
 |----|--------|--------|--------|--------------|-----:|
-| **A** | Контракт + фикстура + SQLite | C1a ✅, C1b, C2a, C2b | Поля контракта + `AccFrameMapper` (испр. `PlayerCarId`→слот) + голдены **(C1a, PR #8)**; трек-параметрическая синт. фикстура `SimCoach.TestKit`→Contracts (C1b); SQLite-схема + идемпотентный мигратор + `SqliteConnectionFactory` (C2a); Dapper-репозитории `Session`/`Lap`/`Reference`/`Settings` + CRUD/FK/UNIQUE-тесты (C2b) | Additive + Dead-until-wired | ~850 |
+| **A** ✅ | Контракт + фикстура + SQLite | C1a ✅, C1b ✅, C2a ✅, C2b ✅ | Поля контракта + `AccFrameMapper` (испр. `PlayerCarId`→слот) + голдены **(C1a, PR #8)**; трек-параметрическая синт. фикстура `SimCoach.TestKit`→Contracts (C1b); SQLite-схема + идемпотентный мигратор + `SqliteConnectionFactory` (C2a); Dapper-репозитории `Session`/`Lap`/`Reference`/`Settings` + CRUD/FK/UNIQUE-тесты (C2b) | Additive + Dead-until-wired | ~850 |
 | **B** | Идентичность сессии | C2c-1, C2c-2 | `SessionContext` + `SessionManager` + рефактор `McapRecorderService` (директория из `SessionContext`) + wiring (C2c-1); `IngestService` allocate-before-publish (`Ready` TCS) + блокирующие тесты на гонку идентичности (C2c-2) | **Runtime-touching** | ~500 |
 | **C** | Компьют-ядро | C3, C4 | `LapSegmenter`/`SectorSegmenter` + предикат чистого круга (C3); чистые кернелы (тормоз/газ/min-speed, trail-brake, understeer/oversteer) (C4) | Dead-until-wired | ~550 |
 | **D** | Трек-модель + parquet | C5a, C5b, C6a, C6b | Вендоренный `trackLandmarksData.json` + `LandmarkDataset` + `TrackModelStore` dataset-путь (C5a); `TrackModelBuilder` derive-фолбэк + персист (C5b); новый `McapSegmentEnumerator` (не трогает `McapReplaySource`) + Parquet-райтер с `world_x/y/z` (C6a); `PositionResampler` 1 м (C6b) | Dead-until-wired | ~980 |
