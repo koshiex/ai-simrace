@@ -54,14 +54,18 @@ public sealed class SyntheticSessionBuilderTests
 
     [Theory]
     [MemberData(nameof(Tracks))]
-    public void World_pos_magnitude_is_non_zero(SyntheticTrack track)
+    public void World_pos_traces_a_circle_of_lap_radius_in_the_xz_plane(SyntheticTrack track)
     {
-        // Arrange / Act
+        // Arrange — the builder lays the lap on a circle whose circumference is the lap length.
+        float radiusM = track.LapLengthM / (2f * MathF.PI);
+
+        // Act
         IReadOnlyList<TelemetryFrame> frames = SyntheticSessionBuilder.Build(track, lapCount: 1);
 
-        // Assert — Y is identically 0 and Z is 0 at lap start, so assert the X/Z magnitude, not axes.
+        // Assert — points sit on the circle (|X²+Z²| == r²), in the Y=0 plane.
         frames.Should().OnlyContain(f =>
-            (f.WorldPos.X * f.WorldPos.X) + (f.WorldPos.Z * f.WorldPos.Z) > 1f);
+            Math.Abs(((f.WorldPos.X * f.WorldPos.X) + (f.WorldPos.Z * f.WorldPos.Z)) - (radiusM * radiusM)) < 0.5f
+            && f.WorldPos.Y == 0f);
     }
 
     [Fact]
