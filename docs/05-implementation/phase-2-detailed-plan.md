@@ -244,12 +244,13 @@ verified end-to-end on macOS.
 
 ## Mergeable chunking (PR plan)
 
-Phase 2 ships as small PRs (~500-line diffs) that each merge to `main` without breaking it.
-Merge order = build order. A chunk is **mergeable** when CI stays green (build +
-`dotnet format --verify` + xUnit on windows+macos) and Phase-1 runtime
-(`ITelemetrySource → IngestService → TelemetryFanOut → McapRecorderService`) is not regressed.
+Phase 2 ships as **5 PRs** (merge order = build order) that each merge to `main` without breaking
+it. A PR is **mergeable** when CI stays green (build + `dotnet format --verify` + xUnit on
+windows+macos) and Phase-1 runtime (`ITelemetrySource → IngestService → TelemetryFanOut →
+McapRecorderService`) is not regressed.
 
-**Прогресс:** C1a — готов, PR #8 (на ревью). Остальные — `todo`.
+**Прогресс:** PR-A в работе — C1a влит/на ревью (PR #8), та же ветка расширяется до C1b+C2a+C2b.
+Остальные — `todo`.
 
 Safety classes:
 - **Additive** — append-only proto fields / new mapper lines / new code that does not modify a live
@@ -261,29 +262,22 @@ Safety classes:
 - **Runtime-touching** — changes a live Phase-1 class or the App composition; guarded by the
   existing record/replay e2e plus chunk-specific tests.
 
-| PR | Task | Scope | Safety class |
-|----|------|-------|--------------|
-| 1 ✅ | C1a | Proto fields (`world_pos`, `current_sector_index`, `sector_count`, `tyres_out`, `is_valid_lap`) + `AccFrameMapper` (corrected `PlayerCarId`→slot indexing) + mapper goldens + schema doc — **PR #8** | Additive |
-| 2 | C1b | Track-parametric synthesized multi-lap fixture (`SimCoach.TestKit` → Contracts only; lap length injected) + smoke test | Dead-until-wired |
-| 3 | C2a | SQLite schema + idempotent migration runner + `SqliteConnectionFactory` + migration tests | Dead-until-wired |
-| 4 | C2b | Dapper repos (`Session`/`Lap`/`Reference`/`Settings`) + CRUD/FK/UNIQUE tests | Dead-until-wired |
-| 5 | C2c-1 | `SessionContext` + `SessionManager` + `McapRecorderService` refactor (dir from `SessionContext`) + wiring | Runtime-touching |
-| 6 | C2c-2 | `IngestService` allocate-before-publish (`Ready` TCS) + blocking identity-race tests | Runtime-touching |
-| 7 | C3 | `LapSegmenter`/`SectorSegmenter` + clean-lap predicate + tests | Dead-until-wired |
-| 8 | C4 | Compute kernels + tests | Dead-until-wired |
-| 9 | C5a | Vendored `trackLandmarksData.json` + `LandmarkDataset` + `TrackModelStore` dataset path + tests | Dead-until-wired |
-| 10 | C5b | `TrackModelBuilder` derive fallback + persistence + resolution-order tests | Dead-until-wired |
-| 11 | C6a | **New** `McapSegmentEnumerator` (does NOT modify `McapReplaySource`; `segment-*.mcap` filter) + Parquet lap writer (incl. `world_x/y/z`) + round-trip tests | Dead-until-wired |
-| 12 | C6b | `PositionResampler` (1 m grid) + monotonicity tests | Dead-until-wired |
-| 13 | C7 | Reference store + PB selection + tests | Dead-until-wired |
-| 14 | C8a | `DomainEventFanOut` + `ComputeService` skeleton + `LapEvent`/`SectorEvent` + tests | Dead-until-wired |
-| 15 | C8b | `CornerEvent` (corner-exit trigger) + reference deltas + `SessionEvent` (`stints=[]`) + tests | Dead-until-wired |
-| 16 | C9 | App wiring (stop-ordering: `SessionManager` before `ComputeService`), `appsettings`, session-end Parquet conversion, dedupe `McapReplaySource` onto the shared enumerator, e2e golden | Runtime-touching |
+Размеры — фактический код+тесты (vendored JSON исключён); калибровка по факту C1a (158 строк
+всего, 82 кода — «бумажные» оценки были ~2× завышены).
+
+| PR | Группа | Задачи | Состав | Safety class | ~Диф |
+|----|--------|--------|--------|--------------|-----:|
+| **A** | Контракт + фикстура + SQLite | C1a ✅, C1b, C2a, C2b | Поля контракта + `AccFrameMapper` (испр. `PlayerCarId`→слот) + голдены **(C1a, PR #8)**; трек-параметрическая синт. фикстура `SimCoach.TestKit`→Contracts (C1b); SQLite-схема + идемпотентный мигратор + `SqliteConnectionFactory` (C2a); Dapper-репозитории `Session`/`Lap`/`Reference`/`Settings` + CRUD/FK/UNIQUE-тесты (C2b) | Additive + Dead-until-wired | ~850 |
+| **B** | Идентичность сессии | C2c-1, C2c-2 | `SessionContext` + `SessionManager` + рефактор `McapRecorderService` (директория из `SessionContext`) + wiring (C2c-1); `IngestService` allocate-before-publish (`Ready` TCS) + блокирующие тесты на гонку идентичности (C2c-2) | **Runtime-touching** | ~500 |
+| **C** | Компьют-ядро | C3, C4 | `LapSegmenter`/`SectorSegmenter` + предикат чистого круга (C3); чистые кернелы (тормоз/газ/min-speed, trail-brake, understeer/oversteer) (C4) | Dead-until-wired | ~550 |
+| **D** | Трек-модель + parquet | C5a, C5b, C6a, C6b | Вендоренный `trackLandmarksData.json` + `LandmarkDataset` + `TrackModelStore` dataset-путь (C5a); `TrackModelBuilder` derive-фолбэк + персист (C5b); новый `McapSegmentEnumerator` (не трогает `McapReplaySource`) + Parquet-райтер с `world_x/y/z` (C6a); `PositionResampler` 1 м (C6b) | Dead-until-wired | ~980 |
+| **E** | Референс + события + wiring | C7, C8a, C8b, C9 | Референс-стор + выбор PB (C7); `DomainEventFanOut` + `ComputeService` + `LapEvent`/`SectorEvent` (C8a); `CornerEvent` (триггер выхода из поворота) + дельты vs референс + `SessionEvent` `stints=[]` (C8b); wiring (порядок остановки), `appsettings`, конверсия parquet на конце сессии, дедуп `McapReplaySource` на общий энумератор, e2e-голден (C9) | Runtime-touching | ~1100 |
 
 Notes:
-- The original C1/C2c are pre-split (C1a/C1b, C2c-1/C2c-2) to hit ~500 lines and to isolate the
-  `IngestService` race change behind its own blocking tests.
-- C6a is **additive**: it adds the shared enumerator as new code; the dedupe of
-  `McapReplaySource.ResolveSegmentPaths` onto it is deferred to C9 (keeps the refactor of a live
-  class out of an otherwise dead-until-wired PR).
-- **split-on-overrun** applies at PR time: any chunk exceeding ~600 lines is split further.
+- **B держится отдельным** намеренно — единственный рисковый рантайм-кусок (ломает ingest-идентичность
+  + рефактор `McapRecorderService`), мал и хорошо покрыт тестами на гонку.
+- **C6a additive**: добавляет общий энумератор новым кодом; дедуп `McapReplaySource.ResolveSegmentPaths`
+  на него отложен в C9 (рефактор живого класса не попадает в dead-until-wired PR).
+- **split-on-overrun**: D и E (~1000) — на верхней границе ревью; при переборе ~600 строк делятся
+  (D→trackmodel/parquet, E→compute/wiring), тогда фаза = 7 PR. Это потолок, не план.
+- Итого фаза ≈ 4000 строк на 5 PR (≈800 средний).
