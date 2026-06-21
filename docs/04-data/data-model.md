@@ -16,7 +16,7 @@ CREATE TABLE sessions (
   lap_count INTEGER NOT NULL DEFAULT 0,
   clean_lap_count INTEGER NOT NULL DEFAULT 0,
   pb_time_ms INTEGER,
-  mcap_path TEXT NOT NULL,
+  mcap_path TEXT NOT NULL,         -- session recordings directory (holds segment-*.mcap), not a file
   parquet_path TEXT,
   notes TEXT
 );
@@ -32,7 +32,7 @@ CREATE TABLE laps (
   s1_ms INTEGER,
   s2_ms INTEGER,
   s3_ms INTEGER,
-  raw_offset_in_mcap INTEGER,      -- byte offset for fast seek
+  raw_offset_in_mcap INTEGER,      -- (segment_index, byte offset) for fast seek into segment-NNNN.mcap; null in Phase 2 (a session is a directory of segments, not one file — ADR-0011)
   UNIQUE(session_id, lap_number)
 );
 
@@ -80,14 +80,19 @@ CREATE INDEX idx_sessions_track_car ON sessions(track_id, car_id);
 
 ```
 %LOCALAPPDATA%/SimCoach/
-├── sessions/
-│   └── 2026-06-01_19-30-42/
-│       ├── raw.mcap                    # rotating 60s segments concatenated
+├── recordings/
+│   └── 20260601-193042-417/            # <sessionId> = yyyyMMdd-HHmmss-fff
+│       ├── segment-0000.mcap           # rotating 60s segments (no concatenation)
+│       ├── segment-0001.mcap
 │       ├── laps.parquet                # all laps, one row group per lap
 │       └── debrief.md                  # post-session export
 └── references/
     └── spa_audi_r8_lms_evo_ii_dry-warm.parquet
 ```
+
+A session is a **directory of rotating `segment-*.mcap` files**, not a single file (ADR-0011);
+`sessions.mcap_path` stores this directory. Consumers (Parquet conversion, replay, debrief)
+enumerate the segments in order and read them as one logical stream — no `raw.mcap` is produced.
 
 `laps.parquet` schema:
 - `lap_number: int32`
@@ -100,6 +105,7 @@ CREATE INDEX idx_sessions_track_car ON sessions(track_id, car_id);
 - `gear: int32`
 - `tyre_temp_*: float` × 4
 - `g_lat: float`, `g_long: float`
+- `world_x: float`, `world_y: float`, `world_z: float`   # from `world_pos`; needed for racing-line deviation
 - ... (matches `TelemetryFrame` flat subset)
 
 Reference parquet is the same schema but already resampled to 1 sample per 1 m of `normalizedCarPosition` for fast delta computation.
@@ -110,8 +116,8 @@ Reference parquet is the same schema but already resampled to 1 sample per 1 m o
 
 | File | Created | Deleted |
 |---|---|---|
-| `raw.mcap` | Session start, rotated every 60 s | User deletes session, or scheduled cleanup (>90 days configurable) |
-| `laps.parquet` | Session end (async conversion from MCAP) | Same as session delete |
+| `recordings/<sessionId>/segment-*.mcap` | Session start, rotated every 60 s | User deletes session, or scheduled cleanup (>90 days configurable) |
+| `laps.parquet` | Session end (async conversion from the session's segment directory) | Same as session delete |
 | `references/*.parquet` | When a new PB is set | User deletes reference or session-source deleted |
 | `simcoach.db` | App first run | "Delete all data" setting |
 | `logs/*.log` | App start | 7-day rolling retention |

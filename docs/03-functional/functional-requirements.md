@@ -14,7 +14,7 @@ Format: FR-### functional, NFR-### non-functional. Each row traces to the module
 | FR-001 | Read ACC shared memory at ≥ 100 Hz from `Local\acpmf_physics`, `Local\acpmf_graphics`, `Local\acpmf_static`. | Adapters.ACC |
 | FR-002 | Detect session start/end, lap start/end, sector boundaries, current car/track/weather, on/off-track, contact. | Pipeline.Compute |
 | FR-003 | Survive sim restart, alt-tab, and config reload without crashing the app. Reconnect within 5 s of game becoming available again. | Adapters.ACC |
-| FR-004 | Persist every session as MCAP under `%LOCALAPPDATA%/SimCoach/sessions/<ts>/raw.mcap`. Rotated every 60 s, zstd-compressed. | Storage.MCAP |
+| FR-004 | Persist every session as rotating MCAP segments under `%LOCALAPPDATA%/SimCoach/recordings/<sessionId>/segment-*.mcap`. Rotated every 60 s, zstd-compressed. | Storage.MCAP |
 | FR-005 | Provide a replay tool that re-emits an MCAP file in real time for testing without needing the game running. | Storage.MCAP, dev tool |
 
 ## 2. Reference Lap Management
