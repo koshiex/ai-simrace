@@ -1,0 +1,79 @@
+name: Publish (Windows exe)
+
+# Produces a downloadable, ready-to-run Windows build so you don't have to clone and
+# build locally. The artifact is a self-contained, single-file SimCoach.App.exe (the .NET 9
+# runtime is bundled — no SDK/runtime install needed on the target machine) plus the loose
+# appsettings.json you edit (OpenRouter key, voice model path, etc.).
+#
+# Triggers:
+#   - workflow_dispatch: run on demand from the Actions tab against any branch.
+#   - push to main or ci/** branches: every push leaves a downloadable artifact.
+#   - push of a v* tag: additionally attaches the zip to a GitHub Release.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, 'ci/**']
+    tags: ['v*']
+
+permissions:
+  contents: write # needed only for the tag -> Release step; harmless otherwise.
+
+jobs:
+  publish-windows:
+    name: publish-windows (win-x64 self-contained)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      # Publishing the App csproj directly pulls every ProjectReference transitively and runs
+      # the Grpc.Tools proto codegen — no generated SimCoach.sln required, so we skip bootstrap.
+      #
+      # Single-file + self-contained, native libs (ONNX Runtime, Skia/Avalonia, ParquetSharp,
+      # SQLite) self-extracted at first run. No trimming: the app leans on reflection (DI,
+      # Avalonia, config binding) which trimming would break.
+      - name: Publish self-contained single-file exe
+        shell: bash
+        run: |
+          dotnet publish src/SimCoach.App/SimCoach.App.csproj \
+            --configuration Release \
+            --runtime win-x64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:EnableCompressionInSingleFile=true \
+            -p:DebugType=none \
+            --output publish
+
+      # Drop anything that isn't part of "download, unzip, run": the user needs only the exe
+      # and the editable appsettings.json. (DebugType=none already suppresses the .pdb.)
+      - name: Trim publish folder to runnable payload
+        shell: pwsh
+        run: |
+          Get-ChildItem publish -Recurse |
+            Where-Object { $_.Name -notin @('SimCoach.App.exe','appsettings.json') } |
+            Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
+          Write-Host "Payload:"; Get-ChildItem publish | Format-Table Name,Length
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SimCoach-win-x64
+          path: publish/
+          if-no-files-found: error
+
+      # Bonus: a v* tag publishes the build as a Release asset for a stable download link.
+      - name: Attach to GitHub Release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Compress-Archive -Path publish/* -DestinationPath "SimCoach-${{ github.ref_name }}-win-x64.zip" -Force
+          gh release create "${{ github.ref_name }}" "SimCoach-${{ github.ref_name }}-win-x64.zip" `
+            --title "${{ github.ref_name }}" --generate-notes
