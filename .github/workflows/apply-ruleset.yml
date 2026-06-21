@@ -1,0 +1,40 @@
+name: Apply branch ruleset
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/rulesets/**'
+      - '.github/workflows/apply-ruleset.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply rulesets (create or update by name)
+        env:
+          GH_TOKEN: ${{ secrets.RULESET_TOKEN }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for file in .github/rulesets/*.json; do
+            name="$(jq -r '.name' "$file")"
+            echo "::group::Ruleset '$name' ($file)"
+            id="$(gh api "repos/$REPO/rulesets" --jq ".[] | select(.name==\"$name\") | .id")"
+            if [ -n "$id" ]; then
+              echo "Updating existing ruleset id=$id"
+              gh api -X PUT "repos/$REPO/rulesets/$id" --input "$file" >/dev/null
+            else
+              echo "Creating new ruleset"
+              gh api -X POST "repos/$REPO/rulesets" --input "$file" >/dev/null
+            fi
+            echo "::endgroup::"
+          done
