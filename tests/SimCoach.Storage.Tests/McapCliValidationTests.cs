@@ -48,17 +48,67 @@ public sealed class McapCliValidationTests
         }
     }
 
-    private static async Task<(int ExitCode, string Output)?> RunMcapDoctorAsync(string filePath)
+    [Fact]
+    public async Task Mcap_cli_cat_reads_a_zstd_file_with_summary_when_cli_is_available()
+    {
+        // Arrange — a zstd-compressed, summary-bearing file: the case `mcap cat` refused pre-B5
+        string filePath = Path.Combine(Path.GetTempPath(), $"simcoach-cat-{Guid.NewGuid():N}.mcap");
+        try
+        {
+            using (FileStream stream = File.Create(filePath))
+            using (var writer = new McapWriter(stream, new McapWriterOptions { Compression = McapCompression.Zstd }))
+            {
+                byte[] schemaData = McapProtobufSchema.BuildFileDescriptorSet(TelemetryFrame.Descriptor);
+                ushort schemaId = writer.AddSchema(TelemetryFrame.Descriptor.FullName, "protobuf", schemaData);
+                ushort channelId = writer.AddChannel(schemaId, "telemetry", "protobuf");
+                for (uint sequence = 0; sequence < 3; sequence++)
+                {
+                    TelemetryFrame frame = new() { Sim = "acc", LapNumber = 1, SpeedMps = sequence };
+                    writer.WriteMessage(channelId, sequence, (sequence + 1) * 1_000_000_000UL, 0, frame.ToByteArray());
+                }
+
+                writer.Finish();
+            }
+
+            // Act
+            (int exitCode, string output)? doctor = await RunMcapAsync("doctor", filePath);
+            (int exitCode, string output)? cat = await RunMcapAsync("cat", filePath, "--json");
+            if (doctor is null || cat is null)
+            {
+                return; // CLI not installed — interoperability check skipped
+            }
+
+            // Assert
+            doctor.Value.exitCode.Should().Be(0, $"mcap doctor must accept the zstd file; output: {doctor.Value.output}");
+            cat.Value.exitCode.Should().Be(0, $"mcap cat must read the summary-bearing file; output: {cat.Value.output}");
+            cat.Value.output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Should().HaveCount(3, "cat emits one line per message");
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    private static Task<(int ExitCode, string Output)?> RunMcapDoctorAsync(string filePath) =>
+        RunMcapAsync("doctor", filePath);
+
+    private static async Task<(int ExitCode, string Output)?> RunMcapAsync(params string[] arguments)
     {
         try
         {
-            using var process = Process.Start(new ProcessStartInfo
+            var startInfo = new ProcessStartInfo
             {
                 FileName = "mcap",
-                ArgumentList = { "doctor", filePath },
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
-            });
+            };
+            foreach (string argument in arguments)
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+
+            using var process = Process.Start(startInfo);
             if (process is null)
             {
                 return null;
@@ -75,7 +125,7 @@ public sealed class McapCliValidationTests
             catch (OperationCanceledException)
             {
                 process.Kill(entireProcessTree: true);
-                return (-1, "mcap doctor timed out after 10 s");
+                return (-1, "mcap CLI timed out after 10 s");
             }
 
             return (process.ExitCode, await stdout + await stderr);

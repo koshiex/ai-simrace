@@ -17,6 +17,7 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Serilog.Extensions.Hosting" />
     <PackageReference Include="System.IO.Hashing" />
+    <PackageReference Include="ZstdSharp.Port" />
   </ItemGroup>
 
 </Project>

@@ -7,9 +7,6 @@ namespace SimCoach.Storage.Mcap;
 /// Builds the schema payload MCAP expects for protobuf-encoded channels: a serialized
 /// <c>FileDescriptorSet</c> with the message's file and all transitive dependencies,
 /// dependencies first, so sequential MCAP readers can decode the messages.
-/// Note: our v1 files have no summary section, so index-dependent tooling is degraded —
-/// `mcap doctor` passes, but `mcap cat` refuses unindexed files. Summary + zstd are the
-/// documented follow-up alongside compression.
 /// </summary>
 public static class McapProtobufSchema
 {

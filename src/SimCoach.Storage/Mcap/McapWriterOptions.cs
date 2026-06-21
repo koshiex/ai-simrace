@@ -12,6 +12,12 @@ public sealed record McapWriterOptions
     /// <summary>The current chunk flushes once its buffered records reach this size.</summary>
     public int ChunkThresholdBytes { get; init; } = 1024 * 1024;
 
+    /// <summary>
+    /// Chunk compression codec. Default <see cref="McapCompression.None"/> keeps chunk records
+    /// verbatim; the recorder opts into <see cref="McapCompression.Zstd"/> for on-disk savings.
+    /// </summary>
+    public McapCompression Compression { get; init; } = McapCompression.None;
+
     /// <summary>Keep the underlying stream open after the writer is disposed.</summary>
     public bool LeaveOpen { get; init; }
 
