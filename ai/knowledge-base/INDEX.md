@@ -7,4 +7,4 @@
 
 ## tools/
 
-- [dotnet-build-quirks.md](tools/dotnet-build-quirks.md) — testhost runtime roll-forward workaround, `.slnx` vs `.sln`, IDE0008 var rule as build error, windows-latest CRLF/`.gitattributes` format failure, NuGet packages that don't exist (MCAP, ParquetSharp 16.0.0).
+- [dotnet-build-quirks.md](tools/dotnet-build-quirks.md) — testhost runtime roll-forward workaround, `.slnx` vs `.sln`, IDE0008 var rule as build error, windows-latest CRLF/`.gitattributes` format failure, single-file publish needs Serilog `Using` list, NuGet packages that don't exist (MCAP, ParquetSharp 16.0.0).
