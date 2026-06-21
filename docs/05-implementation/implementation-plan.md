@@ -36,6 +36,10 @@ This file expands `peaceful-tumbling-firefly.md` phases into concrete tasks.
 - [ ] `GoldArtifactBuilder` per cadence
 - [ ] `ActionRegistry` with ~20 actions + RU templates
 - [ ] `PromptBuilder` system + few-shot
+  - Inject a `corner_id → human name` map (from the vendored CrewChief landmark file) so the LLM
+    says "Eau Rouge", not "turn 5". Naming lives here, NOT in compute — compute emits only the
+    stable `corner_id` token. Fallback/derived tracks have no names → positional phrasing. See
+    ADR-0010.
 - [ ] `OpenRouterClient` with HTTP/2 streaming + structured output
 - [ ] `CostMeter` to SQLite
 - [ ] `CircuitBreaker` per-provider

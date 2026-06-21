@@ -55,3 +55,8 @@ odd-length: the four consecutive `wchar_t[15]` at the top of graphics end at 132
 - `physics.suspensionDamage` works (PyAcc's "not used" comment is wrong).
 - Static page has no `packetId` — seqlock applies to physics/graphics only
   (`AccPageMarshaller.ReadPacketId`).
+- The struct ports marshal more than `AccFrameMapper` currently surfaces into `TelemetryFrame`.
+  Already-marshalled-but-unmapped (no struct change needed to use them): `graphics.CarCoordinates`
+  (flattened `float[60][3]`; player car = `CarCoordinates[PlayerCarId*3 + {0,1,2}]`, world XYZ in m),
+  `graphics.CurrentSectorIndex` (0-based), `static.SectorCount`. Phase 2 maps these to
+  `world_pos` / `current_sector_index` / `sector_count` — mapper-only, no marshalling work.

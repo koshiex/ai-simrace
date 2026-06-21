@@ -34,8 +34,8 @@ ACC SHM → TelemetryFrame → MCAP file ─── Parquet (cold)   │
 
 | Data | Location | Persistence |
 |---|---|---|
-| Raw telemetry frames | `%LOCALAPPDATA%/SimCoach/sessions/<ts>/raw.mcap` | until user deletes |
-| Per-lap Parquet | `%LOCALAPPDATA%/SimCoach/sessions/<ts>/laps.parquet` | until user deletes |
+| Raw telemetry frames | `%LOCALAPPDATA%/SimCoach/recordings/<sessionId>/segment-*.mcap` | until user deletes |
+| Per-lap Parquet | `%LOCALAPPDATA%/SimCoach/recordings/<sessionId>/laps.parquet` | until user deletes |
 | Reference laps (PBs) | `%LOCALAPPDATA%/SimCoach/references/<key>.parquet` | until user deletes |
 | Sessions / settings / LLM usage | `%LOCALAPPDATA%/SimCoach/simcoach.db` (SQLite) | until user deletes |
 | Secrets (API keys) | `%APPDATA%/SimCoach/secrets.json` (DPAPI-encrypted if available) | until user deletes |
