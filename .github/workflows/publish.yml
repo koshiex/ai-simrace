@@ -5,19 +5,13 @@ name: Publish (Windows exe)
 # runtime is bundled — no SDK/runtime install needed on the target machine) plus the loose
 # appsettings.json you edit (OpenRouter key, voice model path, etc.).
 #
-# Triggers:
-#   - workflow_dispatch: run on demand from the Actions tab against any branch.
-#   - push to main or ci/** branches: every push leaves a downloadable artifact.
-#   - push of a v* tag: additionally attaches the zip to a GitHub Release.
+# Trigger: pull requests into main only — each PR leaves a downloadable build under its
+# checks. (Add workflow_dispatch / a v* tag -> Release later if on-demand or release builds
+# are needed.)
 
 on:
-  workflow_dispatch:
-  push:
-    branches: [main, 'ci/**']
-    tags: ['v*']
-
-permissions:
-  contents: write # needed only for the tag -> Release step; harmless otherwise.
+  pull_request:
+    branches: [main]
 
 jobs:
   publish-windows:
@@ -66,14 +60,3 @@ jobs:
           name: SimCoach-win-x64
           path: publish/
           if-no-files-found: error
-
-      # Bonus: a v* tag publishes the build as a Release asset for a stable download link.
-      - name: Attach to GitHub Release (tags only)
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          Compress-Archive -Path publish/* -DestinationPath "SimCoach-${{ github.ref_name }}-win-x64.zip" -Force
-          gh release create "${{ github.ref_name }}" "SimCoach-${{ github.ref_name }}-win-x64.zip" `
-            --title "${{ github.ref_name }}" --generate-notes

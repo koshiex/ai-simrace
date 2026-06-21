@@ -13,10 +13,11 @@
 ## Подготовка
 
 Самый быстрый путь — **не собирать вручную**: возьми готовый self-contained `SimCoach.App.exe`
-из CI. Открой Actions → workflow **Publish (Windows exe)** → нужный запуск → артефакт
-`SimCoach-win-x64` (или запусти его вручную через «Run workflow»). Внутри `SimCoach.App.exe` +
-`appsettings.json`; .NET ставить не нужно — рантайм вшит. Распакуй, при необходимости поправь
-`appsettings.json`, запусти exe. Дальше сразу к [Шагу 1](#шаг-1--запуск-до-игры-reconnect-ожидание).
+из CI. Workflow **Publish (Windows exe)** гоняется на каждом PR в `main` — открой нужный PR →
+вкладка Checks (или Actions → этот запуск) → артефакт `SimCoach-win-x64`. Внутри
+`SimCoach.App.exe` + `appsettings.json`; .NET ставить не нужно — рантайм вшит. Распакуй, при
+необходимости поправь `appsettings.json`, запусти exe. Дальше сразу к
+[Шагу 1](#шаг-1--запуск-до-игры-reconnect-ожидание).
 
 Если всё же собираешь из исходников:
 
