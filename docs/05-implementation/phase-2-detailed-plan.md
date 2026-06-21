@@ -249,6 +249,8 @@ Merge order = build order. A chunk is **mergeable** when CI stays green (build +
 `dotnet format --verify` + xUnit on windows+macos) and Phase-1 runtime
 (`ITelemetrySource → IngestService → TelemetryFanOut → McapRecorderService`) is not regressed.
 
+**Прогресс:** C1a — готов, PR #8 (на ревью). Остальные — `todo`.
+
 Safety classes:
 - **Additive** — append-only proto fields / new mapper lines / new code that does not modify a live
   class. Old MCAP fixtures replay new fields as `0`.
@@ -261,7 +263,7 @@ Safety classes:
 
 | PR | Task | Scope | Safety class |
 |----|------|-------|--------------|
-| 1 | C1a | Proto fields (`world_pos`, `current_sector_index`, `sector_count`, `tyres_out`, `is_valid_lap`) + `AccFrameMapper` (corrected `PlayerCarId`→slot indexing) + mapper goldens + schema doc | Additive |
+| 1 ✅ | C1a | Proto fields (`world_pos`, `current_sector_index`, `sector_count`, `tyres_out`, `is_valid_lap`) + `AccFrameMapper` (corrected `PlayerCarId`→slot indexing) + mapper goldens + schema doc — **PR #8** | Additive |
 | 2 | C1b | Track-parametric synthesized multi-lap fixture (`SimCoach.TestKit` → Contracts only; lap length injected) + smoke test | Dead-until-wired |
 | 3 | C2a | SQLite schema + idempotent migration runner + `SqliteConnectionFactory` + migration tests | Dead-until-wired |
 | 4 | C2b | Dapper repos (`Session`/`Lap`/`Reference`/`Settings`) + CRUD/FK/UNIQUE tests | Dead-until-wired |
