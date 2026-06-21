@@ -70,6 +70,28 @@ Fix is a committed `.gitattributes` forcing LF on checkout everywhere:
 Not a code-formatting problem — verify locally with `dotnet format SimCoach.sln
 --verify-no-changes` on an LF working tree (it passes), and the diff is purely the checkout EOL.
 
+## Single-file publish: Serilog config needs an explicit `Using` list
+
+A self-contained **single-file** `SimCoach.App.exe` (the CI publish artifact, ADR-0009) crashed
+at startup with `InvalidOperationException` from `Serilog.Settings.Configuration` during the
+host/DI build — but ran fine under `dotnet run`. Root cause: `ReadFrom.Configuration` discovers
+sink/enricher assemblies by **scanning DLLs on disk**; a single-file bundle has none, so the
+discovery path throws (not a graceful skip).
+
+Two parts to the fix in `appsettings.json`:
+
+- Add a `"Using"` array so sinks load by assembly name (no disk scan):
+  `"Serilog": { "Using": ["Serilog.Sinks.Console", "Serilog.Sinks.File"], ... }`.
+  This is the documented single-file workaround.
+- The `Enrich` list referenced `WithMachineName` / `WithThreadId`, whose packages
+  (`Serilog.Enrichers.Environment` / `.Thread`) were **never referenced** — under `dotnet run`
+  they were silently skipped (SelfLog), but in single-file the scan to resolve them throws.
+  Dropped them; `FromLogContext` stays (it lives in `Serilog.dll`, always loaded, no scan).
+
+Because `appsettings.json` ships loose next to the exe, an already-downloaded build can be fixed
+by hand-editing its `appsettings.json` — no rebuild needed. Trimming is unrelated here (we don't
+trim), but if it were ever enabled the sink assemblies would also need a trimmer roots entry.
+
 ## NuGet packages that do not exist (verified against nuget.org)
 
 - **MCAP**: no C# package at all (`Mcap.Core` was a scaffold placeholder, removed).
