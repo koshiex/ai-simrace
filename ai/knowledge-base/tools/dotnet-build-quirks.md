@@ -28,6 +28,13 @@ Keep the classic `.sln`: `dotnet format` on SDK 9 is unreliable with `.slnx`.
 Use explicit types (`HostApplicationBuilder`, `IHost`) unless the type is apparent
 (`var x = new Foo()` is fine).
 
+The inverse also bites: `csharp_style_var_when_type_is_apparent = true` makes an explicit type
+a build **error (IDE0007)** when the type is apparent — and a factory/conversion method whose
+name names the type counts as apparent. So `DateTimeOffset t = frame.T.ToDateTimeOffset();` fails
+(must be `var t = ...`), even though the return type isn't visible at the call site. `csharp_style_var_for_built_in_types = false` exempts built-ins, so `int n = (int)x.TotalMilliseconds;`
+stays explicit. Rule of thumb here: `new`/`ToXxx()`/cast on a non-built-in ⇒ `var`; everything
+else ⇒ explicit.
+
 ## Naming rule IDE1006 covers `private static readonly` fields too
 
 The repo's `.editorconfig` private-field rule (`_camelCase`) has no static carve-out, so

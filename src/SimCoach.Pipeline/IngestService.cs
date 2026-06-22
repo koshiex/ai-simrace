@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SimCoach.Contracts.V1;
@@ -14,6 +15,7 @@ public sealed class IngestService : BackgroundService
 {
     private readonly ITelemetrySource _source;
     private readonly TelemetryFanOut _fanOut;
+    private readonly SessionContext _sessionContext;
     private readonly IngestOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<IngestService> _logger;
@@ -25,6 +27,7 @@ public sealed class IngestService : BackgroundService
     public IngestService(
         ITelemetrySource source,
         TelemetryFanOut fanOut,
+        SessionContext sessionContext,
         IngestOptions options,
         TimeProvider timeProvider,
         ILogger<IngestService> logger,
@@ -32,12 +35,14 @@ public sealed class IngestService : BackgroundService
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(fanOut);
+        ArgumentNullException.ThrowIfNull(sessionContext);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
         options.EnsureValid();
         _source = source;
         _fanOut = fanOut;
+        _sessionContext = sessionContext;
         _options = options;
         _timeProvider = timeProvider;
         _logger = logger;
@@ -46,7 +51,15 @@ public sealed class IngestService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Telemetry ingest started for sim {Sim}", _source.Sim);
+        // Allocate session identity BEFORE publishing frame #1 (ADR-0011): every fan-out subscriber
+        // sees identity already resolved, so the inter-subscriber race is removed structurally. The
+        // ms suffix preserves crash-restart uniqueness (a restart within one second gets a new dir).
+        DateTimeOffset startedAt = _timeProvider.GetUtcNow();
+        string sessionId = startedAt.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture);
+        _sessionContext.Resolve(sessionId, startedAt);
+
+        _logger.LogInformation(
+            "Telemetry ingest started for sim {Sim}; session {SessionId}", _source.Sim, sessionId);
         try
         {
             await foreach (TelemetryFrame frame in _source.ReadAsync(stoppingToken).ConfigureAwait(false))

@@ -6,13 +6,16 @@ using SimCoach.Adapters.ACC;
 using SimCoach.Adapters.ACC.SharedMemory;
 using SimCoach.Pipeline;
 using SimCoach.Storage;
+using SimCoach.Storage.Database;
+using SimCoach.Storage.Repositories;
 
 namespace SimCoach.App;
 
 /// <summary>
-/// Wires the Phase 1 telemetry pipeline: source (live ACC shared memory or MCAP replay,
-/// selected by <c>Telemetry:Source</c>) → <see cref="IngestService"/> →
-/// <see cref="TelemetryFanOut"/> → <see cref="McapRecorderService"/>.
+/// Wires the telemetry pipeline: source (live ACC shared memory or MCAP replay, selected by
+/// <c>Telemetry:Source</c>) → <see cref="IngestService"/> → <see cref="TelemetryFanOut"/> →
+/// {<see cref="SessionManager"/>, <see cref="McapRecorderService"/>}. Session identity is owned by
+/// the producer and shared via <see cref="SessionContext"/> (ADR-0011).
 /// </summary>
 internal static class TelemetryComposition
 {
@@ -25,8 +28,10 @@ internal static class TelemetryComposition
         ingestOptions.EnsureValid();
         builder.Services.AddSingleton(ingestOptions);
         builder.Services.AddSingleton<TelemetryFanOut>();
+        builder.Services.AddSingleton<SessionContext>();
 
         AddTelemetrySource(builder);
+        AddStorage(builder);
 
         // Resolve-time factory so the fallback warning (M2: never silently ignore explicit
         // configuration) can reach the logger, which does not exist at composition time.
@@ -38,11 +43,29 @@ internal static class TelemetryComposition
             return recordingOptions;
         });
 
-        // The recorder subscribes to the fan-out in its constructor and is registered before
-        // the ingest pump, so the first frames of a session always reach the recording.
+        // Stop order is the reverse of registration. SessionManager is registered first so it stops
+        // LAST and finalizes the row only after compute (PR-E) has drained its laps. SessionManager
+        // and the recorder both subscribe to the fan-out in their constructors, so the opening
+        // frames of a session always reach them; IngestService (the producer) is registered last.
+        builder.Services.AddHostedService<SessionManager>();
         builder.Services.AddHostedService<McapRecorderService>();
         builder.Services.AddHostedService<IngestService>();
         return builder;
+    }
+
+    private static void AddStorage(HostApplicationBuilder builder)
+    {
+        builder.Services.AddSingleton(provider =>
+        {
+            DatabaseOptions databaseOptions = BuildDatabaseOptions(
+                builder.Configuration, provider.GetRequiredService<ILogger<DatabaseMigrator>>());
+            databaseOptions.EnsureValid();
+            return databaseOptions;
+        });
+        builder.Services.AddSingleton<SqliteConnectionFactory>();
+        builder.Services.AddSingleton<DatabaseMigrator>();
+        builder.Services.AddSingleton<SessionRepository>();
+        builder.Services.AddSingleton<LapRepository>();
     }
 
     private static void AddTelemetrySource(HostApplicationBuilder builder)
@@ -88,6 +111,24 @@ internal static class TelemetryComposition
             provider.GetRequiredService<AccReaderOptions>(),
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<ILogger<AccSharedMemoryReader>>()));
+    }
+
+    private static DatabaseOptions BuildDatabaseOptions(IConfiguration configuration, ILogger logger)
+    {
+        DatabaseOptions defaults = new();
+        string configured = configuration["Database:DbPath"] ?? string.Empty;
+        string expanded = Environment.ExpandEnvironmentVariables(configured);
+        // An unexpanded %VAR% (e.g. %LOCALAPPDATA% outside Windows) means "use the default".
+        bool useDefault = string.IsNullOrWhiteSpace(expanded) || expanded.Contains('%');
+        if (useDefault && !string.IsNullOrWhiteSpace(configured))
+        {
+            logger.LogWarning(
+                "Database:DbPath '{Configured}' contains an unexpandable token; using {Fallback}",
+                configured,
+                defaults.DbPath);
+        }
+
+        return useDefault ? defaults : new DatabaseOptions { DbPath = expanded };
     }
 
     private static RecordingOptions BuildRecordingOptions(IConfiguration configuration, ILogger logger)
