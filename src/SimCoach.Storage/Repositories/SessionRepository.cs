@@ -38,24 +38,30 @@ public sealed class SessionRepository
             "SELECT * FROM sessions WHERE id = @id", new { id });
     }
 
-    /// <summary>Writes the session-end fields (counts, PB, parquet path, ended timestamp).</summary>
+    /// <summary>
+    /// Writes the session-end fields. <paramref name="weatherBucket"/> is the authoritative bucket
+    /// (provisional at insert, finalized off the ~21 s temp warm-up window per ADR-0011) — it keys
+    /// the <c>references</c> triple, so it must land at finalize, not stay at the first-frame value.
+    /// </summary>
     public void Finalize(
         string id,
         DateTimeOffset endedAtUtc,
+        string weatherBucket,
         int lapCount,
         int cleanLapCount,
         int? pbTimeMs,
         string? parquetPath)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(weatherBucket);
         using SqliteConnection connection = _factory.Create();
         connection.Execute(
             """
             UPDATE sessions
-            SET ended_at_utc = @endedAtUtc, lap_count = @lapCount, clean_lap_count = @cleanLapCount,
-                pb_time_ms = @pbTimeMs, parquet_path = @parquetPath
-            WHERE id = @id
+            SET ended_at_utc = @endedAtUtc, weather_bucket = @weatherBucket, lap_count = @lapCount,
+                clean_lap_count = @cleanLapCount, pb_time_ms = @pbTimeMs, parquet_path = @parquetPath
+            WHERE id = @id AND ended_at_utc IS NULL
             """,
-            new { id, endedAtUtc, lapCount, cleanLapCount, pbTimeMs, parquetPath });
+            new { id, endedAtUtc, weatherBucket, lapCount, cleanLapCount, pbTimeMs, parquetPath });
     }
 
     public void Delete(string id)

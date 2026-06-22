@@ -11,6 +11,7 @@ public sealed class IngestServiceTests
 
     private readonly FakeTelemetrySource _source = new();
     private readonly FakeClock _clock = new();
+    private readonly SessionContext _context = new();
     private readonly CollectingLogger<IngestService> _logger = new();
 
     [Fact]
@@ -113,8 +114,63 @@ public sealed class IngestServiceTests
         await service.StopAsync(CancellationToken.None);
     }
 
+    [Fact]
+    public async Task Identity_resolved_before_first_publish_subscriber_sees_no_dropped_opening_frames()
+    {
+        // Arrange — a subscriber present before the pump starts (mirrors the recorder/SessionManager)
+        TelemetryFanOut fanOut = new(new IngestOptions());
+        using TelemetrySubscription subscriber = fanOut.Subscribe("session-manager");
+        IngestService service = CreateService(fanOut);
+        await service.StartAsync(CancellationToken.None);
+
+        // Act — read frame #1 as soon as it arrives
+        _source.Emit(Frame(1));
+        TelemetryFrame first = await FirstAsync(subscriber);
+
+        // Assert — identity was already resolved by the time frame #1 was observable, no drops
+        _context.Ready.IsCompletedSuccessfully.Should().BeTrue(
+            "the producer resolves identity before publishing frame #1 (ADR-0011)");
+        first.LapNumber.Should().Be(1);
+        subscriber.DroppedFrames.Should().Be(0);
+
+        _source.Complete();
+        await service.ExecuteTask!.WaitAsync(_waitTimeout);
+        await service.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task SessionId_uses_millisecond_timestamp_format()
+    {
+        // Arrange — FakeClock is pinned at 2026-06-10 12:00:00.000 UTC
+        TelemetryFanOut fanOut = new(new IngestOptions());
+        IngestService service = CreateService(fanOut);
+
+        // Act
+        await service.StartAsync(CancellationToken.None);
+        SessionIdentity identity = await _context.Ready.WaitAsync(_waitTimeout);
+
+        // Assert
+        identity.SessionId.Should().Be("20260610-120000-000");
+        identity.StartedAtUtc.Should().Be(_clock.GetUtcNow());
+
+        _source.Complete();
+        await service.ExecuteTask!.WaitAsync(_waitTimeout);
+        await service.StopAsync(CancellationToken.None);
+    }
+
+    private static async Task<TelemetryFrame> FirstAsync(TelemetrySubscription subscription)
+    {
+        using var cts = new CancellationTokenSource(_waitTimeout);
+        await foreach (TelemetryFrame frame in subscription.ReadAllAsync(cts.Token))
+        {
+            return frame;
+        }
+
+        throw new InvalidOperationException("subscription completed without a frame");
+    }
+
     private IngestService CreateService(TelemetryFanOut fanOut, IngestOptions? options = null) =>
-        new(_source, fanOut, options ?? new IngestOptions(), _clock, _logger);
+        new(_source, fanOut, _context, options ?? new IngestOptions(), _clock, _logger);
 
     private int WarningCount() => _logger.Snapshot().Count(entry => entry.Level == LogLevel.Warning);
 
