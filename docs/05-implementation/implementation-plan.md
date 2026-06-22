@@ -24,12 +24,18 @@ This file expands `peaceful-tumbling-firefly.md` phases into concrete tasks.
 
 ## Phase 2 — Reference Laps + Deterministic Compute (week 3)
 
-- [ ] SQLite schema (`sessions`, `laps`, `references`, `settings`, `llm_usage`)
-- [ ] Parquet writer for per-lap channels, resampled to 1m position
-- [ ] `ReferenceStore` PB lookup by `(trackId, carId, weatherBucket)`
-- [ ] `ComputeService`: brake-on/off, peak-brake, trail-brake-%, throttle-on, min-speed, racing-line deviation
-- [ ] Domain event emission (`CornerEvent`, `SectorEvent`, `LapEvent`, `SessionEvent`)
-- [ ] Unit tests on synthetic + replay fixtures
+Per-PR status lives in [phase-2-detailed-plan.md](./phase-2-detailed-plan.md) (5 PRs, A–E).
+Done so far: **PR-A** (#8) + **PR-B** (#9). Remaining: PR-D, PR-E.
+
+- [x] SQLite schema (`sessions`, `laps`, `references`, `settings`, `llm_usage`) — PR-A (#8)
+- [x] Session identity: producer-allocated `SessionContext` + `SessionManager` owns row + dir (ADR-0011) — PR-B (#9)
+- [x] Lap/sector segmentation + clean-lap predicate (`LapSegmenter`/`SectorSegmenter`) — PR-B (#9)
+- [x] Compute kernels: brake-on/off, peak-brake, trail-brake-%, throttle-on, min-speed, understeer/oversteer — PR-B (#9), pure/dead-until-wired
+- [ ] Parquet writer for per-lap channels, resampled to 1m position — PR-D
+- [ ] `ReferenceStore` PB lookup by `(trackId, carId, weatherBucket)` — PR-E
+- [ ] `ComputeService` wiring + racing-line deviation (needs reference) — PR-E
+- [ ] Domain event emission (`CornerEvent`, `SectorEvent`, `LapEvent`, `SessionEvent`) — PR-E
+- [x] Unit tests on synthetic + replay fixtures — synthetic `SimCoach.TestKit` + replay e2e in place (extended per PR)
 
 ## Phase 3 — Coach Engine + LLM (week 4)
 
