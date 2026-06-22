@@ -39,18 +39,27 @@ public sealed class AccFrameMapperTests
                 .WithSingle(288, 21.5f)     // airTemp
                 .WithSingle(292, 28.5f)     // roadTemp
                 .WithSingle(352, 412f)      // brakeTemp[1] = FR
-                .WithSingle(364, 0.25f),    // clutch engagement → pedal 0.75
+                .WithSingle(364, 0.25f)     // clutch engagement → pedal 0.75
+                .WithInt32(244, 2),         // numberOfTyresOut (NU in ACC — passthrough)
             graphics: page => page
                 .WithInt32(132, 5)          // completedLaps → lap 6
+                .WithInt32(164, 1)          // currentSectorIndex
                 .WithSingle(248, 0.42f)     // normalizedCarPosition
+                .WithSingle(256, 12.5f)     // carCoordinates[slot0].x
+                .WithSingle(260, 3.0f)      // carCoordinates[slot0].y
+                .WithSingle(264, -8.0f)     // carCoordinates[slot0].z
+                .WithInt32(976, 7)          // carId[0] = 7
+                .WithInt32(1216, 7)         // playerCarId = 7 → slot 0
                 .WithInt32(1224, 2)         // flag = AC_YELLOW_FLAG
                 .WithSingle(1248, 3.5f)     // windSpeed (m/s)
                 .WithSingle(1284, 2.9f)     // fuelXLap
+                .WithInt32(1408, 1)         // isValidLap = 1
                 .WithInt32(1556, 2)         // trackGripStatus = OPTIMUM
                 .WithInt32(1560, 0),        // rainIntensity = NO_RAIN
             @static: page => page
                 .WithUtf16(68, "audi_r8_lms_evo_ii", 33) // carModel
-                .WithUtf16(134, "Spa", 33));             // track
+                .WithUtf16(134, "Spa", 33)               // track
+                .WithInt32(400, 3));                     // sectorCount
 
         // Act
         TelemetryFrame frame = AccFrameMapper.Map(snapshot);
@@ -88,6 +97,11 @@ public sealed class AccFrameMapperTests
         frame.TcActive.Should().BeTrue();
         frame.AbsActive.Should().BeFalse();
         frame.FlagsActive.Should().Be(1 << 1); // AC_YELLOW_FLAG (2) → bit 1
+        frame.WorldPos.Should().Be(new Vec3 { X = 12.5f, Y = 3.0f, Z = -8.0f });
+        frame.CurrentSectorIndex.Should().Be(1);
+        frame.SectorCount.Should().Be(3);
+        frame.TyresOut.Should().Be(2);
+        frame.IsValidLap.Should().BeTrue();
     }
 
     [Theory]
@@ -214,6 +228,45 @@ public sealed class AccFrameMapperTests
 
         // Assert
         frame.FlagsActive.Should().Be(expectedBits);
+    }
+
+    [Theory]
+    [InlineData(1001, 10f)]  // player id 1001 → slot 0 → x = 10
+    [InlineData(2002, 20f)]  // player id 2002 → slot 1 → x = 20 (NOT carCoordinates[2002*3])
+    [InlineData(9999, 0f)]   // id absent from CarId → slot -1 → zeroed world_pos
+    public void World_pos_resolves_player_slot_via_car_id_indirection(int playerCarId, float expectedX)
+    {
+        // Arrange — PlayerCarId is a car id VALUE; the slot is its index in CarId.
+        // carId[0]=1001 @ 976, carId[1]=2002 @ 980; slot0.x=10 @ 256, slot1.x=20 @ 268.
+        AccTelemetrySnapshot snapshot = AccSnapshotFixture.Build(
+            graphics: page => page
+                .WithInt32(976, 1001)
+                .WithInt32(980, 2002)
+                .WithSingle(256, 10f)
+                .WithSingle(268, 20f)
+                .WithInt32(1216, playerCarId));
+
+        // Act
+        TelemetryFrame frame = AccFrameMapper.Map(snapshot);
+
+        // Assert
+        frame.WorldPos.X.Should().Be(expectedX);
+    }
+
+    [Theory]
+    [InlineData(0, false)] // sim flagged the lap invalid
+    [InlineData(1, true)]  // valid lap
+    public void Is_valid_lap_maps_int_to_boolean(int isValidLap, bool expectedValid)
+    {
+        // Arrange — IsValidLap at graphics offset 1408
+        AccTelemetrySnapshot snapshot = AccSnapshotFixture.Build(
+            graphics: page => page.WithInt32(1408, isValidLap));
+
+        // Act
+        TelemetryFrame frame = AccFrameMapper.Map(snapshot);
+
+        // Assert
+        frame.IsValidLap.Should().Be(expectedValid);
     }
 
     [Theory]

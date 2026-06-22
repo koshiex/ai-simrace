@@ -51,12 +51,22 @@ odd-length: the four consecutive `wchar_t[15]` at the top of graphics end at 132
   acc-steering-lock plugin tables.
 - `static.track` ids are MIXED case ("Spa", "Paul_Ricard", "brands_hatch"); ACC server configs
   and results JSON use all-lowercase ids — different namespaces, normalize case-insensitively.
+- **`graphics.PlayerCarId` is a car id VALUE, not a slot index into `CarCoordinates`/`CarId`.**
+  It holds one of the values stored in the `CarId[60]` array (in practice 1001-based, not 0), so
+  the player's coordinates are `CarCoordinates[slot*3 + {0,1,2}]` where
+  `slot = Array.IndexOf(CarId, PlayerCarId)`. Indexing `CarCoordinates[PlayerCarId*3]` directly
+  reads far out of bounds (e.g. 1001×3 = 3003 vs a 180-length array) → on a defensive
+  bounds-guard it silently yields zero world coords on every live frame. Pinned by
+  `AccGraphicsPageLayoutTests` (`CarId[0]=PlayerCarId=1001`, `CarCoordinates[3]`=second car).
 - `graphics.surfaceGrip` always returns 0 in ACC.
 - `physics.suspensionDamage` works (PyAcc's "not used" comment is wrong).
 - Static page has no `packetId` — seqlock applies to physics/graphics only
   (`AccPageMarshaller.ReadPacketId`).
 - The struct ports marshal more than `AccFrameMapper` currently surfaces into `TelemetryFrame`.
   Already-marshalled-but-unmapped (no struct change needed to use them): `graphics.CarCoordinates`
-  (flattened `float[60][3]`; player car = `CarCoordinates[PlayerCarId*3 + {0,1,2}]`, world XYZ in m),
-  `graphics.CurrentSectorIndex` (0-based), `static.SectorCount`. Phase 2 maps these to
-  `world_pos` / `current_sector_index` / `sector_count` — mapper-only, no marshalling work.
+  (flattened `float[60][3]`; player car = `CarCoordinates[slot*3 + {0,1,2}]` where
+  `slot = Array.IndexOf(CarId, PlayerCarId)` — see the PlayerCarId pitfall above, world XYZ in m),
+  `graphics.CurrentSectorIndex` (0-based), `static.SectorCount`, `physics.NumberOfTyresOut`
+  (**"Not used in ACC" → always 0 live**, honest passthrough only), `graphics.IsValidLap`
+  (ACC `int`, `!= 0 → true`). Phase 2 maps these to `world_pos` / `current_sector_index` /
+  `sector_count` / `tyres_out` / `is_valid_lap` — mapper-only, no marshalling work.

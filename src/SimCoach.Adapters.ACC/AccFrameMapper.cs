@@ -68,6 +68,11 @@ public static class AccFrameMapper
         string trackId = NormalizeId(staticPage.Track);
         string carId = NormalizeId(staticPage.CarModel);
 
+        // PlayerCarId is a car *id value*, not a slot index — resolve the slot into the flattened
+        // CarCoordinates[60*3] via its position in the CarId array. An absent id (torn/early frame)
+        // yields slot -1 → zeroed world_pos, consistent with the mapper's honest-zeros stance.
+        int playerSlot = Array.IndexOf(graphics.CarId, graphics.PlayerCarId);
+
         TelemetryFrame frame = new()
         {
             T = Timestamp.FromDateTimeOffset(snapshot.CapturedAt),
@@ -101,6 +106,21 @@ public static class AccFrameMapper
             TcActive = physics.Tc > 0f,
             AbsActive = physics.Abs > 0f,
             FlagsActive = ToFlagBits(graphics.Flag),
+            WorldPos = playerSlot >= 0 && playerSlot < SharedMemory.AccGraphicsPage.MaxCars
+                ? new Vec3
+                {
+                    X = graphics.CarCoordinates[playerSlot * 3],
+                    Y = graphics.CarCoordinates[(playerSlot * 3) + 1],
+                    Z = graphics.CarCoordinates[(playerSlot * 3) + 2],
+                }
+                : new Vec3(),
+            CurrentSectorIndex = graphics.CurrentSectorIndex,
+            SectorCount = staticPage.SectorCount,
+            // NumberOfTyresOut is "Not used in ACC" (always 0 live) — honest passthrough like
+            // TyreWear/WheelLoad; real off-track data comes from other sims / synthesized fixtures.
+            TyresOut = physics.NumberOfTyresOut,
+            // ACC int → bool (mirrors the Tc/Abs int→bool conversions above).
+            IsValidLap = graphics.IsValidLap != 0,
         };
 
         frame.TyreTempC.AddRange(physics.TyreCoreTemperature);

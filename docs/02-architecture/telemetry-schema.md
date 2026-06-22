@@ -42,6 +42,11 @@ One frame emitted per adapter tick (target 100–333 Hz on ACC).
 | `air_temp_c` | `float` | °C | |
 | `track_temp_c` | `float` | °C | |
 | `wind_speed_mps` | `float` | m/s | |
+| `world_pos` | `Vec3` | m | track-frame coordinates of the player car (Phase 2 compute input) |
+| `current_sector_index` | `int32` | — | 0-based sector the car is in (Phase 2) |
+| `sector_count` | `int32` | — | total sectors on the track (Phase 2) |
+| `tyres_out` | `int32` | — | off-track wheel count (Phase 2) |
+| `is_valid_lap` | `bool` | — | sim's own lap-validity flag (Phase 2) |
 
 ### `LapEvent`
 Emitted at finish line.
@@ -110,6 +115,11 @@ Emitted at session end.
 | `brake_pct` | `physics.brake` | `Brake` | `mTelemetry.mUnfilteredBrake` | `m_brake` |
 | `delta_ms` | computed (no native channel) | `LapDeltaToSessionBestLap_ms` | computed | `m_deltaToCarInFrontInMS` / computed |
 | `tyre_temp_c` | `physics.tyreCoreTemp[4]` | `LFtempCM`/`RFtempCM`/... | `mTelemetry.mWheels[4].mTemperature[3]` | `m_tyresInnerTemperature` |
+| `world_pos` | `graphics.carCoordinates[slot]` where `slot = indexOf(carId, playerCarId)` — `playerCarId` is an id **value**, not a slot index | — | — | — |
+| `current_sector_index` | `graphics.currentSectorIndex` | — | — | — |
+| `sector_count` | `static.sectorCount` | — | — | — |
+| `tyres_out` | `physics.numberOfTyresOut` — **"Not used in ACC" → always 0 live**; honest passthrough (real data only from other sims / synthesized fixtures). The clean-lap off-track gate must rely on `is_valid_lap` on ACC. | — | — | — |
+| `is_valid_lap` | `graphics.isValidLap` (ACC `int`; `!= 0 → true`) | — | — | — |
 | ... | | | | |
 
 Full per-sim mapping in adapters' `*FrameMapper.cs`.

@@ -63,6 +63,13 @@ message TelemetryFrame {
   // Bit flags, canonical across sims: bit 0=blue, 1=yellow, 2=black, 3=white,
   // 4=checkered, 5=penalty, 6=green, 7=orange (ACC AC_FLAG_TYPE N maps to bit N-1).
   int32 flags_active = 31;
+
+  // Phase 2 compute inputs (append-only).
+  Vec3 world_pos = 32;                     // track-frame metres (player car)
+  int32 current_sector_index = 33;         // 0-based
+  int32 sector_count = 34;
+  int32 tyres_out = 35;                    // off-track wheel count
+  bool is_valid_lap = 36;                  // sim's own lap-validity flag
 }
 
 // Per-corner derivation emitted by Pipeline.Compute.

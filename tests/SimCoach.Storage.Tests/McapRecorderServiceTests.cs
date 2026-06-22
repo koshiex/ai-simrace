@@ -121,19 +121,22 @@ public sealed class McapRecorderServiceTests : IDisposable
             logger);
         await service.StartAsync(CancellationToken.None);
 
-        // Act — two frames into segment 0, rotate, one frame into segment 1
+        // Act — one frame into segment 0, rotate, two frames into segment 1. Gate each rotation on
+        // the new segment file: a frame added to an *open* segment has no observable signal, whereas
+        // segment creation does — gating on the file keeps the per-segment counts race-free.
         _fanOut.Publish(Frame(1));
-        _fanOut.Publish(Frame(2));
-        await WaitForAsync(() => Directory.Exists(_basePath) && SegmentCount() == 1);
+        await WaitForAsync(() => SegmentCount() == 1);
         _clock.Advance(TimeSpan.FromSeconds(61));
-        _fanOut.Publish(Frame(3));
+        _fanOut.Publish(Frame(2));
+        await WaitForAsync(() => SegmentCount() == 2);
+        _fanOut.Publish(Frame(3)); // same clock as segment 1's start → stays in segment 1
         _fanOut.Complete();
         await service.ExecuteTask!.WaitAsync(_waitTimeout);
 
         // Assert
         IReadOnlyList<(Microsoft.Extensions.Logging.LogLevel Level, string Message)> entries = logger.Snapshot();
-        entries.Should().Contain(entry => entry.Message.Contains("Segment 0 finished: 2 frames"));
-        entries.Should().Contain(entry => entry.Message.Contains("Segment 1 finished: 1 frames"));
+        entries.Should().Contain(entry => entry.Message.Contains("Segment 0 finished: 1 frames"));
+        entries.Should().Contain(entry => entry.Message.Contains("Segment 1 finished: 2 frames"));
         await service.StopAsync(CancellationToken.None);
     }
 
