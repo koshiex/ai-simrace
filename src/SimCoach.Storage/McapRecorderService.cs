@@ -21,6 +21,7 @@ public sealed class McapRecorderService : BackgroundService
     private const string Topic = "telemetry";
     private const string ProtobufEncoding = "protobuf";
 
+    private readonly SessionContext _sessionContext;
     private readonly TelemetrySubscription _subscription;
     private readonly RecordingOptions _options;
     private readonly TimeProvider _timeProvider;
@@ -28,15 +29,18 @@ public sealed class McapRecorderService : BackgroundService
 
     public McapRecorderService(
         TelemetryFanOut fanOut,
+        SessionContext sessionContext,
         RecordingOptions options,
         TimeProvider timeProvider,
         ILogger<McapRecorderService> logger)
     {
         ArgumentNullException.ThrowIfNull(fanOut);
+        ArgumentNullException.ThrowIfNull(sessionContext);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
         options.EnsureValid();
+        _sessionContext = sessionContext;
         _options = options;
         _timeProvider = timeProvider;
         _logger = logger;
@@ -51,11 +55,19 @@ public sealed class McapRecorderService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Millisecond suffix: a crash + restart within one second must not reuse (and truncate)
-        // the previous session's directory.
-        string sessionId = _timeProvider.GetUtcNow()
-            .ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture);
-        string sessionDirectory = Path.Combine(_options.BasePath, sessionId);
+        // Identity is owned by the producer (IngestService) and resolved before frame #1 is
+        // published (ADR-0011), so this await returns without blocking and no frames are dropped.
+        SessionIdentity identity;
+        try
+        {
+            identity = await _sessionContext.Ready.WaitAsync(stoppingToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            return; // shutdown before a session ever started
+        }
+
+        string sessionDirectory = Path.Combine(_options.BasePath, identity.SessionId);
         byte[] schemaData = McapProtobufSchema.BuildFileDescriptorSet(TelemetryFrame.Descriptor);
 
         McapWriter? writer = null;

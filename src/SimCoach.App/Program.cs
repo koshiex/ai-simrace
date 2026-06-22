@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
+using SimCoach.Storage.Database;
 
 namespace SimCoach.App;
 
@@ -28,6 +30,8 @@ public static class Program
         builder.AddTelemetryPipeline();
 
         using IHost host = builder.Build();
+        // Bring the SQLite schema up to date before any hosted service touches the database.
+        host.Services.GetRequiredService<DatabaseMigrator>().Migrate();
         await host.RunAsync();
         return 0;
     }

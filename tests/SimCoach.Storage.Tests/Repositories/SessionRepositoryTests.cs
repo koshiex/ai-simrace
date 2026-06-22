@@ -36,13 +36,14 @@ public sealed class SessionRepositoryTests : RepositoryTestBase
         // Arrange
         _sessions.Insert(Session("s1"));
 
-        // Act
-        _sessions.Finalize("s1", Now.AddMinutes(30), lapCount: 12, cleanLapCount: 9, pbTimeMs: 104500,
-            parquetPath: "/recordings/s1/laps.parquet");
+        // Act — the authoritative bucket ("wet") overwrites the provisional insert value ("dry-warm")
+        _sessions.Finalize("s1", Now.AddMinutes(30), weatherBucket: "wet", lapCount: 12, cleanLapCount: 9,
+            pbTimeMs: 104500, parquetPath: "/recordings/s1/laps.parquet");
         SessionRow? read = _sessions.Get("s1");
 
         // Assert
         read!.EndedAtUtc.Should().Be(Now.AddMinutes(30));
+        read.WeatherBucket.Should().Be("wet");
         read.LapCount.Should().Be(12);
         read.CleanLapCount.Should().Be(9);
         read.PbTimeMs.Should().Be(104500);

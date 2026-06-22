@@ -19,6 +19,16 @@ public sealed class McapRecorderServiceTests : IDisposable
 
     private readonly FakeClock _clock = new();
     private readonly TelemetryFanOut _fanOut = new(new IngestOptions());
+    private readonly SessionContext _sessionContext = CreateResolvedContext();
+
+    // The recorder consumes a pre-allocated identity (ADR-0011): resolve it up front so ExecuteAsync
+    // proceeds straight into the record loop, mirroring the producer resolving it before frame #1.
+    private static SessionContext CreateResolvedContext()
+    {
+        SessionContext context = new();
+        context.Resolve("20260610-120000-000", new DateTimeOffset(2026, 6, 10, 12, 0, 0, TimeSpan.Zero));
+        return context;
+    }
 
     public void Dispose()
     {
@@ -116,6 +126,7 @@ public sealed class McapRecorderServiceTests : IDisposable
         CollectingLogger<McapRecorderService> logger = new();
         McapRecorderService service = new(
             _fanOut,
+            _sessionContext,
             new RecordingOptions { BasePath = _basePath, SegmentDuration = TimeSpan.FromSeconds(60) },
             _clock,
             logger);
@@ -159,6 +170,7 @@ public sealed class McapRecorderServiceTests : IDisposable
     private McapRecorderService CreateService(TimeSpan? segmentDuration = null) =>
         new(
             _fanOut,
+            _sessionContext,
             new RecordingOptions
             {
                 BasePath = _basePath,

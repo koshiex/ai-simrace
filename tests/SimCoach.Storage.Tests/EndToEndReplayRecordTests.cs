@@ -48,15 +48,18 @@ public sealed class EndToEndReplayRecordTests : IDisposable
             TimeProvider.System,
             NullLogger<McapReplaySource>.Instance);
         TelemetryFanOut fanOut = new(new IngestOptions());
+        SessionContext sessionContext = new(); // producer (ingest) resolves it; recorder consumes it
         string outputBase = Path.Combine(_root, "output");
         McapRecorderService recorder = new(
             fanOut,
+            sessionContext,
             new RecordingOptions { BasePath = outputBase, SegmentDuration = TimeSpan.FromMinutes(5) },
             TimeProvider.System,
             NullLogger<McapRecorderService>.Instance);
         IngestService ingest = new(
             source,
             fanOut,
+            sessionContext,
             new IngestOptions(),
             TimeProvider.System,
             NullLogger<IngestService>.Instance);
