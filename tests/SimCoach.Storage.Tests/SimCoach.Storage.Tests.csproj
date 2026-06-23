@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\SimCoach.Storage\SimCoach.Storage.csproj" />
+    <ProjectReference Include="..\SimCoach.TestKit\SimCoach.TestKit.csproj" />
   </ItemGroup>
 
   <ItemGroup>

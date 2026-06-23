@@ -254,7 +254,11 @@ C2a ✅ (SQLite схема+мигратор+фабрика), C2b ✅ (Dapper-р�
 (`SessionContext`+`SessionManager`+рефактор рекордера+wiring), C2c-2 ✅ (`IngestService`
 allocate-before-publish + тесты на гонку), C3 ✅ (`LapSegmenter`/`SectorSegmenter`+предикат
 чистого круга, dead-until-wired), C4 ✅ (кернелы тормоз/газ/баланс, dead-until-wired). C3/C4
-вытянуты в PR-B по запросу. Остальные (D–E) — `todo`.
+вытянуты в PR-B по запросу. PR-D готов — C5a ✅ (вендоренный `trackLandmarksData.json` +
+`LandmarkDataset` + `TrackModelStore` dataset-путь), C5b ✅ (`TrackModelBuilder` derive-фолбэк +
+`JsonTrackModelRepository` персист + idempotent rebuild), C6a ✅ (`McapSegmentEnumerator` +
+`LapParquetWriter` с `world_x/y/z`), C6b ✅ (`PositionResampler` 1 м), dead-until-wired.
+Остальное (E) — `todo`.
 
 Safety classes:
 - **Additive** — append-only proto fields / new mapper lines / new code that does not modify a live
@@ -273,7 +277,7 @@ Safety classes:
 |----|--------|--------|--------|--------------|-----:|
 | **A** ✅ | Контракт + фикстура + SQLite | C1a ✅, C1b ✅, C2a ✅, C2b ✅ | Поля контракта + `AccFrameMapper` (испр. `PlayerCarId`→слот) + голдены **(C1a, PR #8)**; трек-параметрическая синт. фикстура `SimCoach.TestKit`→Contracts (C1b); SQLite-схема + идемпотентный мигратор + `SqliteConnectionFactory` (C2a); Dapper-репозитории `Session`/`Lap`/`Reference`/`Settings` + CRUD/FK/UNIQUE-тесты (C2b) | Additive + Dead-until-wired | ~850 |
 | **B** ✅ | Идентичность сессии + компьют-ядро | C2c-1, C2c-2, C3, C4 | `SessionContext` + `SessionManager` + рефактор `McapRecorderService` (директория из `SessionContext`) + wiring (C2c-1); `IngestService` allocate-before-publish (`Ready` TCS) + тесты на гонку (C2c-2); `LapSegmenter`/`SectorSegmenter` + предикат чистого круга (C3); чистые кернелы (тормоз/газ/min-speed, trail-brake, understeer/oversteer) (C4). C3/C4 вытянуты в B по запросу. | **Runtime-touching** (C2c) + Dead-until-wired (C3/C4) | ~1050 |
-| **D** | Трек-модель + parquet | C5a, C5b, C6a, C6b | Вендоренный `trackLandmarksData.json` + `LandmarkDataset` + `TrackModelStore` dataset-путь (C5a); `TrackModelBuilder` derive-фолбэк + персист (C5b); новый `McapSegmentEnumerator` (не трогает `McapReplaySource`) + Parquet-райтер с `world_x/y/z` (C6a); `PositionResampler` 1 м (C6b) | Dead-until-wired | ~980 |
+| **D** ✅ | Трек-модель + parquet | C5a, C5b, C6a, C6b | Вендоренный `trackLandmarksData.json` + `LandmarkDataset` + `TrackModelStore` dataset-путь (C5a); `TrackModelBuilder` derive-фолбэк + персист (C5b); новый `McapSegmentEnumerator` (не трогает `McapReplaySource`) + Parquet-райтер с `world_x/y/z` (C6a); `PositionResampler` 1 м (C6b) | Dead-until-wired | ~980 |
 | **E** | Референс + события + wiring | C7, C8a, C8b, C9 | Референс-стор + выбор PB (C7); `DomainEventFanOut` + `ComputeService` + `LapEvent`/`SectorEvent` (C8a); `CornerEvent` (триггер выхода из поворота) + дельты vs референс + `SessionEvent` `stints=[]` (C8b); wiring (порядок остановки), `appsettings`, конверсия parquet на конце сессии, дедуп `McapReplaySource` на общий энумератор, e2e-голден (C9) | Runtime-touching | ~1100 |
 
 Notes:
