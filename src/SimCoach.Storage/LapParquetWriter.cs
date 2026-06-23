@@ -73,7 +73,7 @@ public static class LapParquetWriter
             WriteFloats(rowGroup, lap.WorldZ);
         }
 
-        writer.Close();
+        // The `using` disposes the writer, which flushes the footer — no explicit Close() needed.
     }
 
     /// <summary>Parquet columns in <c>data-model.md</c> order — must match the per-row-group write order.</summary>

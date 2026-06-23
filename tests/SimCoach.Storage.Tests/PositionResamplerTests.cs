@@ -51,6 +51,23 @@ public sealed class PositionResamplerTests
     }
 
     [Fact]
+    public void Tolerates_consecutive_frames_at_an_identical_position()
+    {
+        // A stalled position (equal, not decreasing) must not trip the monotonic guard or divide by zero.
+        TelemetryFrame[] frames =
+        [
+            Frame(0.20f, 0),
+            Frame(0.20f, 50),
+            Frame(0.60f, 150),
+        ];
+
+        ResampledLap resampled = PositionResampler.Resample(frames, 100f);
+
+        resampled.GridLength.Should().Be(100);
+        resampled.PositionNormalized.Should().BeInAscendingOrder();
+    }
+
+    [Fact]
     public void Requires_at_least_two_frames()
     {
         TelemetryFrame[] frames = [Frame(0.1f, 0)];
