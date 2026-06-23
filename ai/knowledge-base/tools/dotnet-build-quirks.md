@@ -99,6 +99,25 @@ Because `appsettings.json` ships loose next to the exe, an already-downloaded bu
 by hand-editing its `appsettings.json` — no rebuild needed. Trimming is unrelated here (we don't
 trim), but if it were ever enabled the sink assemblies would also need a trimmer roots entry.
 
+## `.gitignore` `data/` swallows vendored embedded resources — needs a negation
+
+`.gitignore` has a generic `data/` rule (plus `*.parquet`, `*.mcap`) for runtime output. It also
+matches `src/SimCoach.Reference/Data/` (git path-matches `data/` against any `Data/` dir;
+`core.ignorecase` on macOS makes the case match too). A vendored file committed as an
+`<EmbeddedResource>` there (e.g. `Data/trackLandmarksData.json`) is silently untracked — local
+builds pass (the file is on disk) but CI checks out without it and the embedded-resource load fails.
+
+`git status` won't list the file; confirm with `git check-ignore -v <path>`. Fix is an explicit
+negation after the `data/` block in `.gitignore`:
+
+```gitignore
+!src/SimCoach.Reference/Data/
+!src/SimCoach.Reference/Data/**
+```
+
+Both lines are needed: the first re-includes the directory so git descends into it, the second
+re-includes its files.
+
 ## NuGet packages that do not exist (verified against nuget.org)
 
 - **MCAP**: no C# package at all (`Mcap.Core` was a scaffold placeholder, removed).

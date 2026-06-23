@@ -8,6 +8,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\SimCoach.Reference\SimCoach.Reference.csproj" />
+    <ProjectReference Include="..\..\src\SimCoach.Pipeline\SimCoach.Pipeline.csproj" />
+    <ProjectReference Include="..\SimCoach.TestKit\SimCoach.TestKit.csproj" />
   </ItemGroup>
 
   <ItemGroup>
