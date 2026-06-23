@@ -62,6 +62,22 @@ public sealed class LapParquetWriterTests : IDisposable
         worldX.Max(MathF.Abs).Should().BeGreaterThan(1f);
     }
 
+    [Fact]
+    public void Writes_a_valid_schema_with_zero_row_groups_when_no_lap_completes()
+    {
+        // A single lap is partial (the segmenter discards first/last) → zero completed laps.
+        IReadOnlyList<TelemetryFrame> frames = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 1);
+        SegmentFixture.Write(_dir, frames, framesPerSegment: 150);
+        string parquet = Path.Combine(_dir, "laps.parquet");
+
+        LapParquetWriter.Write(_dir, SyntheticTracks.Spa.LapLengthM, parquet);
+
+        using var reader = new ParquetFileReader(parquet);
+        reader.FileMetaData.NumColumns.Should().Be(_expectedColumns.Length);
+        reader.FileMetaData.NumRowGroups.Should().Be(0);
+        reader.Close();
+    }
+
     private string WriteFixture()
     {
         IReadOnlyList<TelemetryFrame> frames = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);

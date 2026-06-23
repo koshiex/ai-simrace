@@ -67,6 +67,20 @@ public sealed class TrackModelStoreTests : IDisposable
         store.Get("test_oval").DerivedFromLapTimeMs.Should().Be(85000);
     }
 
+    [Fact]
+    public void Derive_does_not_rebuild_on_an_equal_lap_time()
+    {
+        TrackModelStore store = NewStore();
+        CompletedLap baseLap = TestLaps.FastestClean(SyntheticTracks.TestOval);
+
+        store.Derive("test_oval", TestLaps.WithLapTime(baseLap, 90000));
+        // The guard is `stored <= candidate`, so an equal time keeps the stored model.
+        TrackModel afterEqual = store.Derive("test_oval", TestLaps.WithLapTime(baseLap, 90000));
+
+        afterEqual.DerivedFromLapTimeMs.Should().Be(90000);
+        store.Get("test_oval").DerivedFromLapTimeMs.Should().Be(90000);
+    }
+
     private TrackModelStore NewStore(params (string TrackId, float LengthM)[] lengths) =>
         NewStore(new JsonTrackModelRepository(_root), lengths);
 
