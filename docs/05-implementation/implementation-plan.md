@@ -25,13 +25,14 @@ This file expands `peaceful-tumbling-firefly.md` phases into concrete tasks.
 ## Phase 2 — Reference Laps + Deterministic Compute (week 3)
 
 Per-PR status lives in [phase-2-detailed-plan.md](./phase-2-detailed-plan.md) (5 PRs, A–E).
-Done so far: **PR-A** (#8) + **PR-B** (#9). Remaining: PR-D, PR-E.
+Done so far: **PR-A** (#8) + **PR-B** (#9) + **PR-D**. Remaining: PR-E.
 
 - [x] SQLite schema (`sessions`, `laps`, `references`, `settings`, `llm_usage`) — PR-A (#8)
 - [x] Session identity: producer-allocated `SessionContext` + `SessionManager` owns row + dir (ADR-0011) — PR-B (#9)
 - [x] Lap/sector segmentation + clean-lap predicate (`LapSegmenter`/`SectorSegmenter`) — PR-B (#9)
 - [x] Compute kernels: brake-on/off, peak-brake, trail-brake-%, throttle-on, min-speed, understeer/oversteer — PR-B (#9), pure/dead-until-wired
-- [ ] Parquet writer for per-lap channels, resampled to 1m position — PR-D
+- [x] Track model: vendored landmark dataset + derive fallback (`LandmarkDataset`/`TrackModelBuilder`/`TrackModelStore`) — PR-D, dead-until-wired
+- [x] Parquet writer for per-lap channels, resampled to 1m position (`McapSegmentEnumerator`/`PositionResampler`/`LapParquetWriter`) — PR-D, dead-until-wired
 - [ ] `ReferenceStore` PB lookup by `(trackId, carId, weatherBucket)` — PR-E
 - [ ] `ComputeService` wiring + racing-line deviation (needs reference) — PR-E
 - [ ] Domain event emission (`CornerEvent`, `SectorEvent`, `LapEvent`, `SessionEvent`) — PR-E
