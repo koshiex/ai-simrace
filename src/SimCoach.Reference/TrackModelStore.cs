@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using SimCoach.Pipeline.Segmentation;
+using SimCoach.Storage;
 
 namespace SimCoach.Reference;
 

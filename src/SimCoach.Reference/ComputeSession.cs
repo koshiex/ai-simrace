@@ -1,0 +1,333 @@
+using Microsoft.Extensions.Logging;
+using SimCoach.Contracts.V1;
+using SimCoach.Pipeline;
+using SimCoach.Pipeline.Segmentation;
+using SimCoach.Storage;
+using SimCoach.Storage.Repositories;
+
+namespace SimCoach.Reference;
+
+/// <summary>
+/// Drives the per-session compute for one telemetry stream: segments laps/sectors, runs the C4 kernels
+/// over corner windows, derives time-at-position deltas against the reference, and emits the four
+/// domain events. Stateful and single-threaded — fed one frame at a time by <see cref="ComputeService"/>
+/// and finished once at stream end. Split out from the hosted service so it is unit-testable without a
+/// <c>BackgroundService</c>.
+/// </summary>
+internal sealed class ComputeSession
+{
+    private readonly DomainEventFanOut _domain;
+    private readonly TrackModelStore _trackModels;
+    private readonly ReferenceLookup _lookup;
+    private readonly ReferenceStore _referenceStore;
+    private readonly LapRepository _laps;
+    private readonly ITrackLengthProvider _lengths;
+    private readonly ComputeOptions _options;
+    private readonly ILogger _logger;
+    private readonly SessionIdentity _identity;
+
+    private readonly LapSegmenter _lapSegmenter = new();
+    private readonly SectorSegmenter _sectorSegmenter = new();
+    private readonly List<CornerContribution> _lapLosses = [];
+    private List<CornerTracker> _cornerTrackers = [];
+
+    private bool _started;
+    private string _sim = string.Empty;
+    private string _trackId = string.Empty;
+    private string _carId = string.Empty;
+    private string _weatherBucket = string.Empty;
+    private ReferenceTriple _triple;
+    private float _lapLengthM;
+    private bool _hasLength;
+    private TrackModel _trackModel = new() { TrackId = string.Empty, Corners = [], Source = TrackModelSource.None };
+    private ResampledLap? _reference;
+
+    private int _runningBestMs = int.MaxValue;
+    private int _lapCount;
+    private int _cleanLapCount;
+    private long _cleanLapSumMs;
+    private int? _pbTimeMs;
+    private double _understeerAccum;
+    private double _oversteerAccum;
+    private int _balanceCornerCount;
+    private float _prevSectorCrossPos;
+    private TelemetryFrame? _lastFrame;
+    private TelemetryFrame? _previousFrame;
+
+    public ComputeSession(
+        DomainEventFanOut domain,
+        TrackModelStore trackModels,
+        ReferenceLookup lookup,
+        ReferenceStore referenceStore,
+        LapRepository laps,
+        ITrackLengthProvider lengths,
+        ComputeOptions options,
+        ILogger logger,
+        SessionIdentity identity)
+    {
+        _domain = domain;
+        _trackModels = trackModels;
+        _lookup = lookup;
+        _referenceStore = referenceStore;
+        _laps = laps;
+        _lengths = lengths;
+        _options = options;
+        _logger = logger;
+        _identity = identity;
+    }
+
+    /// <summary>Processes one frame: corner-exit events, then sector crosses, then lap completion.</summary>
+    public void Accept(TelemetryFrame frame)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+        _lastFrame = frame;
+        if (!_started)
+        {
+            InitSession(frame);
+        }
+
+        // A start-line crossing closes a lap's corner/sector accumulation. It must reset state even when
+        // the lap segmenter discards the lap (the first crossing has no observed start) — otherwise the
+        // corner trackers, which fire once per lap, would stay latched and never re-arm.
+        bool crossing = IsStartLineCrossing(_previousFrame, frame);
+
+        foreach (CornerTracker tracker in _cornerTrackers)
+        {
+            IReadOnlyList<TelemetryFrame>? window = tracker.Accept(frame);
+            if (window is not null)
+            {
+                EmitCorner(tracker.Corner, window);
+            }
+        }
+
+        SectorSplit? split = _sectorSegmenter.Accept(frame);
+        if (split is not null)
+        {
+            EmitSector(split, frame);
+        }
+
+        CompletedLap? completed = _lapSegmenter.Accept(frame);
+        if (completed is not null)
+        {
+            HandleLap(completed, frame);
+        }
+
+        if (crossing)
+        {
+            ResetForNextLap();
+        }
+
+        _previousFrame = frame;
+    }
+
+    private static bool IsStartLineCrossing(TelemetryFrame? previous, TelemetryFrame current) =>
+        previous is not null
+        && current.LapNumber > previous.LapNumber
+        && current.NormalizedCarPosition < previous.NormalizedCarPosition;
+
+    /// <summary>Emits the <see cref="SessionEvent"/> aggregate and completes the domain fan-out.</summary>
+    public void Complete()
+    {
+        if (_started && _lastFrame is not null)
+        {
+            int averageLapMs = _cleanLapCount > 0 ? (int)(_cleanLapSumMs / _cleanLapCount) : 0;
+            float understeerTrend = _balanceCornerCount > 0
+                ? Math.Clamp((float)((_understeerAccum - _oversteerAccum) / _balanceCornerCount), -1f, 1f)
+                : 0f;
+
+            var session = new SessionEvent
+            {
+                T = _lastFrame.T,
+                SessionId = _identity.SessionId,
+                Sim = _sim,
+                TrackId = _trackId,
+                CarId = _carId,
+                WeatherBucket = _weatherBucket,
+                LapCount = _lapCount,
+                CleanLapCount = _cleanLapCount,
+                PbTimeMs = _pbTimeMs ?? 0,
+                AverageLapMs = averageLapMs,
+                UndersteerTrend = understeerTrend,
+            };
+            // Stints are descoped for Phase 2 — the empty repeated field is proto3-valid.
+            _domain.Publish(DomainEvent.Session(session));
+        }
+
+        _domain.Complete();
+    }
+
+    private void InitSession(TelemetryFrame frame)
+    {
+        _started = true;
+        _sim = frame.Sim;
+        _trackId = frame.TrackId;
+        _carId = frame.CarId;
+        _weatherBucket = frame.WeatherBucket;
+        _triple = new ReferenceTriple(_trackId, _carId, _weatherBucket);
+        _hasLength = _lengths.TryGetLapLengthM(_trackId, out _lapLengthM);
+        if (!_hasLength)
+        {
+            _logger.LogWarning(
+                "No lap length for track {Track}; self resample and metre-based corner diffs disabled", _trackId);
+        }
+
+        _trackModel = _trackModels.Get(_trackId);
+        RebuildCornerTrackers();
+        _reference = _lookup.Get(_triple);
+        _logger.LogInformation(
+            "Compute started for {Session}: {Track}/{Car}/{Weather}, model {Source} ({Corners} corners), reference {HasRef}",
+            _identity.SessionId, _trackId, _carId, _weatherBucket, _trackModel.Source,
+            _trackModel.Corners.Count, _reference is not null);
+    }
+
+    private void EmitCorner(Corner corner, IReadOnlyList<TelemetryFrame> window)
+    {
+        (CornerEvent ev, CornerContribution contribution) = CornerEventBuilder.Build(
+            corner, window, _reference, _lapLengthM, _reference?.GridLength ?? 0);
+        _domain.Publish(DomainEvent.Corner(ev));
+        _lapLosses.Add(contribution);
+        _understeerAccum += contribution.UndersteerScore;
+        _oversteerAccum += contribution.OversteerScore;
+        _balanceCornerCount++;
+    }
+
+    private void EmitSector(SectorSplit split, TelemetryFrame frame)
+    {
+        float endPos = frame.NormalizedCarPosition;
+        bool wrapped = endPos < _prevSectorCrossPos;
+        float refEndPos = wrapped ? 1f : endPos;
+
+        int deltaMs = 0;
+        if (_reference is not null)
+        {
+            int refSectorMs = GridMetrics.TimeAt(_reference, refEndPos) - GridMetrics.TimeAt(_reference, _prevSectorCrossPos);
+            deltaMs = split.SectorTimeMs - refSectorMs;
+        }
+
+        var ev = new SectorEvent
+        {
+            T = frame.T,
+            SectorIdx = split.SectorIndex,
+            SectorTimeMs = split.SectorTimeMs,
+            DeltaMs = deltaMs,
+        };
+        ev.TopLosses.AddRange(TopLosses(
+            _lapLosses.Where(c => c.ApexPosition >= _prevSectorCrossPos && c.ApexPosition <= refEndPos)));
+        _domain.Publish(DomainEvent.Sector(ev));
+
+        _prevSectorCrossPos = wrapped ? 0f : endPos;
+    }
+
+    private void HandleLap(CompletedLap completed, TelemetryFrame frame)
+    {
+        _lapCount++;
+        bool clean = completed.IsClean;
+        if (clean)
+        {
+            _cleanLapCount++;
+            _cleanLapSumMs += completed.LapTimeMs;
+        }
+
+        ResampledLap? self = ResampleSelf(completed);
+        // Reference lap time is the last grid sample (~1 m short of the line); the missing final metre
+        // is sub-0.1% of a lap and within coaching tolerance, so no end-point interpolation is done.
+        int? deltaMs = _reference is not null
+            ? completed.LapTimeMs - _reference.TMsFromLapStart[^1]
+            : null;
+
+        bool isPb = false;
+        if (clean && completed.LapTimeMs < _runningBestMs)
+        {
+            isPb = true;
+            _runningBestMs = completed.LapTimeMs;
+            _pbTimeMs = completed.LapTimeMs;
+        }
+
+        var lapEvent = new LapEvent
+        {
+            T = frame.T,
+            LapNumber = completed.LapNumber,
+            LapTimeMs = completed.LapTimeMs,
+            DeltaMs = deltaMs ?? 0,
+            IsPb = isPb,
+            IsClean = clean,
+        };
+        lapEvent.TopLosses.AddRange(TopLosses(_lapLosses));
+        _domain.Publish(DomainEvent.Lap(lapEvent));
+
+        if (clean)
+        {
+            TrackModel updated = _trackModels.Derive(_trackId, completed);
+            if (updated.Source == TrackModelSource.Derived && !ReferenceEquals(updated, _trackModel))
+            {
+                _trackModel = updated;
+                RebuildCornerTrackers();
+            }
+
+            if (self is not null && _referenceStore.MaybeUpdate(_triple, completed, self, _identity))
+            {
+                _reference = self;
+            }
+        }
+
+        _laps.Insert(new LapRow
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            SessionId = _identity.SessionId,
+            LapNumber = completed.LapNumber,
+            LapTimeMs = completed.LapTimeMs,
+            DeltaVsReferenceMs = deltaMs,
+            IsPb = isPb,
+            IsClean = clean,
+            S1Ms = SectorTime(completed, 0),
+            S2Ms = SectorTime(completed, 1),
+            S3Ms = SectorTime(completed, 2),
+            RawOffsetInMcap = null,
+        });
+    }
+
+    private ResampledLap? ResampleSelf(CompletedLap completed)
+    {
+        if (!_hasLength)
+        {
+            return null;
+        }
+
+        try
+        {
+            return PositionResampler.Resample(completed.Frames, _lapLengthM);
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogWarning(ex, "Resample skipped for non-monotonic lap {Lap}", completed.LapNumber);
+            return null;
+        }
+    }
+
+    private List<CornerLoss> TopLosses(IEnumerable<CornerContribution> source) =>
+        source
+            .Where(c => c.DeltaMs > 0)
+            .OrderByDescending(c => c.DeltaMs)
+            .Take(_options.TopLossesCount)
+            .Select(c => new CornerLoss { CornerId = c.CornerId, DeltaMs = c.DeltaMs, Reason = c.Reason })
+            .ToList();
+
+    private void RebuildCornerTrackers() =>
+        _cornerTrackers = _trackModel.Corners
+            .Select(corner => new CornerTracker(corner, _options.ResumeThrottlePct))
+            .ToList();
+
+    private void ResetForNextLap()
+    {
+        foreach (CornerTracker tracker in _cornerTrackers)
+        {
+            tracker.Reset();
+        }
+
+        _lapLosses.Clear();
+        _prevSectorCrossPos = 0f;
+    }
+
+    private static int? SectorTime(CompletedLap lap, int index) =>
+        lap.SectorTimesMs.Count > index ? lap.SectorTimesMs[index] : null;
+}

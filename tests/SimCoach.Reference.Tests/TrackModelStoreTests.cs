@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using SimCoach.Pipeline.Segmentation;
+using SimCoach.Storage;
 using SimCoach.TestKit;
 using Xunit;
 

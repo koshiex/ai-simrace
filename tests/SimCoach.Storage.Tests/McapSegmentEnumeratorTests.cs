@@ -49,6 +49,18 @@ public sealed class McapSegmentEnumeratorTests : IDisposable
     }
 
     [Fact]
+    public void Resolve_segment_paths_accepts_a_single_file()
+    {
+        IReadOnlyList<TelemetryFrame> frames = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
+        SegmentFixture.Write(_dir, frames, framesPerSegment: 150);
+        string firstSegment = Directory.GetFiles(_dir, "*.mcap").OrderBy(p => p, StringComparer.Ordinal).First();
+
+        IReadOnlyList<string> resolved = McapSegmentEnumerator.ResolveSegmentPaths(firstSegment);
+
+        resolved.Should().ContainSingle().Which.Should().Be(firstSegment);
+    }
+
+    [Fact]
     public void Empty_directory_throws()
     {
         Directory.CreateDirectory(_dir);

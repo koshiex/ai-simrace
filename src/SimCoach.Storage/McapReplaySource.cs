@@ -37,7 +37,7 @@ public sealed class McapReplaySource : ITelemetrySource
 
     public async IAsyncEnumerable<TelemetryFrame> ReadAsync([EnumeratorCancellation] CancellationToken ct)
     {
-        IReadOnlyList<string> segmentPaths = ResolveSegmentPaths(_options.Path);
+        IReadOnlyList<string> segmentPaths = McapSegmentEnumerator.ResolveSegmentPaths(_options.Path);
         _logger.LogInformation(
             "Replaying {SegmentCount} segment(s) from {Path} at speed {Speed}",
             segmentPaths.Count,
@@ -78,29 +78,6 @@ public sealed class McapReplaySource : ITelemetrySource
                 yield return TelemetryFrame.Parser.ParseFrom(message.Data);
             }
         }
-    }
-
-    private static IReadOnlyList<string> ResolveSegmentPaths(string path)
-    {
-        if (File.Exists(path))
-        {
-            return [path];
-        }
-
-        if (Directory.Exists(path))
-        {
-            string[] segments = Directory.GetFiles(path, "*.mcap");
-            if (segments.Length == 0)
-            {
-                throw new FileNotFoundException($"No .mcap segments found in '{path}'.");
-            }
-
-            // segment-NNNN names sort chronologically up to 9999 segments (~7 days at 60 s rotation)
-            Array.Sort(segments, StringComparer.Ordinal);
-            return segments;
-        }
-
-        throw new FileNotFoundException($"Replay path '{path}' does not exist.");
     }
 
     private static McapSegment ReadSegment(string segmentPath)

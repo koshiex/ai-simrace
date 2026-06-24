@@ -258,7 +258,12 @@ allocate-before-publish + тесты на гонку), C3 ✅ (`LapSegmenter`/`S
 `LandmarkDataset` + `TrackModelStore` dataset-путь), C5b ✅ (`TrackModelBuilder` derive-фолбэк +
 `JsonTrackModelRepository` персист + idempotent rebuild), C6a ✅ (`McapSegmentEnumerator` +
 `LapParquetWriter` с `world_x/y/z`), C6b ✅ (`PositionResampler` 1 м), dead-until-wired.
-Остальное (E) — `todo`.
+PR-E готов — C7 ✅ (`ReferenceParquetCodec` + `ReferenceLookup`/`ReferenceStore` PB-выбор), C8 ✅
+(`DomainEventFanOut` + `ComputeService`/`ComputeSession` + Corner/Sector/Lap/Session события,
+mid-lap corner-exit, дельты vs референс из грида), C9 ✅ (wiring + порядок остановки, дедуп
+`McapReplaySource`→`McapSegmentEnumerator.ResolveSegmentPaths`, `laps.parquet` на `SessionManager.StopAsync`,
+e2e-голден). **Фаза 2 завершена.** Ключевое решение: `SessionManager` финализирует в `StopAsync`
+(не в `ExecuteAsync` finally), иначе гонка с компьютом — см. KB `compute-domain-events.md`.
 
 Safety classes:
 - **Additive** — append-only proto fields / new mapper lines / new code that does not modify a live

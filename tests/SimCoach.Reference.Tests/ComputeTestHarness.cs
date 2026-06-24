@@ -1,0 +1,124 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using SimCoach.Contracts.V1;
+using SimCoach.Pipeline;
+using SimCoach.Storage;
+using SimCoach.Storage.Database;
+using SimCoach.Storage.Repositories;
+
+namespace SimCoach.Reference.Tests;
+
+/// <summary>
+/// Wires a real compute dependency graph (temp SQLite + temp data dirs) and drives a
+/// <see cref="ComputeSession"/> over a frame list, collecting the emitted domain events. Lets the
+/// compute tests assert on the full event stream and the persisted lap rows without a host.
+/// </summary>
+internal sealed class ComputeTestHarness : IDisposable
+{
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "simcoach-compute-" + Guid.NewGuid().ToString("N"));
+
+    public ComputeTestHarness(ITrackLengthProvider? trackLengths = null)
+    {
+        Directory.CreateDirectory(_root);
+        var dbOptions = new DatabaseOptions { DbPath = Path.Combine(_root, "simcoach.db") };
+        Factory = new SqliteConnectionFactory(dbOptions);
+        new DatabaseMigrator(Factory).Migrate();
+
+        ITrackLengthProvider lengths = trackLengths ?? FakeTrackLengths.Spa();
+        Laps = new LapRepository(Factory);
+        References = new ReferenceRepository(Factory);
+        Sessions = new SessionRepository(Factory);
+        DomainFanOut = new DomainEventFanOut();
+
+        TrackModels = new TrackModelStore(
+            LandmarkDataset.Load(),
+            new JsonTrackModelRepository(Path.Combine(_root, "track_models")),
+            lengths,
+            NullLogger<TrackModelStore>.Instance);
+        Lookup = new ReferenceLookup(References);
+        ReferenceStore = new ReferenceStore(
+            References,
+            new ReferenceStorageOptions { Directory = Path.Combine(_root, "references") },
+            TimeProvider.System,
+            NullLogger<ReferenceStore>.Instance);
+        _lengths = lengths;
+    }
+
+    private readonly ITrackLengthProvider _lengths;
+
+    public SqliteConnectionFactory Factory { get; }
+
+    public LapRepository Laps { get; }
+
+    public ReferenceRepository References { get; }
+
+    public SessionRepository Sessions { get; }
+
+    public DomainEventFanOut DomainFanOut { get; }
+
+    public TrackModelStore TrackModels { get; }
+
+    public ReferenceLookup Lookup { get; }
+
+    public ReferenceStore ReferenceStore { get; }
+
+    public string ReferencesDirectory => Path.Combine(_root, "references");
+
+    /// <summary>Inserts a minimal sessions row so a reference's <c>source_session_id</c> FK is satisfied.</summary>
+    public void SeedSession(string sessionId, ReferenceTriple triple) => Sessions.Insert(new SessionRow
+    {
+        Id = sessionId,
+        StartedAtUtc = DateTimeOffset.UnixEpoch,
+        Sim = "acc",
+        TrackId = triple.TrackId,
+        CarId = triple.CarId,
+        WeatherBucket = triple.WeatherBucket,
+        McapPath = "unused",
+    });
+
+    /// <summary>Feeds the frames through a fresh <see cref="ComputeSession"/> and returns its events.</summary>
+    public async Task<IReadOnlyList<DomainEvent>> RunAsync(
+        IReadOnlyList<TelemetryFrame> frames, string sessionId = "20260601-120000-000", ComputeOptions? options = null)
+    {
+        DomainEventSubscription subscription = DomainFanOut.Subscribe("test");
+        var identity = new SessionIdentity(sessionId, new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero));
+        // The session row is owned by SessionManager in production; insert it here so the lap FK holds.
+        Sessions.Insert(NewSessionRow(identity, frames[0]));
+
+        var session = new ComputeSession(
+            DomainFanOut, TrackModels, Lookup, ReferenceStore, Laps, _lengths,
+            options ?? new ComputeOptions(), NullLogger.Instance, identity);
+        foreach (TelemetryFrame frame in frames)
+        {
+            session.Accept(frame);
+        }
+
+        session.Complete();
+
+        List<DomainEvent> events = [];
+        await foreach (DomainEvent domainEvent in subscription.ReadAllAsync())
+        {
+            events.Add(domainEvent);
+        }
+
+        return events;
+    }
+
+    private static SessionRow NewSessionRow(SessionIdentity identity, TelemetryFrame frame) => new()
+    {
+        Id = identity.SessionId,
+        StartedAtUtc = identity.StartedAtUtc,
+        Sim = frame.Sim,
+        TrackId = frame.TrackId,
+        CarId = frame.CarId,
+        WeatherBucket = frame.WeatherBucket,
+        McapPath = "unused",
+    };
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_root))
+        {
+            Directory.Delete(_root, recursive: true);
+        }
+    }
+}
