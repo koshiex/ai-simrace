@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using FluentAssertions;
 using SimCoach.Contracts.V1;
 using SimCoach.Storage.Repositories;
@@ -90,6 +91,24 @@ public sealed class ComputeSessionTests
         harness.TrackModels.Get("test_oval").Source.Should().Be(TrackModelSource.Derived);
         events.OfType<CornerEvent>(DomainEventKind.Corner).Should().NotBeEmpty();
         events.OfType<LapEvent>(DomainEventKind.Lap).Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task Covered_track_keeps_its_dataset_model_after_a_clean_lap()
+    {
+        // A clean lap must NOT swap a dataset-covered track to the lap-derived model (ADR-0010). Before
+        // the fix, the first clean lap overrode Spa's named landmark corners with derived spa_t01..NN
+        // ids on every subsequent lap.
+        using var harness = new ComputeTestHarness();
+        IReadOnlyList<TelemetryFrame> frames = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
+
+        IReadOnlyList<DomainEvent> events = await harness.RunAsync(frames, SessionId);
+
+        IReadOnlyList<CornerEvent> corners = [.. events.OfType<CornerEvent>(DomainEventKind.Corner)];
+        corners.Should().NotBeEmpty();
+        corners.Should().OnlyContain(
+            c => !Regex.IsMatch(c.CornerId, @"^spa_t\d+$"),
+            "dataset corners keep their landmark names across all laps; the derive override must not fire");
     }
 
     [Fact]

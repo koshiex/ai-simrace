@@ -255,11 +255,17 @@ internal sealed class ComputeSession
 
         if (clean)
         {
-            TrackModel updated = _trackModels.Derive(_trackId, completed);
-            if (updated.Source == TrackModelSource.Derived && !ReferenceEquals(updated, _trackModel))
+            // Only uncovered tracks build their corner model from the driver's lap. A dataset-covered
+            // track keeps its curated landmark model (ADR-0010) — deriving would replace the named,
+            // skill-independent corners with a worse lap-derived set mid-session.
+            if (_trackModel.Source != TrackModelSource.Dataset)
             {
-                _trackModel = updated;
-                RebuildCornerTrackers();
+                TrackModel updated = _trackModels.Derive(_trackId, completed);
+                if (updated.Source == TrackModelSource.Derived && !ReferenceEquals(updated, _trackModel))
+                {
+                    _trackModel = updated;
+                    RebuildCornerTrackers();
+                }
             }
 
             if (self is not null && _referenceStore.MaybeUpdate(_triple, completed, self, _identity))
