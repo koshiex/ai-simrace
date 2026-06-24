@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using SimCoach.Contracts.V1;
 using SimCoach.Pipeline;
@@ -116,6 +117,8 @@ internal sealed class ComputeTestHarness : IDisposable
 
     public void Dispose()
     {
+        // Release pooled SQLite handles so the temp db file is unlocked before delete (Windows).
+        SqliteConnection.ClearAllPools();
         if (Directory.Exists(_root))
         {
             Directory.Delete(_root, recursive: true);
