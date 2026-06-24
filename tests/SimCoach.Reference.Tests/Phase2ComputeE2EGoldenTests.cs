@@ -27,10 +27,13 @@ public sealed class Phase2ComputeE2EGoldenTests : IDisposable
 
     public Phase2ComputeE2EGoldenTests() => Directory.CreateDirectory(Path.Combine(_root, "input"));
 
-    [Fact]
-    public async Task Replayed_spa_session_produces_laps_parquet_reference_and_events()
+    [Theory]
+    [InlineData(false)] // frames flip lap_number and position together (idealized)
+    [InlineData(true)]  // real live-ACC ordering: lap_number increments a frame early, pos pinned at 1.0
+    public async Task Replayed_spa_session_produces_laps_parquet_reference_and_events(bool injectAccDesync)
     {
-        WriteInputSegment(SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4));
+        IReadOnlyList<TelemetryFrame> frames = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
+        WriteInputSegment(injectAccDesync ? InjectAccLapCounterDesync(frames) : frames);
 
         var factory = new SqliteConnectionFactory(new DatabaseOptions { DbPath = Path.Combine(_root, "simcoach.db") });
         new DatabaseMigrator(factory).Migrate();
@@ -138,6 +141,27 @@ public sealed class Phase2ComputeE2EGoldenTests : IDisposable
         await ingest.ExecuteTask!.WaitAsync(_waitTimeout);
         await ingest.StopAsync(CancellationToken.None);
         ingest.Dispose();
+    }
+
+    /// <summary>
+    /// Rewrites an idealized synthetic stream into the real live-ACC start-line signature: completedLaps
+    /// increments one frame BEFORE normalized_car_position wraps, pinned at 1.0 on that frame. This is the
+    /// ordering that made the old lap-bump-AND-wrap predicate segment whole sessions to zero laps; the
+    /// golden must hold identically under it.
+    /// </summary>
+    private static IReadOnlyList<TelemetryFrame> InjectAccLapCounterDesync(IReadOnlyList<TelemetryFrame> frames)
+    {
+        List<TelemetryFrame> result = [.. frames.Select(f => f.Clone())];
+        for (int i = 1; i < result.Count; i++)
+        {
+            if (result[i].LapNumber > result[i - 1].LapNumber)
+            {
+                result[i - 1].LapNumber = result[i].LapNumber;
+                result[i - 1].NormalizedCarPosition = 1f;
+            }
+        }
+
+        return result;
     }
 
     private void WriteInputSegment(IReadOnlyList<TelemetryFrame> frames)

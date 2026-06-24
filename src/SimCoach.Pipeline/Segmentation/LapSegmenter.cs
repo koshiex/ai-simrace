@@ -11,9 +11,27 @@ namespace SimCoach.Pipeline.Segmentation;
 /// </summary>
 public sealed class LapSegmenter
 {
+    /// <summary>Previous-frame position must be at least this (near the lap end) for a wrap to count.</summary>
+    private const float WrapHighThreshold = 0.9f;
+
+    /// <summary>Current-frame position must be below this (near the lap start) for a wrap to count.</summary>
+    private const float WrapLowThreshold = 0.3f;
+
     private readonly List<TelemetryFrame> _current = [];
     private TelemetryFrame? _previous;
     private bool _startedAtLine;
+
+    /// <summary>True when the frame just fed to <see cref="Accept"/> was a start-line crossing (whether or
+    /// not it closed a bounded lap). The compute session reads this to re-arm its per-lap accumulators, so
+    /// the crossing definition lives in one place instead of being duplicated and drifting.</summary>
+    public bool CrossedThisFrame { get; private set; }
+
+    /// <summary>
+    /// Count of position resets into the start band (<c>pos &lt; <see cref="WrapLowThreshold"/></c>) that did
+    /// NOT come from the lap end — a pit/teleport reset or a dropped recording chunk, neither of which is a
+    /// lap crossing. Zero on a clean live session; a non-zero count flags a recording artifact to the caller.
+    /// </summary>
+    public int SuspiciousResetsIgnored { get; private set; }
 
     /// <summary>
     /// Feeds one frame; returns the lap that just completed at a start-line crossing, or <c>null</c>.
@@ -22,16 +40,25 @@ public sealed class LapSegmenter
     {
         ArgumentNullException.ThrowIfNull(frame);
         CompletedLap? completed = null;
+        CrossedThisFrame = false;
 
-        if (_previous is not null && IsStartLineCrossing(_previous, frame))
+        if (_previous is not null)
         {
-            if (_startedAtLine && _current.Count > 0)
+            if (IsStartLineCrossing(_previous, frame))
             {
-                completed = Build(_current, frame.T.ToDateTimeOffset());
-            }
+                CrossedThisFrame = true;
+                if (_startedAtLine && _current.Count > 0)
+                {
+                    completed = Build(_current, frame.T.ToDateTimeOffset());
+                }
 
-            _current.Clear();
-            _startedAtLine = true; // the lap now beginning had its start observed
+                _current.Clear();
+                _startedAtLine = true; // the lap now beginning had its start observed
+            }
+            else if (IsSuspiciousReset(_previous, frame))
+            {
+                SuspiciousResetsIgnored++;
+            }
         }
 
         _current.Add(frame);
@@ -40,12 +67,26 @@ public sealed class LapSegmenter
     }
 
     /// <summary>
-    /// A start-line crossing needs both a lap-number increment AND a normalized-position wrap (high
-    /// → low). The wrap guard rejects a spurious lap-counter bump that is not a real lap completion.
+    /// A start-line crossing is a wrap of normalized car position from the lap end (≈1.0) back to the
+    /// start (≈0.0). lap_number is deliberately NOT part of the trigger: on live ACC the completedLaps
+    /// counter increments roughly a frame before the position wraps — and stays pinned at 1.0 on the
+    /// increment frame — so the old "lap-bump AND wrap on the same frame" predicate never fired and a
+    /// whole session segmented to zero laps (KB: acc-lap-boundary-timing). The out-lap → lap-1 crossing
+    /// never increments the counter at all, so wrap-primary also keeps the driver's first flying lap.
+    /// The high/low band makes the trigger self-debouncing: a second crossing needs the previous frame
+    /// back above <see cref="WrapHighThreshold"/>, which only happens after nearly a full lap — so a
+    /// pit/teleport reset (which drops position from mid-lap, with the previous frame below
+    /// <see cref="WrapHighThreshold"/>) cannot mint a phantom lap.
     /// </summary>
     private static bool IsStartLineCrossing(TelemetryFrame previous, TelemetryFrame current) =>
-        current.LapNumber > previous.LapNumber
-        && current.NormalizedCarPosition < previous.NormalizedCarPosition;
+        previous.NormalizedCarPosition > WrapHighThreshold
+        && current.NormalizedCarPosition < WrapLowThreshold;
+
+    /// <summary>A drop into the start band that did not originate at the lap end — a reset, not a crossing.</summary>
+    private static bool IsSuspiciousReset(TelemetryFrame previous, TelemetryFrame current) =>
+        current.NormalizedCarPosition < WrapLowThreshold
+        && current.NormalizedCarPosition < previous.NormalizedCarPosition
+        && previous.NormalizedCarPosition <= WrapHighThreshold;
 
     private static CompletedLap Build(List<TelemetryFrame> lapFrames, DateTimeOffset crossedAt)
     {

@@ -52,7 +52,6 @@ internal sealed class ComputeSession
     private int _balanceCornerCount;
     private float _prevSectorCrossPos;
     private TelemetryFrame? _lastFrame;
-    private TelemetryFrame? _previousFrame;
 
     public ComputeSession(
         DomainEventFanOut domain,
@@ -86,11 +85,6 @@ internal sealed class ComputeSession
             InitSession(frame);
         }
 
-        // A start-line crossing closes a lap's corner/sector accumulation. It must reset state even when
-        // the lap segmenter discards the lap (the first crossing has no observed start) — otherwise the
-        // corner trackers, which fire once per lap, would stay latched and never re-arm.
-        bool crossing = IsStartLineCrossing(_previousFrame, frame);
-
         foreach (CornerTracker tracker in _cornerTrackers)
         {
             IReadOnlyList<TelemetryFrame>? window = tracker.Accept(frame);
@@ -112,18 +106,15 @@ internal sealed class ComputeSession
             HandleLap(completed, frame);
         }
 
-        if (crossing)
+        // A start-line crossing closes a lap's corner/sector accumulation. It must reset state even when
+        // the lap segmenter discards the lap (the first crossing has no observed start) — otherwise the
+        // corner trackers, which fire once per lap, would stay latched and never re-arm. The crossing
+        // verdict comes from the segmenter so the definition lives in exactly one place.
+        if (_lapSegmenter.CrossedThisFrame)
         {
             ResetForNextLap();
         }
-
-        _previousFrame = frame;
     }
-
-    private static bool IsStartLineCrossing(TelemetryFrame? previous, TelemetryFrame current) =>
-        previous is not null
-        && current.LapNumber > previous.LapNumber
-        && current.NormalizedCarPosition < previous.NormalizedCarPosition;
 
     /// <summary>Emits the <see cref="SessionEvent"/> aggregate and completes the domain fan-out.</summary>
     public void Complete()
@@ -151,6 +142,13 @@ internal sealed class ComputeSession
             };
             // Stints are descoped for Phase 2 — the empty repeated field is proto3-valid.
             _domain.Publish(DomainEvent.Session(session));
+        }
+
+        if (_lapSegmenter.SuspiciousResetsIgnored > 0)
+        {
+            _logger.LogWarning(
+                "{Count} position reset(s) ignored for session {Session} (pit/teleport or dropped frames, not lap crossings)",
+                _lapSegmenter.SuspiciousResetsIgnored, _identity.SessionId);
         }
 
         _domain.Complete();

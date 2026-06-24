@@ -16,9 +16,9 @@ One frame emitted per adapter tick (target 100–333 Hz on ACC).
 | `track_id` | `string` | — | normalised (`"spa"`, `"monza"`) |
 | `car_id` | `string` | — | normalised (`"audi_r8_lms_evo_ii"`) |
 | `weather_bucket` | `string` | — | `"dry-cool"`, `"dry-warm"`, `"damp"`, `"wet"` |
-| `lap_number` | `int32` | — | 1-based |
+| `lap_number` | `int32` | — | 1-based; NOT the lap-boundary trigger (ACC desync — see KB `acc-lap-boundary-timing`) |
 | `lap_distance_m` | `float` | m | cumulative since start of lap |
-| `normalized_car_position` | `float` | 0..1 | position along lap |
+| `normalized_car_position` | `float` | 0..1 | position along lap; a high→low wrap (≈1→0) is the start-line crossing |
 | `speed_mps` | `float` | m/s | |
 | `throttle_pct` | `float` | 0..1 | |
 | `brake_pct` | `float` | 0..1 | |

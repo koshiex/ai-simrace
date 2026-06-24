@@ -56,27 +56,83 @@ public sealed class LapSegmenterTests
     }
 
     [Fact]
-    public void Lap_number_bump_without_position_wrap_is_not_a_boundary()
+    public void Lap_counter_bumps_without_a_position_wrap_are_never_boundaries()
     {
-        // Arrange — a lap-counter bump while position keeps rising must NOT close a lap. Only the
-        // genuine wrap (high → low) does. Sequence: rise, spurious bump (no wrap), real wrap, rise.
+        // Arrange — the crossing trigger is the position wrap, not lap_number. A rising position with
+        // lap_number bumping every frame (a counter glitch, or just no completed lap) closes nothing.
         LapSegmenter segmenter = new();
         TelemetryFrame[] frames =
         [
-            Frame(lapNumber: 1, pos: 0.10f, ms: 0),
-            Frame(lapNumber: 1, pos: 0.60f, ms: 10),
-            Frame(lapNumber: 2, pos: 0.90f, ms: 20),  // bump WITHOUT wrap — must be ignored
-            Frame(lapNumber: 3, pos: 0.05f, ms: 30),  // real crossing (wrap) — closes the run above
-            Frame(lapNumber: 3, pos: 0.50f, ms: 40),
+            Frame(lapNumber: 1, pos: 0.20f, ms: 0),
+            Frame(lapNumber: 2, pos: 0.40f, ms: 10),  // lap_number bumps but position keeps rising
+            Frame(lapNumber: 3, pos: 0.60f, ms: 20),
+            Frame(lapNumber: 4, pos: 0.80f, ms: 30),
         ];
 
         // Act
         List<CompletedLap> completed = [.. frames.Select(segmenter.Accept).Where(l => l is not null).Select(l => l!)];
 
-        // Assert — exactly one crossing fired; the spurious bump did not split the lap early.
-        completed.Should().BeEmpty(
-            "the first lap is partial (its start was never observed) so it is discarded, "
-            + "and the spurious bump created no extra boundary");
+        // Assert
+        completed.Should().BeEmpty("no position wrap occurred, so lap_number changes alone are not crossings");
+    }
+
+    [Fact]
+    public void Acc_desync_lap_bump_one_frame_before_position_wrap_still_closes_lap()
+    {
+        // Arrange — the real live-ACC signature (Monza capture): completedLaps increments ~1 frame
+        // BEFORE normalized_car_position wraps, pinned at 1.0 on the increment frame; and the
+        // out-lap → lap-1 crossing never increments the counter at all. The old "lap-bump AND wrap on
+        // the same frame" predicate fired zero times here (whole sessions segmented to 0 laps);
+        // wrap-primary must still close the interior laps.
+        LapSegmenter segmenter = new();
+        TelemetryFrame[] frames =
+        [
+            // out-lap → lap 1: wrap with NO counter increment
+            Frame(lapNumber: 1, pos: 0.95f, ms: 0),
+            Frame(lapNumber: 1, pos: 1.00f, ms: 10),
+            Frame(lapNumber: 1, pos: 0.02f, ms: 20),   // crossing #1 (start observed) — discarded
+            // lap 1 → lap 2: counter bumps a frame early while position is pinned at 1.0, then wraps
+            Frame(lapNumber: 1, pos: 0.95f, ms: 30),
+            Frame(lapNumber: 2, pos: 1.00f, ms: 40),   // desync: lap_number 1→2 with pos still 1.0
+            Frame(lapNumber: 2, pos: 0.02f, ms: 50),   // crossing #2 — closes lap 1
+            // lap 2 → lap 3
+            Frame(lapNumber: 2, pos: 0.95f, ms: 60),
+            Frame(lapNumber: 3, pos: 1.00f, ms: 70),
+            Frame(lapNumber: 3, pos: 0.02f, ms: 80),   // crossing #3 — closes lap 2
+            Frame(lapNumber: 3, pos: 0.50f, ms: 90),
+        ];
+
+        // Act
+        List<CompletedLap> completed = [.. frames.Select(segmenter.Accept).Where(l => l is not null).Select(l => l!)];
+
+        // Assert — two interior laps the old predicate dropped entirely; no false reset canary.
+        completed.Select(l => l.LapNumber).Should().Equal(1, 2);
+        segmenter.SuspiciousResetsIgnored.Should().Be(0);
+    }
+
+    [Fact]
+    public void Mid_lap_position_reset_mints_no_lap_and_is_flagged_suspicious()
+    {
+        // Arrange — a pit/teleport (or dropped chunk) resets position from MID-lap, not the lap end.
+        // The high-water-mark guard (previous frame must be near 1.0) rejects it, so it cannot inflate
+        // lap_count, and it is counted as a suspicious reset for the caller to log.
+        LapSegmenter segmenter = new();
+        TelemetryFrame[] frames =
+        [
+            Frame(lapNumber: 1, pos: 0.95f, ms: 0),
+            Frame(lapNumber: 1, pos: 0.02f, ms: 10),   // real crossing (start observed)
+            Frame(lapNumber: 1, pos: 0.40f, ms: 20),
+            Frame(lapNumber: 1, pos: 0.55f, ms: 30),
+            Frame(lapNumber: 1, pos: 0.05f, ms: 40),   // mid-lap reset: previous 0.55 ≪ 0.9 → not a crossing
+            Frame(lapNumber: 1, pos: 0.25f, ms: 50),
+        ];
+
+        // Act
+        List<CompletedLap> completed = [.. frames.Select(segmenter.Accept).Where(l => l is not null).Select(l => l!)];
+
+        // Assert — only the discarded start crossing fired; the reset minted nothing and was flagged.
+        completed.Should().BeEmpty();
+        segmenter.SuspiciousResetsIgnored.Should().Be(1);
     }
 
     private static IReadOnlyList<CompletedLap> Segment(IReadOnlyList<TelemetryFrame> frames)
