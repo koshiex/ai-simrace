@@ -79,6 +79,8 @@ public sealed class LapSegmenter
     /// <see cref="WrapHighThreshold"/>) cannot mint a phantom lap.
     /// </summary>
     private static bool IsStartLineCrossing(TelemetryFrame previous, TelemetryFrame current) =>
+        // 0.9 clears every real wrap with ~460× margin (live ACC ~400 Hz: max frame-to-frame position
+        // step 0.0002, last pre-line sample = 1.0) yet sits far above every pit/box reset origin (≤0.17).
         previous.NormalizedCarPosition > WrapHighThreshold
         && current.NormalizedCarPosition < WrapLowThreshold;
 

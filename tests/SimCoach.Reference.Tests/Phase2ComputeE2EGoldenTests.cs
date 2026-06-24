@@ -29,7 +29,7 @@ public sealed class Phase2ComputeE2EGoldenTests : IDisposable
 
     [Theory]
     [InlineData(false)] // frames flip lap_number and position together (idealized)
-    [InlineData(true)]  // real live-ACC ordering: lap_number increments a frame early, pos pinned at 1.0
+    [InlineData(true)]  // real ACC ordering — guards against re-introducing a lap_number dependence end-to-end
     public async Task Replayed_spa_session_produces_laps_parquet_reference_and_events(bool injectAccDesync)
     {
         IReadOnlyList<TelemetryFrame> frames = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);

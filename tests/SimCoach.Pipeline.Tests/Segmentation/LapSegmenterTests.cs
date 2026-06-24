@@ -56,24 +56,17 @@ public sealed class LapSegmenterTests
     }
 
     [Fact]
-    public void Lap_counter_bumps_without_a_position_wrap_are_never_boundaries()
+    public void Lap_counter_bump_with_a_sub_wrap_dip_is_not_a_crossing()
     {
-        // Arrange — the crossing trigger is the position wrap, not lap_number. A rising position with
-        // lap_number bumping every frame (a counter glitch, or just no completed lap) closes nothing.
+        // The old predicate fired on (lap_number++ AND any backward position step); wrap-primary must
+        // NOT — a counter bump with a small dip well short of the lap end is not a start-line crossing.
+        // This fails against the old AND-predicate, so it pins the behaviour change.
         LapSegmenter segmenter = new();
-        TelemetryFrame[] frames =
-        [
-            Frame(lapNumber: 1, pos: 0.20f, ms: 0),
-            Frame(lapNumber: 2, pos: 0.40f, ms: 10),  // lap_number bumps but position keeps rising
-            Frame(lapNumber: 3, pos: 0.60f, ms: 20),
-            Frame(lapNumber: 4, pos: 0.80f, ms: 30),
-        ];
+        segmenter.Accept(Frame(lapNumber: 1, pos: 0.40f, ms: 0));
+        segmenter.Accept(Frame(lapNumber: 2, pos: 0.38f, ms: 10)); // lap++ and a dip, but previous ≪ 0.9
 
-        // Act
-        List<CompletedLap> completed = [.. frames.Select(segmenter.Accept).Where(l => l is not null).Select(l => l!)];
-
-        // Assert
-        completed.Should().BeEmpty("no position wrap occurred, so lap_number changes alone are not crossings");
+        segmenter.CrossedThisFrame.Should().BeFalse(
+            "a lap-counter bump with a sub-wrap position dip is not a wrap from the lap end");
     }
 
     [Fact]
