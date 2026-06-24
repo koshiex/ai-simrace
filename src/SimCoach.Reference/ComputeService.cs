@@ -75,11 +75,15 @@ public sealed class ComputeService : BackgroundService
         try
         {
             identity = await _sessionContext.Ready.WaitAsync(stoppingToken).ConfigureAwait(false);
+            // The reference/lap rows compute writes are FK-bound to the sessions row, which
+            // SessionManager inserts on its first frame. Wait for that insert so a fast replay can't
+            // let compute drain a whole lap and upsert a reference before the row exists.
+            await _sessionContext.Persisted.WaitAsync(stoppingToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             _domainFanOut.Complete();
-            return; // shutdown before a session ever started
+            return; // shutdown before a session ever started or was persisted
         }
 
         var session = new ComputeSession(

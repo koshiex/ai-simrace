@@ -115,6 +115,8 @@ public sealed class SessionManager : BackgroundService
                     _trackId = frame.TrackId;
                     _sessions.Insert(NewRow(_identity, frame, _sessionDirectory));
                     _inserted = true;
+                    // The session row now exists — release FK-dependent writers (compute) waiting on it.
+                    _sessionContext.MarkPersisted();
                 }
             }
         }
