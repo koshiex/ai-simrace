@@ -48,13 +48,14 @@ public static class LapParquetWriter
 
             try
             {
-                laps.Add(PositionResampler.Resample(completed.Frames, lapLengthM));
+                // Clamp non-monotonic (crash/spin) laps so they stay in the parquet for post-session
+                // review rather than being dropped — they are is_clean = 0 and never become references.
+                laps.Add(PositionResampler.Resample(completed.Frames, lapLengthM, clampNonMonotonic: true));
             }
             catch (ArgumentException)
             {
-                // A crash/spin/pit lap whose position steps backward cannot be resampled. Skip just
-                // that lap (compute already warns about it per-lap) instead of aborting the whole
-                // file — one bad lap must not cost the session its other laps' parquet.
+                // A degenerate lap (e.g. too few frames) still can't be resampled — skip just it,
+                // never abort the whole file.
                 skipped++;
             }
         }

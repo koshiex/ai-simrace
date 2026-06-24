@@ -184,7 +184,7 @@ public sealed class SessionManager : BackgroundService
             if (skipped > 0)
             {
                 _logger.LogInformation(
-                    "{Skipped} non-resampleable lap(s) (crash/spin/pit) skipped in laps.parquet for {SessionDirectory}",
+                    "{Skipped} degenerate lap(s) skipped in laps.parquet for {SessionDirectory}",
                     skipped, sessionDirectory);
             }
 

@@ -51,6 +51,25 @@ public sealed class PositionResamplerTests
     }
 
     [Fact]
+    public void Clamps_a_backward_step_when_asked_instead_of_throwing()
+    {
+        // The same backstep a strict resample rejects: a crash/spin lap bound for review (never a
+        // reference) clamps it to the running max so the grid resamples without throwing.
+        TelemetryFrame[] frames =
+        [
+            Frame(0.10f, 0),
+            Frame(0.50f, 100),
+            Frame(0.40f, 200), // backward step — clamped up to 0.50
+            Frame(0.80f, 300),
+        ];
+
+        ResampledLap resampled = PositionResampler.Resample(frames, 100f, clampNonMonotonic: true);
+
+        resampled.GridLength.Should().Be(100);
+        resampled.PositionNormalized.Should().BeInAscendingOrder();
+    }
+
+    [Fact]
     public void Tolerates_consecutive_frames_at_an_identical_position()
     {
         // A stalled position (equal, not decreasing) must not trip the monotonic guard or divide by zero.

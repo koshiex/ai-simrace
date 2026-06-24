@@ -16,7 +16,15 @@ public static class PositionResampler
     /// <summary>Tolerance for the monotonic-position guard, absorbing float noise but not a real backstep.</summary>
     private const float MonotonicEpsilon = 1e-4f;
 
-    public static ResampledLap Resample(IReadOnlyList<TelemetryFrame> lapFrames, float lapLengthM)
+    /// <param name="clampNonMonotonic">
+    /// When <c>false</c> (default) a backward position step (a pit/out/in detour) throws — the strict
+    /// mode references and the reference candidate use. When <c>true</c>, a backward step is clamped to
+    /// the running max instead: the crash/spin stretch flattens onto one grid point while the rest of
+    /// the lap resamples exactly, so a dirty crash lap is still reviewable in <c>laps.parquet</c> (it is
+    /// already <c>is_clean = 0</c>, so it never becomes a reference).
+    /// </param>
+    public static ResampledLap Resample(
+        IReadOnlyList<TelemetryFrame> lapFrames, float lapLengthM, bool clampNonMonotonic = false)
     {
         ArgumentNullException.ThrowIfNull(lapFrames);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(lapLengthM);
@@ -31,15 +39,17 @@ public static class PositionResampler
         var lapStart = lapFrames[0].T.ToDateTimeOffset();
         for (int i = 0; i < n; i++)
         {
-            pos[i] = lapFrames[i].NormalizedCarPosition;
-            if (i > 0 && pos[i] < pos[i - 1] - MonotonicEpsilon)
+            float raw = lapFrames[i].NormalizedCarPosition;
+            if (i > 0 && raw < pos[i - 1] - MonotonicEpsilon && !clampNonMonotonic)
             {
                 throw new ArgumentException(
-                    $"Lap position is not monotonic at frame {i} ({pos[i]} < {pos[i - 1]}); "
+                    $"Lap position is not monotonic at frame {i} ({raw} < {pos[i - 1]}); "
                     + "a pit/out/in lap cannot be resampled.",
                     nameof(lapFrames));
             }
 
+            // Clamping keeps the grid monotonic by pinning a backward step to the running max.
+            pos[i] = (clampNonMonotonic && i > 0) ? MathF.Max(raw, pos[i - 1]) : raw;
             tMs[i] = (float)(lapFrames[i].T.ToDateTimeOffset() - lapStart).TotalMilliseconds;
         }
 
