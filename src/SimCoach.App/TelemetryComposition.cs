@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using SimCoach.Adapters.ACC;
 using SimCoach.Adapters.ACC.SharedMemory;
 using SimCoach.Pipeline;
+using SimCoach.Reference;
 using SimCoach.Storage;
 using SimCoach.Storage.Database;
 using SimCoach.Storage.Repositories;
@@ -32,6 +33,7 @@ internal static class TelemetryComposition
 
         AddTelemetrySource(builder);
         AddStorage(builder);
+        AddCompute(builder);
 
         // Resolve-time factory so the fallback warning (M2: never silently ignore explicit
         // configuration) can reach the logger, which does not exist at composition time.
@@ -44,11 +46,13 @@ internal static class TelemetryComposition
         });
 
         // Stop order is the reverse of registration. SessionManager is registered first so it stops
-        // LAST and finalizes the row only after compute (PR-E) has drained its laps. SessionManager
-        // and the recorder both subscribe to the fan-out in their constructors, so the opening
+        // LAST and finalizes the row (counts/PB from persisted laps, plus laps.parquet conversion)
+        // only after ComputeService has drained and written its lap rows and the recorder has flushed
+        // its segments. All consumers subscribe to the fan-out in their constructors, so the opening
         // frames of a session always reach them; IngestService (the producer) is registered last.
         builder.Services.AddHostedService<SessionManager>();
         builder.Services.AddHostedService<McapRecorderService>();
+        builder.Services.AddHostedService<ComputeService>();
         builder.Services.AddHostedService<IngestService>();
         return builder;
     }
@@ -66,6 +70,51 @@ internal static class TelemetryComposition
         builder.Services.AddSingleton<DatabaseMigrator>();
         builder.Services.AddSingleton<SessionRepository>();
         builder.Services.AddSingleton<LapRepository>();
+        builder.Services.AddSingleton<ReferenceRepository>();
+        // Sim-agnostic seam (Storage) bridged to the ACC catalog at the composition edge; consumed by
+        // SessionManager's laps.parquet conversion and the compute track model + resampler.
+        builder.Services.AddSingleton<ITrackLengthProvider, AccTrackLengthProvider>();
+    }
+
+    private static void AddCompute(HostApplicationBuilder builder)
+    {
+        string dataRoot = ResolveDataRoot(builder.Configuration);
+
+        ComputeOptions computeOptions =
+            builder.Configuration.GetSection("Compute").Get<ComputeOptions>() ?? new ComputeOptions();
+        computeOptions.EnsureValid();
+        builder.Services.AddSingleton(computeOptions);
+
+        builder.Services.AddSingleton(LandmarkDataset.Load());
+        builder.Services.AddSingleton<ITrackModelRepository>(
+            new JsonTrackModelRepository(Path.Combine(dataRoot, "track_models")));
+        builder.Services.AddSingleton<TrackModelStore>();
+
+        builder.Services.AddSingleton(new ReferenceStorageOptions
+        {
+            Directory = Path.Combine(dataRoot, "references"),
+        });
+        builder.Services.AddSingleton<ReferenceLookup>();
+        builder.Services.AddSingleton<ReferenceStore>();
+
+        builder.Services.AddSingleton<DomainEventFanOut>();
+    }
+
+    /// <summary>
+    /// The single resolver for the data root behind recordings/references/track_models —
+    /// <c>Storage:DataRoot</c> with <c>%VAR%</c> expansion, falling back to the platform default when
+    /// unset or unexpandable. <see cref="BuildRecordingOptions"/> derives the recordings dir from this
+    /// same call so all three subtrees can never drift to different roots.
+    /// </summary>
+    private static string ResolveDataRoot(IConfiguration configuration)
+    {
+        string configured = configuration["Storage:DataRoot"] ?? string.Empty;
+        string expanded = Environment.ExpandEnvironmentVariables(configured);
+        bool useDefault = string.IsNullOrWhiteSpace(expanded) || expanded.Contains('%');
+        return useDefault
+            ? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SimCoach")
+            : expanded;
     }
 
     private static void AddTelemetrySource(HostApplicationBuilder builder)
@@ -148,7 +197,9 @@ internal static class TelemetryComposition
 
         return new RecordingOptions
         {
-            BasePath = useDefault ? defaults.BasePath : Path.Combine(dataRoot, "recordings"),
+            // Non-default root comes from the shared resolver (== dataRoot here) so recordings and the
+            // references/track_models dirs built off ResolveDataRoot stay on one root.
+            BasePath = useDefault ? defaults.BasePath : Path.Combine(ResolveDataRoot(configuration), "recordings"),
             SegmentDuration = TimeSpan.FromSeconds(configuration.GetValue("Storage:McapRotateSeconds", 60)),
         };
     }

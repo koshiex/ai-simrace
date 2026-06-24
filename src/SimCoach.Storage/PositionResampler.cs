@@ -16,7 +16,12 @@ public static class PositionResampler
     /// <summary>Tolerance for the monotonic-position guard, absorbing float noise but not a real backstep.</summary>
     private const float MonotonicEpsilon = 1e-4f;
 
-    public static ResampledLap Resample(IReadOnlyList<TelemetryFrame> lapFrames, float lapLengthM)
+    // clampNonMonotonic=false (default): a backward position step (pit/out/in detour) throws — the
+    // strict mode the reference candidate (ResampleSelf) uses. true: the backstep is clamped to the
+    // running max so a crash/spin lap still resamples into laps.parquet for review; it is is_clean=0
+    // and never becomes a reference. See ADR-0013.
+    public static ResampledLap Resample(
+        IReadOnlyList<TelemetryFrame> lapFrames, float lapLengthM, bool clampNonMonotonic = false)
     {
         ArgumentNullException.ThrowIfNull(lapFrames);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(lapLengthM);
@@ -31,15 +36,17 @@ public static class PositionResampler
         var lapStart = lapFrames[0].T.ToDateTimeOffset();
         for (int i = 0; i < n; i++)
         {
-            pos[i] = lapFrames[i].NormalizedCarPosition;
-            if (i > 0 && pos[i] < pos[i - 1] - MonotonicEpsilon)
+            float raw = lapFrames[i].NormalizedCarPosition;
+            if (i > 0 && raw < pos[i - 1] - MonotonicEpsilon && !clampNonMonotonic)
             {
                 throw new ArgumentException(
-                    $"Lap position is not monotonic at frame {i} ({pos[i]} < {pos[i - 1]}); "
+                    $"Lap position is not monotonic at frame {i} ({raw} < {pos[i - 1]}); "
                     + "a pit/out/in lap cannot be resampled.",
                     nameof(lapFrames));
             }
 
+            // Clamping keeps the grid monotonic by pinning a backward step to the running max.
+            pos[i] = (clampNonMonotonic && i > 0) ? MathF.Max(raw, pos[i - 1]) : raw;
             tMs[i] = (float)(lapFrames[i].T.ToDateTimeOffset() - lapStart).TotalMilliseconds;
         }
 

@@ -27,6 +27,7 @@ public sealed class SessionManager : BackgroundService
     private readonly RecordingOptions _options;
     private readonly SessionRepository _sessions;
     private readonly LapRepository _laps;
+    private readonly ITrackLengthProvider _trackLengths;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<SessionManager> _logger;
 
@@ -36,6 +37,7 @@ public sealed class SessionManager : BackgroundService
         RecordingOptions options,
         SessionRepository sessions,
         LapRepository laps,
+        ITrackLengthProvider trackLengths,
         TimeProvider timeProvider,
         ILogger<SessionManager> logger)
     {
@@ -44,6 +46,7 @@ public sealed class SessionManager : BackgroundService
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(sessions);
         ArgumentNullException.ThrowIfNull(laps);
+        ArgumentNullException.ThrowIfNull(trackLengths);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
         options.EnsureValid();
@@ -51,10 +54,18 @@ public sealed class SessionManager : BackgroundService
         _options = options;
         _sessions = sessions;
         _laps = laps;
+        _trackLengths = trackLengths;
         _timeProvider = timeProvider;
         _logger = logger;
         _subscription = fanOut.Subscribe("session-manager");
     }
+
+    private readonly WeatherWindow _weather = new(_weatherWindow);
+    private SessionIdentity? _identity;
+    private string _sessionDirectory = string.Empty;
+    private string _trackId = string.Empty;
+    private bool _inserted;
+    private bool _finalized;
 
     public override void Dispose()
     {
@@ -62,48 +73,56 @@ public sealed class SessionManager : BackgroundService
         base.Dispose();
     }
 
+    /// <summary>
+    /// Finalizes the row here rather than at stream end. The host stops services in reverse
+    /// registration order and awaits each; SessionManager is registered first so it stops LAST — after
+    /// ComputeService has fully drained and written its lap rows. Finalizing in the ExecuteAsync finally
+    /// would race compute, since every subscriber's loop ends together when the fan-out completes.
+    /// </summary>
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken).ConfigureAwait(false);
+        if (_inserted && !_finalized && _identity is not null)
+        {
+            _finalized = true;
+            Finalize(_identity.SessionId, _weather.Resolve(), _trackId, _sessionDirectory);
+        }
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        SessionIdentity identity;
         try
         {
-            identity = await _sessionContext.Ready.WaitAsync(stoppingToken).ConfigureAwait(false);
+            _identity = await _sessionContext.Ready.WaitAsync(stoppingToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             return; // shutdown before a session ever started
         }
 
-        string sessionDirectory = Path.Combine(_options.BasePath, identity.SessionId);
-        Directory.CreateDirectory(sessionDirectory);
+        _sessionDirectory = Path.Combine(_options.BasePath, _identity.SessionId);
+        Directory.CreateDirectory(_sessionDirectory);
         _logger.LogInformation(
-            "Session {SessionId} directory ready at {SessionDirectory}", identity.SessionId, sessionDirectory);
-
-        bool inserted = false;
-        WeatherWindow weather = new(_weatherWindow);
+            "Session {SessionId} directory ready at {SessionDirectory}", _identity.SessionId, _sessionDirectory);
 
         try
         {
             await foreach (TelemetryFrame frame in _subscription.ReadAllAsync(stoppingToken).ConfigureAwait(false))
             {
-                weather.Observe(frame.T.ToDateTimeOffset(), frame.WeatherBucket);
-                if (!inserted)
+                _weather.Observe(frame.T.ToDateTimeOffset(), frame.WeatherBucket);
+                if (!_inserted)
                 {
-                    _sessions.Insert(NewRow(identity, frame, sessionDirectory));
-                    inserted = true;
+                    _trackId = frame.TrackId;
+                    _sessions.Insert(NewRow(_identity, frame, _sessionDirectory));
+                    _inserted = true;
+                    // The session row now exists — release FK-dependent writers (compute) waiting on it.
+                    _sessionContext.MarkPersisted();
                 }
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
-            // Graceful shutdown — finalize what we have below.
-        }
-        finally
-        {
-            if (inserted)
-            {
-                Finalize(identity.SessionId, weather.Resolve());
-            }
+            // Graceful shutdown — finalization happens in StopAsync, after compute has drained.
         }
     }
 
@@ -118,7 +137,7 @@ public sealed class SessionManager : BackgroundService
         McapPath = sessionDirectory,
     };
 
-    private void Finalize(string sessionId, string weatherBucket)
+    private void Finalize(string sessionId, string weatherBucket, string trackId, string sessionDirectory)
     {
         IReadOnlyList<LapRow> laps = _laps.GetBySession(sessionId);
         int cleanCount = 0;
@@ -137,11 +156,47 @@ public sealed class SessionManager : BackgroundService
             }
         }
 
+        string? parquetPath = ConvertLapsParquet(trackId, sessionDirectory);
         _sessions.Finalize(
-            sessionId, _timeProvider.GetUtcNow(), weatherBucket, laps.Count, cleanCount, pbTimeMs, parquetPath: null);
+            sessionId, _timeProvider.GetUtcNow(), weatherBucket, laps.Count, cleanCount, pbTimeMs, parquetPath);
         _logger.LogInformation(
             "Session {SessionId} finalized: {LapCount} lap(s), {CleanCount} clean, weather {Weather}",
             sessionId, laps.Count, cleanCount, weatherBucket);
+    }
+
+    /// <summary>
+    /// Converts the session's flushed MCAP segments to <c>laps.parquet</c> (off the compute hot path,
+    /// and after the recorder has stopped — guaranteed by hosted-service stop order). Returns the path
+    /// on success, or <c>null</c> when the track length is unknown or conversion fails (logged, never
+    /// fatal — finalize must still record counts/PB).
+    /// </summary>
+    private string? ConvertLapsParquet(string trackId, string sessionDirectory)
+    {
+        if (!_trackLengths.TryGetLapLengthM(trackId, out float lapLengthM))
+        {
+            _logger.LogWarning(
+                "No lap length for track {Track}; skipping laps.parquet conversion", trackId);
+            return null;
+        }
+
+        string parquetPath = Path.Combine(sessionDirectory, "laps.parquet");
+        try
+        {
+            int skipped = LapParquetWriter.Write(sessionDirectory, lapLengthM, parquetPath);
+            if (skipped > 0)
+            {
+                _logger.LogInformation(
+                    "{Skipped} degenerate lap(s) skipped in laps.parquet for {SessionDirectory}",
+                    skipped, sessionDirectory);
+            }
+
+            return parquetPath;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or ArgumentException)
+        {
+            _logger.LogWarning(ex, "laps.parquet conversion failed for {SessionDirectory}", sessionDirectory);
+            return null;
+        }
     }
 
     /// <summary>

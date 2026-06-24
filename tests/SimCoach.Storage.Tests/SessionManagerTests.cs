@@ -97,10 +97,10 @@ public sealed class SessionManagerTests : IDisposable
         _fanOut.Publish(Frame("wet", _startedAt.AddSeconds(310)));
         _fanOut.Complete();
         await manager.ExecuteTask!.WaitAsync(_waitTimeout);
-
-        // Assert — provisional insert kept "dry-warm"; finalize wrote the settled "wet"
-        _sessions.Get("20260610-120000-000")!.WeatherBucket.Should().Be("wet");
         await manager.StopAsync(CancellationToken.None);
+
+        // Assert — provisional insert kept "dry-warm"; finalize (on stop) wrote the settled "wet"
+        _sessions.Get("20260610-120000-000")!.WeatherBucket.Should().Be("wet");
     }
 
     [Fact]
@@ -119,14 +119,14 @@ public sealed class SessionManagerTests : IDisposable
         // Act
         _fanOut.Complete();
         await manager.ExecuteTask!.WaitAsync(_waitTimeout);
+        await manager.StopAsync(CancellationToken.None);
 
-        // Assert
+        // Assert — finalize runs on stop (after compute would have drained in production)
         SessionRow row = _sessions.Get("20260610-120000-000")!;
         row.EndedAtUtc.Should().NotBeNull();
         row.LapCount.Should().Be(3);
         row.CleanLapCount.Should().Be(2);
         row.PbTimeMs.Should().Be(103000, "PB is the fastest clean lap");
-        await manager.StopAsync(CancellationToken.None);
     }
 
     private SessionManager CreateManager(SessionContext context) =>
@@ -136,6 +136,7 @@ public sealed class SessionManagerTests : IDisposable
             new RecordingOptions { BasePath = Path.Combine(_root, "recordings") },
             _sessions,
             _laps,
+            new FakeTrackLengths(),
             TimeProvider.System,
             NullLogger<SessionManager>.Instance);
 

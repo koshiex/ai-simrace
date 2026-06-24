@@ -57,7 +57,7 @@ public sealed class SessionLifecycleE2ETests : IDisposable
 
         SessionManager sessionManager = new(
             context, fanOut, new RecordingOptions { BasePath = recordingsBase }, sessions, new LapRepository(factory),
-            TimeProvider.System, NullLogger<SessionManager>.Instance);
+            new FakeTrackLengths(), TimeProvider.System, NullLogger<SessionManager>.Instance);
         McapRecorderService recorder = new(
             fanOut, context, new RecordingOptions { BasePath = recordingsBase, SegmentDuration = TimeSpan.FromMinutes(5) },
             TimeProvider.System, NullLogger<McapRecorderService>.Instance);
