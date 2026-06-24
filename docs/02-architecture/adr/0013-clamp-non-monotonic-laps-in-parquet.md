@@ -35,13 +35,20 @@ keep the strict (throwing) behaviour everywhere a reference is built.**
 - `LapParquetWriter` keeps a per-lap skip only as a safety net for genuinely degenerate laps
   (e.g. < 2 frames), so one such lap can never abort the whole file.
 
-### What the clamp looks like in the data — read this before puzzling over a flat spot
+### What the clamp looks like in the data — read this before puzzling over a discontinuity
 
-The clamped (crash) stretch shows up as a **flat run of identical `position_normalized`** values: while
-the car was thrown backward / spinning, the grid position is held at the pre-crash maximum and only
-*time* advances. So in an overlay a crash lap has a short plateau where position stops climbing — that
-plateau **is** the crash, not a bug, not corrupt data. The rest of the lap before and after the plateau
-is resampled exactly. The lap is always `is_clean = 0`.
+The grid position is held at the pre-crash maximum while the car is thrown backward / spinning, and the
+backward/recovery frames are **dropped** from the grid — their elapsed time collapses into one large
+jump across a single ~1 m cell (the cell at the held position jumps from the crash-start time to the
+crash-end time). So in an overlay a crash lap is resampled **exactly before and after** the crash, with
+a **discontinuity** where it happened: you can review the rest of the lap but **not the in-crash stretch
+itself** (those frames are gone from the grid). This is by design, not corruption.
+
+Validity is **not in the file.** `laps.parquet` carries no `is_clean` column — it is geometry-only by
+design (ADR-0011), keyed by `lap_number`. A consumer recovers validity by joining `lap_number →
+laps.is_clean` in SQLite (the same DB it already uses via `sessions.parquet_path` to find the file).
+Read standalone, the file cannot distinguish a clamped crash lap from a clean one except heuristically
+(spotting the held-position discontinuity). Crash laps are always `is_clean = 0` **in the `laps` table**.
 
 ## Why
 
@@ -63,6 +70,10 @@ is resampled exactly. The lap is always `is_clean = 0`.
   row is review-only.
 - `laps.parquet` row-group count can therefore differ from a naive "monotonic laps only" expectation —
   it now matches the bounded-lap count (minus only degenerate laps).
+- The file carries no `is_clean`/validity column, so dirty/crash-lap suppression requires the
+  `lap_number → laps.is_clean` join. A standalone `clamped` marker column is deliberately deferred —
+  no consumer needs it yet, and the codec (`ResampledLapParquet`) is shared with the reference parquet
+  (where validity is always clean), so threading a flag through the resampler model is unwarranted now.
 
 ## Consequences
 
