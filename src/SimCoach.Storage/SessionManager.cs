@@ -180,7 +180,14 @@ public sealed class SessionManager : BackgroundService
         string parquetPath = Path.Combine(sessionDirectory, "laps.parquet");
         try
         {
-            LapParquetWriter.Write(sessionDirectory, lapLengthM, parquetPath);
+            int skipped = LapParquetWriter.Write(sessionDirectory, lapLengthM, parquetPath);
+            if (skipped > 0)
+            {
+                _logger.LogInformation(
+                    "{Skipped} non-resampleable lap(s) (crash/spin/pit) skipped in laps.parquet for {SessionDirectory}",
+                    skipped, sessionDirectory);
+            }
+
             return parquetPath;
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or ArgumentException)

@@ -78,6 +78,26 @@ public sealed class LapParquetWriterTests : IDisposable
         reader.Close();
     }
 
+    [Fact]
+    public void Skips_a_non_monotonic_lap_and_still_writes_the_others()
+    {
+        // A crash/spin makes one interior lap's position step backward → it can't be resampled. It must
+        // be dropped on its own, not abort the whole file (real ACC regression: a wall-crash lap nulled
+        // the entire laps.parquet for an otherwise-clean session).
+        List<TelemetryFrame> frames = [.. SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4)];
+        // Frame 500 sits inside interior lap 3 (frames 400–599); step it backward past the monotonic guard.
+        frames[500].NormalizedCarPosition = frames[499].NormalizedCarPosition - 0.05f;
+        SegmentFixture.Write(_dir, frames, framesPerSegment: 150);
+        string parquet = Path.Combine(_dir, "laps.parquet");
+
+        int skipped = LapParquetWriter.Write(_dir, SyntheticTracks.Spa.LapLengthM, parquet);
+
+        skipped.Should().Be(1);
+        using var reader = new ParquetFileReader(parquet);
+        reader.FileMetaData.NumRowGroups.Should().Be(1, "the other interior lap is still written");
+        reader.Close();
+    }
+
     private string WriteFixture()
     {
         IReadOnlyList<TelemetryFrame> frames = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);

@@ -18,31 +18,48 @@ public static class LapParquetWriter
     /// <summary>
     /// Writes <paramref name="outputPath"/> from the segments in <paramref name="sessionDirectory"/>.
     /// <paramref name="lapLengthM"/> is supplied by the caller (Storage stays sim-agnostic). A session
-    /// with no completed laps still produces a valid, empty-of-row-groups Parquet file.
+    /// with no completed laps still produces a valid, empty-of-row-groups Parquet file. Returns the
+    /// number of bounded laps skipped because their position is non-monotonic (a crash/spin/pit detour
+    /// cannot be resampled) — those are dropped individually rather than failing the whole file.
     /// </summary>
-    public static void Write(string sessionDirectory, float lapLengthM, string outputPath)
+    public static int Write(string sessionDirectory, float lapLengthM, string outputPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(lapLengthM);
 
-        IReadOnlyList<ResampledLap> laps = ResampleLaps(sessionDirectory, lapLengthM);
+        (IReadOnlyList<ResampledLap> laps, int skipped) = ResampleLaps(sessionDirectory, lapLengthM);
         WriteParquet(outputPath, laps);
+        return skipped;
     }
 
-    private static IReadOnlyList<ResampledLap> ResampleLaps(string sessionDirectory, float lapLengthM)
+    private static (IReadOnlyList<ResampledLap> Laps, int Skipped) ResampleLaps(
+        string sessionDirectory, float lapLengthM)
     {
         LapSegmenter segmenter = new();
         List<ResampledLap> laps = [];
+        int skipped = 0;
         foreach (TelemetryFrame frame in McapSegmentEnumerator.Read(sessionDirectory))
         {
             CompletedLap? completed = segmenter.Accept(frame);
-            if (completed is not null)
+            if (completed is null)
+            {
+                continue;
+            }
+
+            try
             {
                 laps.Add(PositionResampler.Resample(completed.Frames, lapLengthM));
             }
+            catch (ArgumentException)
+            {
+                // A crash/spin/pit lap whose position steps backward cannot be resampled. Skip just
+                // that lap (compute already warns about it per-lap) instead of aborting the whole
+                // file — one bad lap must not cost the session its other laps' parquet.
+                skipped++;
+            }
         }
 
-        return laps;
+        return (laps, skipped);
     }
 
     private static void WriteParquet(string outputPath, IReadOnlyList<ResampledLap> laps)
