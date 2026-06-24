@@ -16,13 +16,10 @@ public static class PositionResampler
     /// <summary>Tolerance for the monotonic-position guard, absorbing float noise but not a real backstep.</summary>
     private const float MonotonicEpsilon = 1e-4f;
 
-    /// <param name="clampNonMonotonic">
-    /// When <c>false</c> (default) a backward position step (a pit/out/in detour) throws — the strict
-    /// mode references and the reference candidate use. When <c>true</c>, a backward step is clamped to
-    /// the running max instead: the crash/spin stretch flattens onto one grid point while the rest of
-    /// the lap resamples exactly, so a dirty crash lap is still reviewable in <c>laps.parquet</c> (it is
-    /// already <c>is_clean = 0</c>, so it never becomes a reference).
-    /// </param>
+    // clampNonMonotonic=false (default): a backward position step (pit/out/in detour) throws — the
+    // strict mode the reference candidate (ResampleSelf) uses. true: the backstep is clamped to the
+    // running max so a crash/spin lap still resamples into laps.parquet for review; it is is_clean=0
+    // and never becomes a reference. See ADR-0013.
     public static ResampledLap Resample(
         IReadOnlyList<TelemetryFrame> lapFrames, float lapLengthM, bool clampNonMonotonic = false)
     {
