@@ -115,7 +115,10 @@ foreach ((string trackId, List<IReadOnlyList<TelemetryFrame>> laps) in cleanLaps
     }
 
     MedianCenterline centerline = MedianCenterlineBuilder.Build(trackId, lapLengthM, laps);
-    IReadOnlyList<DetectedCorner> corners = CornerCenterlineDetector.Detect(centerline);
+    // Per-lap centerlines feed the detector's cross-lap consensus split (a real chicane splits in most
+    // laps; a single-lap line artifact does not).
+    List<MedianCenterline> perLap = [.. laps.Select(lap => MedianCenterlineBuilder.Build(trackId, lapLengthM, [lap]))];
+    IReadOnlyList<DetectedCorner> corners = CornerCenterlineDetector.Detect(centerline, perLap);
     var document = CornerGeometryDocument.FromDetected(trackId, lapLengthM, coherence.LapCount, corners);
 
     string jsonPath = Path.Combine(outputDir, $"cornerGeometry.{trackId}.json");
