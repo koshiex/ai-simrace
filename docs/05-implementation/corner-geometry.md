@@ -112,17 +112,22 @@ ids after a merge and update `cornerNames.json` to match.
 - [x] `Phase2ComputeE2EGoldenTests` builds the store from a baked test fixture (`BakedGeometryFixture.Spa()`); structural assertions unchanged (synthetic `world_pos` is a perfect circle, not a geometry oracle).
 - [x] ADR-0010 marked `Superseded by ADR-0014`; KB references updated (`.gitignore` negation comment, INDEX, build-quirks). The older `phase-2-detailed-plan.md` is kept as a historical record.
 
-## Open items (require a live ACC run)
+## Status
 
-- **Live NCP / lap-wrap sync** is the hard precondition (first live Monza gave 0 laps; PR1 wrap fix
-  committed but not live-verified). No bake is trusted until a live ≥3-lap clean recording reproduces
-  the geometry end-to-end.
-- Re-bake Monza from a fresh live recording once the live pipeline is confirmed.
-- Validate on a genuine third / DLC track and across drivers.
-- ~~Decide a first-party corner-naming source for Phase 3.~~ **Done:** first-party authored
-  `CornerNameMap` (`src/SimCoach.Coach/Data/cornerNames.json`) at the prompt layer maps baked
-  `corner_id → name` (Monza named). Corner names are public facts, authored by us — not from any
-  third-party dataset; geometry (compute) stays nameless. Re-author per track when (re)baked.
+All four phases are done. Monza (11 corners) and Spa (19 corners) are baked from live clean laps
+(pooled across sessions) and committed, both tracks named.
+
+Open / done:
+- ~~Live NCP / lap-wrap sync (first live Monza gave 0 laps).~~ **Effectively met:** live lap detection
+  fired across multiple live Spa and Monza sessions; both shipped geometries are baked from those live
+  recordings (the 0-laps case no longer reproduces). A separate live app crash on a pit-return duplicate
+  `lap_number` is tracked as issue #13 (not a geometry concern).
+- ~~Re-bake Monza from a fresh live recording.~~ **Done** (re-baked with the per-lap-consensus splitter).
+- **Still open:** validate on a genuine third / DLC track and across drivers (only Spa + Monza, one
+  driver so far); the detector's single global config is unproven beyond these two circuits.
+- ~~First-party corner-naming source.~~ **Done:** authored `CornerNameMap`
+  (`src/SimCoach.Coach/Data/cornerNames.json`) at the prompt layer maps baked `corner_id → name` for
+  Monza and Spa; geometry (compute) stays nameless. Re-author per track when (re)baked.
 
 ## Validated Monza bake (evidence)
 
