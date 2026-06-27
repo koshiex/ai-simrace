@@ -60,11 +60,15 @@ The measurement half of the pipeline is unchanged.**
 2. **Differentiate once, detect on sign-stable channels.** Compute heading `θ = atan2(Δz, Δx)` and signed
    curvature `κ` from the *median* centerline (one differentiation). Detect corners by **median `|latG|`** and
    **total-variation-of-heading** `∫|dθ|` (always positive) — both sign-insensitive — thresholded at
-   `|G| ≥ 1.0 g OR R < 180 m`. Split close complexes at a curvature **sign change** (±0.004 rad/m, ~R250)
-   co-located with a `|G|` valley (0.65× of the flanking peaks), but only when both flanking peaks are real
-   (fused load ≥ 1.25) and prominent (peak-to-valley drop ≥ 0.35) and ≥ 40 m apart — otherwise a single
-   continuous corner over-fragments (e.g. the Eau Rouge/Raidillon esse stays one complex). Post-split
-   `min-arc ≥ 35 m` too. **Apex = the geometric centre of the corner extent** (window midpoint): line-
+   `|G| ≥ 1.0 g OR R < 180 m`. Split close complexes by **per-lap consensus** (corner-split research): candidate
+   apexes are prominent (≥ 0.30) fused local maxima per active run; a loaded stretch is cut between two apexes
+   only when the valley is deep (< 0.65× the smaller apex), both apexes are tight (R ≤ 180 m), AND **a majority
+   (≥ 60 %) of the individual clean laps independently show both apexes** — so a genuine left-right chicane
+   (present every lap) splits while a one-lap line artifact (a mid-corner correction in the aggregate only) does
+   not. A clear de-load valley (fused < 0.55) always separates corners. This needs each clean lap's own
+   centerline as well as the pooled median. It fixes the tight-chicane vs over-split tension that fixed thresholds
+   could not (Monza Rettifilo/Roggia split robustly; Curva Grande stays one; Spa Pouhon=2, Fagnes=2, no phantom)
+   with one global config. **Apex = the geometric centre of each corner's extent** (midpoint): line-
    independent, so one driver's early-apex hotlap line does not drag the apex toward the entry. The window's
    tightest point (max `|κ|`) gives the corner radius/trigger. Window = brake-onset → apex → throttle-resume.
    `Corner` positions are normalized 0..1 (divide by track length); the ADR-0010 range guard

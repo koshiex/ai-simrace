@@ -95,7 +95,7 @@ ids after a merge and update `cornerNames.json` to match.
 
 ### Phase 1 — Detector + bake tool  `[x]`
 - [x] `CornerCenterlineDetector` — differentiate once (heading/curvature); fuse curvature (R<180 m) + median `|latG|`≥1.0 g; **apex = geometric centre of the corner extent** (window midpoint, line-independent); radius/trigger from the tightest point.
-- [x] Close-complex splitting (curvature sign-change ±0.004 rad/m or load valley < 0.65× flank) gated by peak-load ≥1.25, prominence ≥0.35, separation ≥40 m; post-split min-arc — stops over-fragmenting (e.g. Eau Rouge/Raidillon stays one complex).
+- [x] Close-complex splitting by **per-lap consensus** (corner-split research): candidate apexes are prominent (≥0.30) fused local maxima per active run; a loaded stretch is cut between two apexes only when the valley is deep (<0.65×), both apexes are tight (R≤180 m), AND ≥60 % of the individual clean laps independently show both apexes — so a real left-right chicane (every lap) splits while a one-lap line artifact does not; a clear de-load valley (<0.55) always separates. Detector takes each clean lap's own centerline. Verified on real data: Monza 11 (Rettifilo/Roggia split, robust to a pooled crash-session lap; Curva Grande merged), Spa 19 (Pouhon=2, Fagnes=2, no t14) — one global config, no per-track tuning.
 - [x] `CornerGeometryDocument` / `CornerGeometryEntry` — schema-versioned, length-pinned `cornerGeometry.json` shape (writer + reader share it).
 - [x] `tools/SimCoach.Bake` console + `CornerGeometryReviewPage` (HTML/SVG one-glance gate); `bootstrap.sh` adds `tools/*` to the solution.
 - [x] Hermetic detector tests (tight corner by curvature; flat R=250 m corner by lateral-G alone; chicane split; no phantom on a straight).
