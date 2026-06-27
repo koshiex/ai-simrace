@@ -15,6 +15,38 @@ DOTNET_ROLL_FORWARD=LatestMajor dotnet test SimCoach.sln
 
 `global.json` already uses `rollForward: latestMajor` so build/restore work without the env var.
 
+## Running the Windows .NET SDK from WSL
+
+There is **no `dotnet` on the WSL `PATH`** — the SDK is the Windows install. Drive it from WSL via
+the Windows host binary (mind the space in the path — quote it):
+
+```bash
+# stay on the real C: drive mount, NOT a \\wsl$\ UNC path (UNC breaks protobuf/codegen — see
+# the simrace-build-env note); /mnt/c/Users/koba9/ai-simrace maps to C:\Users\koba9\ai-simrace.
+cd /mnt/c/Users/koba9/ai-simrace
+"/mnt/c/Program Files/dotnet/dotnet.exe" --version          # 10.x here; net9 runtime NOT installed
+"/mnt/c/Program Files/dotnet/dotnet.exe" build SimCoach.sln -c Debug
+"/mnt/c/Program Files/dotnet/dotnet.exe" format SimCoach.sln --verify-no-changes
+```
+
+**`dotnet test` roll-forward gotcha is worse from WSL.** The net9.0 VSTest `testhost.exe` needs the
+roll-forward env var (previous section), but a **shell-prefix env var set in WSL does NOT reach the
+Windows testhost** — it doesn't cross the WSL→Win32 boundary. Both of these silently fail with "You
+must install or update .NET", version 9.0.0:
+
+```bash
+DOTNET_ROLL_FORWARD=Major "…/dotnet.exe" test …                 # ❌ var lost crossing to Windows
+WSLENV=DOTNET_ROLL_FORWARD/u DOTNET_ROLL_FORWARD=Major "…" test  # ❌ also didn't propagate to testhost
+```
+
+Use `dotnet test`'s own `-e` flag, which injects the variable straight into the test-host process:
+
+```bash
+"/mnt/c/Program Files/dotnet/dotnet.exe" test SimCoach.sln -c Debug -e DOTNET_ROLL_FORWARD=Major
+```
+
+(Only .NET 6/8/10 runtimes were present — no 9.0 — so the net9.0 testhost must roll forward to 10.)
+
 ## SDK 10+ `dotnet new sln` creates `.slnx` by default
 
 `scripts/bootstrap.sh` / `.ps1` pass `--format sln` (with fallback for older SDKs that
