@@ -251,7 +251,7 @@ public enum ReasoningEffort { Off, Low }                // route config. OpenRou
 public abstract record LlmResult
 {
     public sealed record Success(string Json, LlmUsage Usage, LlmCallInfo Info) : LlmResult;
-    public sealed record Failure(LlmFailure Failure) : LlmResult;   // ← structured, drives breaker + retry decision
+    public sealed record Failure(LlmFailure Error) : LlmResult;   // ← payload named Error (CS0542 forbids a member matching the enclosing record name); structured, drives breaker + retry decision
 }
 
 public sealed record LlmUsage(int InputTokens, int OutputTokens, int CachedInputTokens = 0, int ReasoningTokens = 0);
@@ -866,6 +866,13 @@ unit-tested via mocked `HttpMessageHandler` but stays flag-off.
 
 ## Mergeable chunking (PR plan)
 
+**Status:** ✅ **PR-A done** (`feat/phase-3-pr1`) — Ring-0 `ILlmClient` seam + records, `LlmOptions`/
+`RouteOptions`/`ProviderOptions`/`ModelRate`, internal `LlmRouter`/`ILlmProvider`/`FakeProvider`/
+`ResolvedRoute`, `CoachCadence`; 49 LLM + 1 Coach-cadence unit tests; build/format/full-suite green.
+Implementation notes: `LlmResult.Failure`'s payload is named `Error` (CS0542 forbids a member matching the
+enclosing record name — the §"Key C# contract" sketch above is updated to match); options ship as
+`sealed record` (for `with`-ergonomics, within the records-over-classes rule). PR-B…PR-H: todo.
+
 Phase 3 ships as **8 PRs** (merge order = build order) that each merge to `main` without breaking it.
 A PR is mergeable when CI stays green (build + `dotnet format --verify` + xUnit on windows+macos, **no
 live network**) and the Phase-2 spine + host run unregressed. The live OpenRouter call is gated by
@@ -879,7 +886,7 @@ startup**; guarded by the replay e2e + chunk tests).
 
 | PR | Group | Tasks | Scope | Safety class | ~Diff |
 |----|-------|-------|-------|--------------|-----:|
-| **PR-A** `refactor(llm): provider-agnostic ILlmClient seam` | Contract | D5 (contract only) | Revise `ILlmClient`: `ModelId`→opaque `RouteKey`, `Failure(string)`→`Failure(LlmFailure)`, enrich `Success` with `LlmUsage`+`LlmCallInfo` (open `string ProviderId`), add `SchemaName`, declare `StreamAsync`. `LlmOptions`/`RouteOptions`/`ProviderOptions`/`ModelRate`. `CoachCadence` (incl. reserved `Strategy`). `FakeProvider` + trivial `LlmRouter`. No callers yet (existing `ILlmClient` has zero implementers/callers). | Additive + Dead-until-wired | ~480 |
+| **PR-A** ✅ `refactor(llm): provider-agnostic ILlmClient seam` | Contract | D5 (contract only) | Revise `ILlmClient`: `ModelId`→opaque `RouteKey`, `Failure(string)`→`Failure(LlmFailure)`, enrich `Success` with `LlmUsage`+`LlmCallInfo` (open `string ProviderId`), add `SchemaName`, declare `StreamAsync`. `LlmOptions`/`RouteOptions`/`ProviderOptions`/`ModelRate`. `CoachCadence` (incl. reserved `Strategy`). `FakeProvider` + trivial `LlmRouter`. No callers yet (existing `ILlmClient` has zero implementers/callers). | Additive + Dead-until-wired | ~480 |
 | **PR-B** `feat(compute): tip-quality kernels + session-loss accumulator + strategy plumb` | D0 | B1, B2, M3-envelope, owner-plumb | **Append-only `telemetry.proto` edits** (protoc regen): new `CornerEvent` fields (`wheelspin_score`/`brake_overlap_steer_pct`/`steering_jitter`/`reason`), `LapEvent` temp-summary, `SessionEvent` M3 fields + fuel/tyre summary, new repeated `AggregatedLoss` message. New Pipeline kernels (`SimCoach.Pipeline/Kernels`); values written in `SimCoach.Reference` (`CornerEventBuilder`/`ComputeSession`); `SessionLossAccumulator` → bounded `aggregated_losses{corner_id,…}` (no `corner_name` — resolved at Coach layer) on `SessionEvent`; append-only mapper for strategy inputs (EngineMap/Tc/TcCut/Abs/pit-state). `normalized_car_position` already exists on the frame — **no gate work here (M7 lands in PR-G)**. Regenerates the Phase-2 event golden. **Edits live `ComputeService`.** | **Runtime-touching** | ~760 |
 | **PR-C** `feat(coach): action registry + corner-name injection` | D1, D2a | D1 (+M5, M6), D2a (+m4) | `actionRegistry.json` (~24 actions, total-order `Priority`, M6 reference-free + `overdrove_entry` + gated catch-alls) + loader + `WhenClause` evaluator + template renderer (yields `RenderedParam`); `CoachOptions` (+ `RouteKeys` incl. strategy); valid-subset filter; `CornerNameMap` positional `.resx` + short + spoken-RU forms. No LLM. | Dead-until-wired | ~720 |
 | **PR-D** `feat(coach): gold artifact builders` | D3 | D3 (+B1 fields, B2 losses, M3 envelope) | Per-cadence `GoldArtifactBuilder` + Gold records (incl. B1 scalars, `aggregated_losses`, per-sector aggregates, consistency, theoretical-best, `setup_hint`); determinism + privacy-serializer + `aggregated_losses` cap tests on synthetic events. | Dead-until-wired | ~640 |
