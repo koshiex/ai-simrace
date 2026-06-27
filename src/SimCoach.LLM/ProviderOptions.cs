@@ -15,9 +15,13 @@ public sealed record ProviderOptions
 
     public void EnsureValid()
     {
-        if (string.IsNullOrWhiteSpace(BaseUrl) || !Uri.TryCreate(BaseUrl, UriKind.Absolute, out _))
+        // Require an absolute http(s) URL — not just Uri.TryCreate(Absolute), which on Unix accepts a
+        // bare path like "/api/v1" as a file:// URI (platform-dependent; broke macOS CI).
+        if (string.IsNullOrWhiteSpace(BaseUrl)
+            || !Uri.TryCreate(BaseUrl, UriKind.Absolute, out Uri? uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            throw new InvalidOperationException("ProviderOptions.BaseUrl must be an absolute URI.");
+            throw new InvalidOperationException("ProviderOptions.BaseUrl must be an absolute http(s) URI.");
         }
 
         if (string.IsNullOrWhiteSpace(AuthEnvVar))

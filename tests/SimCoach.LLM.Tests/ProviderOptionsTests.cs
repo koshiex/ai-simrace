@@ -26,6 +26,11 @@ public sealed class ProviderOptionsTests
             .Should().Throw<InvalidOperationException>();
 
     [Fact]
+    public void Non_http_scheme_base_url_throws()
+        => (Valid() with { BaseUrl = "ftp://openrouter.ai/api" }).Invoking(o => o.EnsureValid())
+            .Should().Throw<InvalidOperationException>();
+
+    [Fact]
     public void Empty_auth_env_var_throws()
         => (Valid() with { AuthEnvVar = "" }).Invoking(o => o.EnsureValid())
             .Should().Throw<InvalidOperationException>();
