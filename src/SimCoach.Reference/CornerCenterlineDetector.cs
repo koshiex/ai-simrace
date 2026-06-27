@@ -24,13 +24,19 @@ public static class CornerCenterlineDetector
     public const int MergeGapM = 45;
 
     /// <summary>Minimum spacing (metres) between two load peaks for them to be split candidates.</summary>
-    public const int MinPeakSeparationM = 25;
+    public const int MinPeakSeparationM = 40;
 
-    /// <summary>Signed curvature beyond ±this (rad/m) on both sides of a valley counts as a sign reversal.</summary>
-    public const float SplitSignedCurvatureThreshold = 0.0015f;
+    /// <summary>Signed curvature beyond ±this (rad/m) each side of a valley counts as a sign reversal (~R250 — a real direction change, not noise).</summary>
+    public const float SplitSignedCurvatureThreshold = 0.004f;
 
     /// <summary>A valley below this fraction of the smaller flanking peak splits the complex.</summary>
     public const float SplitValleyFraction = 0.65f;
+
+    /// <summary>Each flanking peak must reach this fused load to be a split candidate (kills phantom entry-load splits).</summary>
+    public const float MinSplitPeakLoad = 1.25f;
+
+    /// <summary>Minimum peak-to-valley fused-load drop to split (prominence; stops over-splitting one corner).</summary>
+    public const float MinSplitProminence = 0.35f;
 
     private const int HeadingSpanM = 8;
     private const int SmoothRadius = 3;
@@ -126,13 +132,16 @@ public static class CornerCenterlineDetector
         int endIdx,
         float lapLengthM)
     {
-        int apexIdx = startIdx;
+        // Apex = geometric centre of the corner extent (ADR-0014): line-independent, so a single driver's
+        // early-apex line does not drag it toward the entry. Radius/trigger use the tightest point in the window.
+        int apexIdx = (startIdx + endIdx) / 2;
+        float maxKappa = absKappa[startIdx];
         float peakG = latG[startIdx];
         for (int i = startIdx + 1; i <= endIdx; i++)
         {
-            if (absKappa[i] > absKappa[apexIdx])
+            if (absKappa[i] > maxKappa)
             {
-                apexIdx = i;
+                maxKappa = absKappa[i];
             }
 
             if (latG[i] > peakG)
@@ -141,15 +150,14 @@ public static class CornerCenterlineDetector
             }
         }
 
-        float apexKappa = absKappa[apexIdx];
         return new DetectedCorner
         {
             StartPosition = bins[startIdx].DistanceM / lapLengthM,
             ApexPosition = bins[apexIdx].DistanceM / lapLengthM,
             EndPosition = bins[endIdx].DistanceM / lapLengthM,
-            ApexRadiusM = apexKappa > 1e-6f ? 1f / apexKappa : float.PositiveInfinity,
+            ApexRadiusM = maxKappa > 1e-6f ? 1f / maxKappa : float.PositiveInfinity,
             PeakLateralG = peakG,
-            Trigger = Classify(apexKappa, peakG, curvatureThreshold),
+            Trigger = Classify(maxKappa, peakG, curvatureThreshold),
         };
     }
 
@@ -182,7 +190,9 @@ public static class CornerCenterlineDetector
 
             bool signReverses = maxSigned > SplitSignedCurvatureThreshold && minSigned < -SplitSignedCurvatureThreshold;
             bool valleyDeep = fusedLoad[valley] < SplitValleyFraction * MathF.Min(fusedLoad[left], fusedLoad[right]);
-            if (signReverses || valleyDeep)
+            bool peaksAreReal = fusedLoad[left] >= MinSplitPeakLoad && fusedLoad[right] >= MinSplitPeakLoad;
+            bool prominentEnough = (MathF.Min(fusedLoad[left], fusedLoad[right]) - fusedLoad[valley]) >= MinSplitProminence;
+            if ((signReverses || valleyDeep) && peaksAreReal && prominentEnough)
             {
                 cuts.Add(valley);
             }

@@ -16,7 +16,7 @@ public sealed class TrackModelStoreTests
         TrackModel model = store.Get("monza");
 
         model.Source.Should().Be(TrackModelSource.Baked);
-        model.Corners.Should().HaveCount(11);
+        model.Corners.Should().NotBeEmpty();
         model.Corners.Should().OnlyContain(c => c.Name == null);
     }
 

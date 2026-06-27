@@ -64,8 +64,8 @@ Open the HTML, confirm the apexes sit on the real corners, then commit the JSON 
 - [x] Hermetic tests on `SyntheticSessionBuilder` frames (aggregation onto the circle; bin-0 teleport rejected; trust floor).
 
 ### Phase 1 — Detector + bake tool  `[x]`
-- [x] `CornerCenterlineDetector` — differentiate once (heading/curvature); fuse curvature (R<180 m) + median `|latG|`≥1.0 g; apex = argmax `|curvature|`.
-- [x] Close-complex splitting (curvature sign-change ±0.0015 rad/m or load valley < 0.65× flank); post-split min-arc.
+- [x] `CornerCenterlineDetector` — differentiate once (heading/curvature); fuse curvature (R<180 m) + median `|latG|`≥1.0 g; **apex = geometric centre of the corner extent** (window midpoint, line-independent); radius/trigger from the tightest point.
+- [x] Close-complex splitting (curvature sign-change ±0.004 rad/m or load valley < 0.65× flank) gated by peak-load ≥1.25, prominence ≥0.35, separation ≥40 m; post-split min-arc — stops over-fragmenting (e.g. Eau Rouge/Raidillon stays one complex).
 - [x] `CornerGeometryDocument` / `CornerGeometryEntry` — schema-versioned, length-pinned `cornerGeometry.json` shape (writer + reader share it).
 - [x] `tools/SimCoach.Bake` console + `CornerGeometryReviewPage` (HTML/SVG one-glance gate); `bootstrap.sh` adds `tools/*` to the solution.
 - [x] Hermetic detector tests (tight corner by curvature; flat R=250 m corner by lateral-G alone; chicane split; no phantom on a straight).
