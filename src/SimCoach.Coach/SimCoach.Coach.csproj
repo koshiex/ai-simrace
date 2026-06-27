@@ -15,4 +15,9 @@
     <PackageReference Include="Serilog.Extensions.Hosting" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- First-party authored corner names for the Phase-3 prompt layer (ADR-0010/0014). -->
+    <EmbeddedResource Include="Data\cornerNames.json" />
+  </ItemGroup>
+
 </Project>

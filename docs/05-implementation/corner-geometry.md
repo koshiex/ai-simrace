@@ -86,8 +86,10 @@ sit on the real corners, then commit the JSON to `src/SimCoach.Reference/Data/`.
   the geometry end-to-end.
 - Re-bake Monza from a fresh live recording once the live pipeline is confirmed.
 - Validate on a genuine third / DLC track and across drivers.
-- Decide a first-party corner-**naming** source for Phase 3 (CrewChief names are now private cross-check
-  only; the baked JSON ships unnamed `corner_id`s).
+- ~~Decide a first-party corner-naming source for Phase 3.~~ **Done:** first-party authored
+  `CornerNameMap` (`src/SimCoach.Coach/Data/cornerNames.json`) at the prompt layer maps baked
+  `corner_id → name` (Monza named). Corner names are public facts, authored by us — not from any
+  third-party dataset; geometry (compute) stays nameless. Re-author per track when (re)baked.
 
 ## Validated Monza bake (evidence)
 

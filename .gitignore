@@ -36,6 +36,9 @@ sessions/
 # Vendored, source-controlled corner geometry (overrides the data/ rule above)
 !src/SimCoach.Reference/Data/
 !src/SimCoach.Reference/Data/**
+# Vendored, source-controlled corner names — Phase-3 prompt layer (overrides the data/ rule above)
+!src/SimCoach.Coach/Data/
+!src/SimCoach.Coach/Data/**
 
 # Secrets
 secrets.json
