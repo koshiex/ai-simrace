@@ -20,8 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Vendored MIT corner-landmark dataset (CrewChiefV4, Britton IT Ltd) — see Data/LICENSE-CrewChief. -->
+    <!-- Vendored MIT corner-landmark dataset (CrewChiefV4, Britton IT Ltd) — see Data/LICENSE-CrewChief.
+         Removed in Phase 2 once the baked first-party geometry covers the shipped tracks (ADR-0014). -->
     <EmbeddedResource Include="Data\trackLandmarksData.json" />
+    <!-- First-party baked corner geometry (ADR-0014). -->
+    <EmbeddedResource Include="Data\cornerGeometry.json" />
   </ItemGroup>
 
 </Project>
