@@ -1,0 +1,180 @@
+{
+  "SchemaVersion": 1,
+  "TrackId": "spa",
+  "LapLengthM": 7004,
+  "LapCount": 5,
+  "SourceRecording": null,
+  "Corners": [
+    {
+      "Id": "spa_t01",
+      "StartPosition": 0.045545403,
+      "ApexPosition": 0.051970303,
+      "EndPosition": 0.058395203,
+      "ApexRadiusM": 20.206928,
+      "PeakLateralG": 1.5978526,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "spa_t02",
+      "StartPosition": 0.14291833,
+      "ApexPosition": 0.14677328,
+      "EndPosition": 0.15062821,
+      "ApexRadiusM": 272.87122,
+      "PeakLateralG": 1.4429368,
+      "Trigger": "LateralG"
+    },
+    {
+      "Id": "spa_t03",
+      "StartPosition": 0.15077099,
+      "ApexPosition": 0.16333523,
+      "EndPosition": 0.17604226,
+      "ApexRadiusM": 110.279945,
+      "PeakLateralG": 2.5682902,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "spa_t04",
+      "StartPosition": 0.17618504,
+      "ApexPosition": 0.18246716,
+      "EndPosition": 0.18874928,
+      "ApexRadiusM": 125.03072,
+      "PeakLateralG": 1.5677642,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "spa_t05",
+      "StartPosition": 0.3363792,
+      "ApexPosition": 0.3428041,
+      "EndPosition": 0.3493718,
+      "ApexRadiusM": 60.112045,
+      "PeakLateralG": 1.4552419,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "spa_t06",
+      "StartPosition": 0.34951457,
+      "ApexPosition": 0.35708168,
+      "EndPosition": 0.36464876,
+      "ApexRadiusM": 56.86555,
+      "PeakLateralG": 1.6277937,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "spa_t07",
+      "StartPosition": 0.36479154,
+      "ApexPosition": 0.37435752,
+      "EndPosition": 0.38406625,
+      "ApexRadiusM": 76.14687,
+      "PeakLateralG": 1.6612246,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "spa_t08",
+      "StartPosition": 0.42075956,
+      "ApexPosition": 0.43360937,
+      "EndPosition": 0.44660193,
+      "ApexRadiusM": 40.457058,
+      "PeakLateralG": 1.6005844,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "spa_t09",
+      "StartPosition": 0.4608795,
+      "ApexPosition": 0.46873215,
+      "EndPosition": 0.47658482,
+      "ApexRadiusM": 59.61627,
+      "PeakLateralG": 1.5145361,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "spa_t10",
+      "StartPosition": 0.5335522,
+      "ApexPosition": 0.54683036,
+      "EndPosition": 0.5602513,
+      "ApexRadiusM": 102.42869,
+      "PeakLateralG": 1.8105373,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "spa_t11",
+      "StartPosition": 0.56039405,
+      "ApexPosition": 0.578241,
+      "EndPosition": 0.59608793,
+      "ApexRadiusM": 100.767975,
+      "PeakLateralG": 1.5516101,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "spa_t12",
+      "StartPosition": 0.63235295,
+      "ApexPosition": 0.6426328,
+      "EndPosition": 0.65305537,
+      "ApexRadiusM": 73.67923,
+      "PeakLateralG": 1.6175743,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "spa_t13",
+      "StartPosition": 0.6531982,
+      "ApexPosition": 0.6646202,
+      "EndPosition": 0.67604226,
+      "ApexRadiusM": 63.583405,
+      "PeakLateralG": 1.6071746,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "spa_t14",
+      "StartPosition": 0.6964592,
+      "ApexPosition": 0.70474017,
+      "EndPosition": 0.7131639,
+      "ApexRadiusM": 63.043682,
+      "PeakLateralG": 1.7091156,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "spa_t15",
+      "StartPosition": 0.7261565,
+      "ApexPosition": 0.73700744,
+      "EndPosition": 0.74785835,
+      "ApexRadiusM": 93.30929,
+      "PeakLateralG": 1.9877974,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "spa_t16",
+      "StartPosition": 0.83338094,
+      "ApexPosition": 0.84194744,
+      "EndPosition": 0.85065675,
+      "ApexRadiusM": 243.59772,
+      "PeakLateralG": 1.699916,
+      "Trigger": "LateralG"
+    },
+    {
+      "Id": "spa_t17",
+      "StartPosition": 0.8680754,
+      "ApexPosition": 0.8817818,
+      "EndPosition": 0.8956311,
+      "ApexRadiusM": 171.71394,
+      "PeakLateralG": 2.3939364,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "spa_t18",
+      "StartPosition": 0.95573956,
+      "ApexPosition": 0.9604512,
+      "EndPosition": 0.96530557,
+      "ApexRadiusM": 30.019426,
+      "PeakLateralG": 1.2240541,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "spa_t19",
+      "StartPosition": 0.9654483,
+      "ApexPosition": 0.9703027,
+      "EndPosition": 0.9751571,
+      "ApexRadiusM": 23.186808,
+      "PeakLateralG": 1.4565675,
+      "Trigger": "Both"
+    }
+  ]
+}

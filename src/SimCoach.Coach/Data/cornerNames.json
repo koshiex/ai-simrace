@@ -11,5 +11,26 @@
     "monza_t09": "Variante Ascari (2)",
     "monza_t10": "Variante Ascari (3)",
     "monza_t11": "Curva Parabolica"
+  },
+  "spa": {
+    "spa_t01": "La Source",
+    "spa_t02": "Eau Rouge",
+    "spa_t03": "Raidillon (1)",
+    "spa_t04": "Raidillon (2)",
+    "spa_t05": "Les Combes (1)",
+    "spa_t06": "Les Combes (2)",
+    "spa_t07": "Malmedy",
+    "spa_t08": "Rivage",
+    "spa_t09": "Speaker's Corner",
+    "spa_t10": "Pouhon (1)",
+    "spa_t11": "Pouhon (2)",
+    "spa_t12": "Les Fagnes (1)",
+    "spa_t13": "Les Fagnes (2)",
+    "spa_t14": "Campus",
+    "spa_t15": "Stavelot",
+    "spa_t16": "Paul Frère Curve",
+    "spa_t17": "Blanchimont",
+    "spa_t18": "Bus Stop (1)",
+    "spa_t19": "Bus Stop (2)"
   }
 }
