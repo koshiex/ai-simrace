@@ -22,24 +22,26 @@ public static class LapParquetWriter
     /// number of row groups written and the number of bounded laps skipped because their position is
     /// non-monotonic (a crash/spin/pit detour cannot be resampled) — those are dropped individually
     /// rather than failing the whole file. <c>Written + Skipped</c> is the bounded-lap count the replay
-    /// path saw; the caller compares it to the <c>laps</c> row count to detect a DB↔parquet desync.
+    /// path saw; the caller reconciles those lap numbers against the <c>laps</c> rows to detect a
+    /// DB↔parquet desync (a value-level mismatch, not just a count mismatch).
     /// </summary>
     public static LapParquetWriteResult Write(string sessionDirectory, float lapLengthM, string outputPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(lapLengthM);
 
-        (IReadOnlyList<ResampledLap> laps, int skipped) = ResampleLaps(sessionDirectory, lapLengthM);
+        (IReadOnlyList<ResampledLap> laps, IReadOnlyList<int> skippedLapNumbers) =
+            ResampleLaps(sessionDirectory, lapLengthM);
         WriteParquet(outputPath, laps);
-        return new LapParquetWriteResult(laps.Count, skipped);
+        return new LapParquetWriteResult([.. laps.Select(l => l.LapNumber)], skippedLapNumbers);
     }
 
-    private static (IReadOnlyList<ResampledLap> Laps, int Skipped) ResampleLaps(
+    private static (IReadOnlyList<ResampledLap> Laps, IReadOnlyList<int> SkippedLapNumbers) ResampleLaps(
         string sessionDirectory, float lapLengthM)
     {
         LapSegmenter segmenter = new();
         List<ResampledLap> laps = [];
-        int skipped = 0;
+        List<int> skippedLapNumbers = [];
         foreach (TelemetryFrame frame in McapSegmentEnumerator.Read(sessionDirectory))
         {
             CompletedLap? completed = segmenter.Accept(frame);
@@ -58,12 +60,13 @@ public static class LapParquetWriter
             catch (ArgumentException)
             {
                 // A degenerate lap (e.g. too few frames) still can't be resampled — skip just it,
-                // never abort the whole file.
-                skipped++;
+                // never abort the whole file. Keep its lap number so the caller's reconciliation knows
+                // this lap is legitimately absent from the parquet (it is still a row in the laps table).
+                skippedLapNumbers.Add(completed.LapNumber);
             }
         }
 
-        return (laps, skipped);
+        return (laps, skippedLapNumbers);
     }
 
     private static void WriteParquet(string outputPath, IReadOnlyList<ResampledLap> laps)

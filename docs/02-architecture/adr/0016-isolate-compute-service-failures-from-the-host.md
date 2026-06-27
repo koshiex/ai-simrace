@@ -36,19 +36,27 @@ failure semantics for every hosted service, not just compute.
 
 - **Recording survives any compute fault**, not only the known one — a defense-in-depth net for future
   bugs in kernels, segmentation, or storage.
-- **Convention-aligned** — `coding-conventions.md` says try/catch belongs only at host-service loop
-  boundaries, logged via Serilog, then continue.
+- **Convention-aligned (backstop)** — `coding-conventions.md` says try/catch belongs only at host-service
+  loop boundaries, logged via Serilog, then continue; the per-frame `ExecuteAsync` catch sits exactly
+  there. The narrow `HandleLap` insert wrap is a deliberate exception to that rule — a domain-level guard
+  on the single statement that can throw on bad data — chosen over relocating it so corner/sector state
+  stays intact.
 - **No log floods, no corrupt-state processing** — the narrow Insert wrap carries the realistic failure
   path at lap cadence; the per-frame backstop is rate-limited and, once ADR-0015 lands, essentially never
   fires.
 
 ## Tradeoffs
 
-- The per-frame backstop may run on a partially-mutated `ComputeSession` after a throw, so subsequent
-  events for that session could be slightly skewed. Acceptable — it is a last resort, and `_lapCount`
-  drift is cosmetic (`sessions.lap_count` is derived from the `laps` row count, not `_lapCount`).
-- Swallowing a lap-row insert means that lap is absent from `laps`/`laps.parquet`. The finalize-time
-  DB↔parquet canary (ADR-0015) surfaces such a gap rather than letting it pass silently.
+- The catch handlers themselves never run on corrupt state, but the surrounding `HandleLap` does mutate
+  session state (`_lapCount`, the running PB, the published `LapEvent`, and `ReferenceStore.MaybeUpdate`)
+  **before** the guarded `_laps.Insert`. So a swallowed insert leaves the live `SessionEvent.LapCount`/PB
+  and any reference candidate inconsistent with the DB. Low impact: the durable `sessions.lap_count` is
+  derived from the `laps` row count (not `_lapCount`), and the per-frame backstop may likewise run on a
+  partially-mutated session after a throw. Acceptable for a last-resort net that, post-renumbering, fires
+  only on an unforeseen fault.
+- Swallowing a lap-row insert means that lap is absent from `laps` **only** — `laps.parquet` is built by
+  the independent replay path at finalize, so the lap is still present there. That DB-short-of-parquet gap
+  is exactly what the finalize-time set canary (ADR-0015) surfaces rather than letting it pass silently.
 
 ## Consequences
 

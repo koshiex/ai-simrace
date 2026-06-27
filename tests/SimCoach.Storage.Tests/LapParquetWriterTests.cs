@@ -121,6 +121,7 @@ public sealed class LapParquetWriterTests : IDisposable
         reader.Close();
 
         result.Written.Should().Be(lapNumbers.Length);
+        result.WrittenLapNumbers.Should().Equal(lapNumbers, "the result reports exactly the row-group lap numbers");
         lapNumbers.Length.Should().BeGreaterThan(2, "two stints bound more laps than one");
         lapNumbers.Should().OnlyHaveUniqueItems();
         lapNumbers.Should().BeInAscendingOrder();

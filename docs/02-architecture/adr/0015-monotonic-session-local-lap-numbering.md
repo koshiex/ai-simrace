@@ -47,9 +47,10 @@ _lastAssigned = assigned
 ## Why
 
 - **Offset, not a running count.** Within a stint `assigned = intrinsic + constant`, so the label stays
-  tied to the per-frame counter and is robust to dropped frames — exactly as drop-proof as the raw
-  counter was. A *count*-based ordinal would desync the two independent streams after any single dropped
-  frame and would latch forever on a spurious high counter value.
+  tied to the per-frame counter and is robust to dropped frames — as drop-proof as the raw counter was
+  *until the first re-base*. A *count*-based ordinal would desync the two independent streams after any
+  single dropped frame and would latch forever on a spurious high counter value; the offset only becomes
+  history-dependent once a reset re-bases it (see Tradeoffs).
 - **Correct on real hardware.** A pit return no longer crashes; the laps continue `…2, 3, [box] 4, 5…`
   instead of repeating and colliding.
 - **Join preserved.** Both the live and replay `LapSegmenter`s run the same rule over the same per-frame
@@ -60,11 +61,14 @@ _lastAssigned = assigned
 
 ## Tradeoffs
 
-- **No relabel is perfectly drop-proof once the sim counter resets.** If back-pressure drops the exact
-  pre-reset boundary lap on one stream only, the two offsets differ for the post-reset laps. The window
-  is tiny (pit reset **and** >4096-frame consumer lag **and** the drop landing on the boundary lap), and
-  it is made observable by a finalize-time DB↔parquet count canary in `SessionManager` (warns when the
-  `laps` row count ≠ parquet bounded-lap count). The status quo for this scenario was a full-session
+- **No relabel is perfectly drop-proof once the sim counter resets.** If back-pressure drops a boundary
+  lap on one stream only, the two offsets differ for the post-reset laps. It is a compound event (a pit
+  reset **and** sustained consumer lag past the subscriber channel capacity — `256` frames by default,
+  `IngestOptions.SubscriberChannelCapacity` — **and** the drop landing on a boundary lap), and the
+  divergence can keep equal lap counts while permuting the labels. It is made observable by a
+  finalize-time **set** canary in `SessionManager` (`LapParquetReconciliation.Diff`): it warns when the
+  `laps` lap-number set differs from the parquet's `written ∪ skipped` set — a value-level check, since a
+  count check cannot see an equal-count permutation. The status quo for this scenario was a full-session
   crash, so any surviving relabel is strictly better.
 - **`source_lap_number` becomes an ordinal.** `ReferenceStore` writes `completed.LapNumber` as
   `references.source_lap_number` (and into the reference parquet), so it is now the session-local label,
@@ -83,8 +87,12 @@ _lastAssigned = assigned
   `completed.LapNumber`.
 - Compute-error isolation that stops the crash from killing the recorder is covered separately in
   [ADR-0016](0016-isolate-compute-service-failures-from-the-host.md).
+- `SessionManager` reconciles the `laps` lap-number set against the parquet's `written ∪ skipped` set via
+  the pure `LapParquetReconciliation.Diff` and warns on any difference.
 - Tests: `LapSegmenterTests` (reset, repeated-equal, strictly-increasing regression); `ComputeSessionTests`
   and `LapParquetWriterTests` pit-return cases; a wired `Phase2ComputeE2EGoldenTests` reset case asserting
-  the DB↔parquet `lap_number` sets are identical.
+  the DB↔parquet `lap_number` sets are identical on the no-drop happy path; and `LapParquetReconciliationTests`
+  covering the canary's set logic (no false alarm on degenerate-skipped laps; detects an equal-count label
+  permutation).
 - Relates to [ADR-0012](0012-lap-boundary-from-position-wrap.md) and
   [ADR-0013](0013-clamp-non-monotonic-laps-in-parquet.md) — all three came out of real-hardware sessions.

@@ -71,8 +71,10 @@ public sealed class Phase2ComputeE2EGoldenTests : IDisposable
         // Issue #13 end-to-end: two stints on one session where the sim lap counter restarts at the box.
         // Before the fix the duplicate (session_id, lap_number) crashed ComputeService and StopHost tore
         // down the recorder mid-session. After the fix the host survives, every lap is renumbered to a
-        // unique monotonic value, and — the gate assertion — the live path (laps rows) and the replay
-        // path (laps.parquet row groups) agree on the lap_number set, so the ADR-0013 join stays 1:1.
+        // unique monotonic value, and the live path (laps rows) and the replay path (laps.parquet row
+        // groups) agree on the lap_number set, so the ADR-0013 join stays 1:1. This is the no-drop happy
+        // path (capacity 4096, SpeedMultiplier 0); the drop-induced offset divergence and its set canary
+        // are exercised by LapParquetReconciliationTests instead.
         IReadOnlyList<TelemetryFrame> stint1 = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
         DateTimeOffset seam = stint1[^1].T.ToDateTimeOffset() + TimeSpan.FromMilliseconds(10);
         IReadOnlyList<TelemetryFrame> stint2 =
