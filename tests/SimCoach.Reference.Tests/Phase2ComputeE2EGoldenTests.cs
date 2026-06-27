@@ -2,6 +2,7 @@ using FluentAssertions;
 using Google.Protobuf;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
+using ParquetSharp;
 using SimCoach.Contracts.V1;
 using SimCoach.Pipeline;
 using SimCoach.Storage;
@@ -33,7 +34,81 @@ public sealed class Phase2ComputeE2EGoldenTests : IDisposable
     public async Task Replayed_spa_session_produces_laps_parquet_reference_and_events(bool injectAccDesync)
     {
         IReadOnlyList<TelemetryFrame> frames = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
-        WriteInputSegment(injectAccDesync ? InjectAccLapCounterDesync(frames) : frames);
+
+        ChainResult r = await RunChainAsync(injectAccDesync ? InjectAccLapCounterDesync(frames) : frames);
+
+        // (a) rows + counts
+        IReadOnlyList<LapRow> lapRows = r.Laps.GetBySession(r.Identity.SessionId);
+        lapRows.Should().HaveCount(2);
+        SessionRow sessionRow = r.Sessions.Get(r.Identity.SessionId)!;
+        sessionRow.EndedAtUtc.Should().NotBeNull();
+        sessionRow.LapCount.Should().Be(2);
+
+        // (b) laps.parquet produced and readable
+        string parquetPath = Path.Combine(r.RecordingsBase, r.Identity.SessionId, "laps.parquet");
+        File.Exists(parquetPath).Should().BeTrue();
+        sessionRow.ParquetPath.Should().Be(parquetPath);
+
+        // (c) a reference established for the triple, with its parquet on disk
+        ReferenceRow? reference = r.References.GetByTriple("spa", "synthetic_gt3", "dry-warm");
+        reference.Should().NotBeNull();
+        File.Exists(reference!.ParquetPath).Should().BeTrue();
+
+        // (d) the event stream — structural golden
+        r.Events.Count(e => e.Kind == DomainEventKind.Lap).Should().Be(2);
+        r.Events.Count(e => e.Kind == DomainEventKind.Session).Should().Be(1);
+        r.Events.Should().Contain(e => e.Kind == DomainEventKind.Corner);
+        r.Events.Should().Contain(e => e.Kind == DomainEventKind.Sector);
+
+        // (e) stop-ordering invariant: SessionEvent count == session row count == persisted lap count
+        var sessionEvent = (SessionEvent)r.Events.Single(e => e.Kind == DomainEventKind.Session).Payload;
+        sessionEvent.LapCount.Should().Be(sessionRow.LapCount).And.Be(lapRows.Count);
+    }
+
+    [Fact]
+    public async Task Pit_return_counter_reset_keeps_db_and_parquet_lap_numbers_in_lockstep()
+    {
+        // Issue #13 end-to-end: two stints on one session where the sim lap counter restarts at the box.
+        // Before the fix the duplicate (session_id, lap_number) crashed ComputeService and StopHost tore
+        // down the recorder mid-session. After the fix the host survives, every lap is renumbered to a
+        // unique monotonic value, and — the gate assertion — the live path (laps rows) and the replay
+        // path (laps.parquet row groups) agree on the lap_number set, so the ADR-0013 join stays 1:1.
+        IReadOnlyList<TelemetryFrame> stint1 = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
+        DateTimeOffset seam = stint1[^1].T.ToDateTimeOffset() + TimeSpan.FromMilliseconds(10);
+        IReadOnlyList<TelemetryFrame> stint2 =
+            SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4, startUtc: seam);
+        TelemetryFrame[] frames = [.. stint1, .. stint2];
+
+        ChainResult r = await RunChainAsync(frames);
+
+        // Host survived the reset (no StopHost crash) — the session finalized.
+        SessionRow sessionRow = r.Sessions.Get(r.Identity.SessionId)!;
+        sessionRow.EndedAtUtc.Should().NotBeNull();
+
+        IReadOnlyList<LapRow> lapRows = r.Laps.GetBySession(r.Identity.SessionId);
+        int[] dbLapNumbers = [.. lapRows.Select(l => l.LapNumber)];
+        dbLapNumbers.Length.Should().BeGreaterThan(2, "two stints bound more laps than one");
+        dbLapNumbers.Should().OnlyHaveUniqueItems("the pit-return duplicate is renumbered, not collided");
+        dbLapNumbers.Should().BeInAscendingOrder();
+        sessionRow.LapCount.Should().Be(lapRows.Count);
+
+        // The gate: laps.parquet carries the identical lap_number set, in order — the join is 1:1.
+        string parquetPath = Path.Combine(r.RecordingsBase, r.Identity.SessionId, "laps.parquet");
+        int[] parquetLapNumbers = ReadParquetLapNumbers(parquetPath);
+        parquetLapNumbers.Should().Equal(dbLapNumbers);
+    }
+
+    private sealed record ChainResult(
+        SessionRepository Sessions,
+        LapRepository Laps,
+        ReferenceRepository References,
+        string RecordingsBase,
+        SessionIdentity Identity,
+        IReadOnlyList<DomainEvent> Events);
+
+    private async Task<ChainResult> RunChainAsync(IReadOnlyList<TelemetryFrame> frames)
+    {
+        WriteInputSegment(frames);
 
         var factory = new SqliteConnectionFactory(new DatabaseOptions { DbPath = Path.Combine(_root, "simcoach.db") });
         new DatabaseMigrator(factory).Migrate();
@@ -102,33 +177,7 @@ public sealed class Phase2ComputeE2EGoldenTests : IDisposable
         }
 
         SessionIdentity identity = await context.Ready;
-
-        // (a) rows + counts
-        IReadOnlyList<LapRow> lapRows = laps.GetBySession(identity.SessionId);
-        lapRows.Should().HaveCount(2);
-        SessionRow sessionRow = sessions.Get(identity.SessionId)!;
-        sessionRow.EndedAtUtc.Should().NotBeNull();
-        sessionRow.LapCount.Should().Be(2);
-
-        // (b) laps.parquet produced and readable
-        string parquetPath = Path.Combine(recordingsBase, identity.SessionId, "laps.parquet");
-        File.Exists(parquetPath).Should().BeTrue();
-        sessionRow.ParquetPath.Should().Be(parquetPath);
-
-        // (c) a reference established for the triple, with its parquet on disk
-        ReferenceRow? reference = references.GetByTriple("spa", "synthetic_gt3", "dry-warm");
-        reference.Should().NotBeNull();
-        File.Exists(reference!.ParquetPath).Should().BeTrue();
-
-        // (d) the event stream — structural golden
-        collected.Count(e => e.Kind == DomainEventKind.Lap).Should().Be(2);
-        collected.Count(e => e.Kind == DomainEventKind.Session).Should().Be(1);
-        collected.Should().Contain(e => e.Kind == DomainEventKind.Corner);
-        collected.Should().Contain(e => e.Kind == DomainEventKind.Sector);
-
-        // (e) stop-ordering invariant: SessionEvent count == session row count == persisted lap count
-        var sessionEvent = (SessionEvent)collected.Single(e => e.Kind == DomainEventKind.Session).Payload;
-        sessionEvent.LapCount.Should().Be(sessionRow.LapCount).And.Be(lapRows.Count);
+        return new ChainResult(sessions, laps, references, recordingsBase, identity, collected);
     }
 
     private static async Task RunIngestAsync(McapReplaySource source, TelemetryFanOut fanOut, SessionContext context)
@@ -140,6 +189,24 @@ public sealed class Phase2ComputeE2EGoldenTests : IDisposable
         await ingest.ExecuteTask!.WaitAsync(_waitTimeout);
         await ingest.StopAsync(CancellationToken.None);
         ingest.Dispose();
+    }
+
+    // lap_number is the first column of laps.parquet (data-model.md order); read the single value per row
+    // group (every row in a group shares the lap's number) to recover the parquet's lap_number sequence.
+    private static int[] ReadParquetLapNumbers(string parquetPath)
+    {
+        using var reader = new ParquetFileReader(parquetPath);
+        List<int> numbers = [];
+        for (int g = 0; g < reader.FileMetaData.NumRowGroups; g++)
+        {
+            using RowGroupReader rowGroup = reader.RowGroup(g);
+            int rows = (int)rowGroup.MetaData.NumRows;
+            using LogicalColumnReader<int> column = rowGroup.Column(0).LogicalReader<int>();
+            numbers.Add(column.ReadAll(rows)[0]);
+        }
+
+        reader.Close();
+        return [.. numbers];
     }
 
     /// <summary>

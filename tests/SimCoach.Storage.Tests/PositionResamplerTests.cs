@@ -13,7 +13,7 @@ public sealed class PositionResamplerTests
     {
         IReadOnlyList<TelemetryFrame> lap = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 1);
 
-        ResampledLap resampled = PositionResampler.Resample(lap, SyntheticTracks.Spa.LapLengthM);
+        ResampledLap resampled = PositionResampler.Resample(lap, SyntheticTracks.Spa.LapLengthM, lapNumber: 5);
 
         resampled.GridLength.Should().Be((int)MathF.Ceiling(SyntheticTracks.Spa.LapLengthM));
         resampled.PositionNormalized.Should().HaveCount(resampled.GridLength);
@@ -24,11 +24,23 @@ public sealed class PositionResamplerTests
     }
 
     [Fact]
+    public void Labels_the_lap_with_the_supplied_number_not_the_frame_counter()
+    {
+        // The frames carry the sim's raw counter (1); the resampler must use the explicit session-local
+        // number it is handed, so laps.parquet stays joinable to the renumbered laps rows.
+        IReadOnlyList<TelemetryFrame> lap = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 1);
+
+        ResampledLap resampled = PositionResampler.Resample(lap, SyntheticTracks.Spa.LapLengthM, lapNumber: 42);
+
+        resampled.LapNumber.Should().Be(42);
+    }
+
+    [Fact]
     public void Carries_world_coordinates_onto_the_grid()
     {
         IReadOnlyList<TelemetryFrame> lap = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 1);
 
-        ResampledLap resampled = PositionResampler.Resample(lap, SyntheticTracks.Spa.LapLengthM);
+        ResampledLap resampled = PositionResampler.Resample(lap, SyntheticTracks.Spa.LapLengthM, lapNumber: 1);
 
         // Synthetic world_pos traces a circle of radius lapLength/2π (~1114 m) — far from zero.
         resampled.WorldX.Max(MathF.Abs).Should().BeGreaterThan(1f);
@@ -45,7 +57,7 @@ public sealed class PositionResamplerTests
             Frame(0.40f, 200), // backward step — a pit detour
         ];
 
-        Action resample = () => PositionResampler.Resample(frames, 2000f);
+        Action resample = () => PositionResampler.Resample(frames, 2000f, lapNumber: 1);
 
         resample.Should().Throw<ArgumentException>();
     }
@@ -63,7 +75,7 @@ public sealed class PositionResamplerTests
             Frame(0.80f, 300),
         ];
 
-        ResampledLap resampled = PositionResampler.Resample(frames, 100f, clampNonMonotonic: true);
+        ResampledLap resampled = PositionResampler.Resample(frames, 100f, lapNumber: 1, clampNonMonotonic: true);
 
         resampled.GridLength.Should().Be(100);
         resampled.PositionNormalized.Should().BeInAscendingOrder();
@@ -80,7 +92,7 @@ public sealed class PositionResamplerTests
             Frame(0.60f, 150),
         ];
 
-        ResampledLap resampled = PositionResampler.Resample(frames, 100f);
+        ResampledLap resampled = PositionResampler.Resample(frames, 100f, lapNumber: 1);
 
         resampled.GridLength.Should().Be(100);
         resampled.PositionNormalized.Should().BeInAscendingOrder();
@@ -91,7 +103,7 @@ public sealed class PositionResamplerTests
     {
         TelemetryFrame[] frames = [Frame(0.1f, 0)];
 
-        Action resample = () => PositionResampler.Resample(frames, 2000f);
+        Action resample = () => PositionResampler.Resample(frames, 2000f, lapNumber: 1);
 
         resample.Should().Throw<ArgumentException>();
     }

@@ -90,12 +90,40 @@ public sealed class LapParquetWriterTests : IDisposable
         SegmentFixture.Write(_dir, frames, framesPerSegment: 150);
         string parquet = Path.Combine(_dir, "laps.parquet");
 
-        int skipped = LapParquetWriter.Write(_dir, SyntheticTracks.Spa.LapLengthM, parquet);
+        LapParquetWriteResult result = LapParquetWriter.Write(_dir, SyntheticTracks.Spa.LapLengthM, parquet);
 
-        skipped.Should().Be(0, "the crash lap is clamped, not skipped");
+        result.Skipped.Should().Be(0, "the crash lap is clamped, not skipped");
+        result.Written.Should().Be(2);
         using var reader = new ParquetFileReader(parquet);
         reader.FileMetaData.NumRowGroups.Should().Be(2, "both interior laps are written, including the clamped one");
         reader.Close();
+    }
+
+    [Fact]
+    public void Pit_return_session_writes_unique_monotonic_lap_numbers()
+    {
+        // A pit return restarts the sim lap counter, so the recorded frames re-issue lap numbers across
+        // the seam. The writer shares LapSegmenter's renumbering with the live path, so parquet row-group
+        // lap_numbers stay unique and monotonic — keeping the ADR-0013 lap_number → laps.is_clean join 1:1.
+        IReadOnlyList<TelemetryFrame> stint1 = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
+        DateTimeOffset seam = stint1[^1].T.ToDateTimeOffset() + TimeSpan.FromMilliseconds(10);
+        IReadOnlyList<TelemetryFrame> stint2 =
+            SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4, startUtc: seam);
+        TelemetryFrame[] frames = [.. stint1, .. stint2];
+        SegmentFixture.Write(_dir, frames, framesPerSegment: 150);
+        string parquet = Path.Combine(_dir, "laps.parquet");
+        int gridLength = (int)MathF.Ceiling(SyntheticTracks.Spa.LapLengthM);
+
+        LapParquetWriteResult result = LapParquetWriter.Write(_dir, SyntheticTracks.Spa.LapLengthM, parquet);
+
+        using var reader = new ParquetFileReader(parquet);
+        int[] lapNumbers = ReadDistinctLapNumbers(reader, gridLength);
+        reader.Close();
+
+        result.Written.Should().Be(lapNumbers.Length);
+        lapNumbers.Length.Should().BeGreaterThan(2, "two stints bound more laps than one");
+        lapNumbers.Should().OnlyHaveUniqueItems();
+        lapNumbers.Should().BeInAscendingOrder();
     }
 
     private string WriteFixture()

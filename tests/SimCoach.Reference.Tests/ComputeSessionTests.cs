@@ -62,6 +62,39 @@ public sealed class ComputeSessionTests
     }
 
     [Fact]
+    public async Task Pit_return_lap_counter_reset_writes_distinct_rows_without_dropping_a_lap()
+    {
+        // Reproduce issue #13: two stints whose sim lap_number restarts at the box (the second stint
+        // re-issues 1, 2, 3…). Before the fix this collided on UNIQUE(session_id, lap_number) and
+        // crashed the host. After the fix every emitted lap is renumbered to a unique, monotonic value,
+        // so each LapEvent yields exactly one LapRow — nothing collides and nothing is dropped.
+        using var harness = new ComputeTestHarness();
+        IReadOnlyList<TelemetryFrame> frames = PitReturnSession();
+
+        IReadOnlyList<DomainEvent> events = await harness.RunAsync(frames, SessionId);
+
+        int lapEventCount = events.OfType<LapEvent>(DomainEventKind.Lap).Count();
+        lapEventCount.Should().BeGreaterThan(2, "the two stints together bound more laps than one stint");
+
+        IReadOnlyList<LapRow> laps = harness.Laps.GetBySession(SessionId);
+        laps.Should().HaveCount(lapEventCount, "every emitted lap is persisted — none lost to a collision");
+        laps.Select(l => l.LapNumber).Should().OnlyHaveUniqueItems();
+        laps.Select(l => l.LapNumber).Should().BeInAscendingOrder();
+    }
+
+    // Two back-to-back stints on the same session: the second restarts the sim lap counter (a pit
+    // return), so its frames re-issue lap numbers already completed in the first stint. Timestamps are
+    // continued past the first stint so lap times stay positive and the seam reads as a start-line wrap.
+    private static IReadOnlyList<TelemetryFrame> PitReturnSession()
+    {
+        IReadOnlyList<TelemetryFrame> stint1 = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
+        DateTimeOffset seam = stint1[^1].T.ToDateTimeOffset() + TimeSpan.FromMilliseconds(10);
+        IReadOnlyList<TelemetryFrame> stint2 =
+            SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4, startUtc: seam);
+        return [.. stint1, .. stint2];
+    }
+
+    [Fact]
     public async Task Establishes_a_reference_for_the_triple_on_the_first_clean_lap()
     {
         using var harness = new ComputeTestHarness();
