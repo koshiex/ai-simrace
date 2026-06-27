@@ -26,6 +26,12 @@ for csproj in tests/*/*.csproj; do
   dotnet sln "$SLN" add "$csproj"
 done
 
+# Add all tool projects (offline dev tools, e.g. SimCoach.Bake). Guarded so an empty glob is a no-op.
+for csproj in tools/*/*.csproj; do
+  [[ -e "$csproj" ]] || continue
+  dotnet sln "$SLN" add "$csproj"
+done
+
 # Restore.
 dotnet restore "$SLN"
 
