@@ -31,8 +31,7 @@ internal sealed class ComputeTestHarness : IDisposable
         DomainFanOut = new DomainEventFanOut();
 
         TrackModels = new TrackModelStore(
-            LandmarkDataset.Load(),
-            new JsonTrackModelRepository(Path.Combine(_root, "track_models")),
+            BakedGeometryFixture.Spa(),
             lengths,
             NullLogger<TrackModelStore>.Instance);
         Lookup = new ReferenceLookup(References);

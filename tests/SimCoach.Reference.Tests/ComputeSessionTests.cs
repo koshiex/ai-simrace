@@ -79,7 +79,7 @@ public sealed class ComputeSessionTests
     }
 
     [Fact]
-    public async Task Derives_a_track_model_for_an_uncovered_track()
+    public async Task Uncovered_track_has_no_corner_model()
     {
         var lengths = new FakeTrackLengths(("test_oval", 2000f));
         using var harness = new ComputeTestHarness(lengths);
@@ -87,18 +87,17 @@ public sealed class ComputeSessionTests
 
         IReadOnlyList<DomainEvent> events = await harness.RunAsync(frames, SessionId);
 
-        // Uncovered track starts at None; the first clean lap derives a model used by later laps.
-        harness.TrackModels.Get("test_oval").Source.Should().Be(TrackModelSource.Derived);
-        events.OfType<CornerEvent>(DomainEventKind.Corner).Should().NotBeEmpty();
+        // No baked geometry for this track and no mid-session derive (ADR-0014) → corners are suppressed.
+        harness.TrackModels.Get("test_oval").Source.Should().Be(TrackModelSource.None);
+        events.OfType<CornerEvent>(DomainEventKind.Corner).Should().BeEmpty();
         events.OfType<LapEvent>(DomainEventKind.Lap).Should().HaveCount(2);
     }
 
     [Fact]
-    public async Task Covered_track_keeps_its_dataset_model_after_a_clean_lap()
+    public async Task Covered_track_uses_a_fixed_baked_model_across_laps()
     {
-        // A clean lap must NOT swap a dataset-covered track to the lap-derived model (ADR-0010). Before
-        // the fix, the first clean lap overrode Spa's named landmark corners with derived spa_t01..NN
-        // ids on every subsequent lap.
+        // Baked geometry resolves once at session start and never changes mid-session (ADR-0014):
+        // every lap emits the same stable positional corner ids and the source stays Baked.
         using var harness = new ComputeTestHarness();
         IReadOnlyList<TelemetryFrame> frames = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
 
@@ -107,8 +106,9 @@ public sealed class ComputeSessionTests
         IReadOnlyList<CornerEvent> corners = [.. events.OfType<CornerEvent>(DomainEventKind.Corner)];
         corners.Should().NotBeEmpty();
         corners.Should().OnlyContain(
-            c => !Regex.IsMatch(c.CornerId, @"^spa_t\d+$"),
-            "dataset corners keep their landmark names across all laps; the derive override must not fire");
+            c => Regex.IsMatch(c.CornerId, @"^spa_t\d+$"),
+            "baked corners carry stable positional ids; the model is fixed for the session");
+        harness.TrackModels.Get("spa").Source.Should().Be(TrackModelSource.Baked);
     }
 
     [Fact]

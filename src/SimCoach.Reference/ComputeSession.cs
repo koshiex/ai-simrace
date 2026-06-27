@@ -253,25 +253,10 @@ internal sealed class ComputeSession
         lapEvent.TopLosses.AddRange(TopLosses(_lapLosses));
         _domain.Publish(DomainEvent.Lap(lapEvent));
 
-        if (clean)
+        // Geometry is baked and fixed for the session (ADR-0014); a clean lap only updates the reference.
+        if (clean && self is not null && _referenceStore.MaybeUpdate(_triple, completed, self, _identity))
         {
-            // Only uncovered tracks build their corner model from the driver's lap. A dataset-covered
-            // track keeps its curated landmark model (ADR-0010) — deriving would replace the named,
-            // skill-independent corners with a worse lap-derived set mid-session.
-            if (_trackModel.Source != TrackModelSource.Dataset)
-            {
-                TrackModel updated = _trackModels.Derive(_trackId, completed);
-                if (updated.Source == TrackModelSource.Derived && !ReferenceEquals(updated, _trackModel))
-                {
-                    _trackModel = updated;
-                    RebuildCornerTrackers();
-                }
-            }
-
-            if (self is not null && _referenceStore.MaybeUpdate(_triple, completed, self, _identity))
-            {
-                _reference = self;
-            }
+            _reference = self;
         }
 
         _laps.Insert(new LapRow

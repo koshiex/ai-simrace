@@ -68,16 +68,16 @@ sit on the real corners, then commit the JSON to `src/SimCoach.Reference/Data/`.
 - [x] Hermetic detector tests (tight corner by curvature; flat R=250 m corner by lateral-G alone; chicane split; no phantom on a straight).
 - [x] **Validated bake of Monza** (`20260624-193240-243`, 5 laps): 11 corners = the 11 real turns (the 3 chicanes split into apexes), Curva Grande on lateral-G alone. Committed to `Data/cornerGeometry.json`.
 
-### Phase 2 — Swap the geometry source  `[ ]` (in progress)
+### Phase 2 — Swap the geometry source  `[x]`
 - [x] Vendor the baked Monza `cornerGeometry.json` (embedded resource).
-- [ ] `TrackModelSource.Baked`.
-- [ ] `CornerGeometryDataset` — read-only loader: schema-version pin + lap-length check + ADR-0010 range guard (`0 ≤ start < end ≤ 1`; one bad range disqualifies the track); maps entries → `Corner`.
-- [ ] Rewire `TrackModelStore.Get` to `Baked → None`; delete the mid-session `Derive` block in `ComputeSession`; rewire DI in `TelemetryComposition`.
-- [ ] Delete the CrewChief/derive surface: `LandmarkDataset`, `TrackModelBuilder`, `ITrackModelRepository`/`JsonTrackModelRepository`, `Data/trackLandmarksData.json` + `Data/LICENSE-CrewChief`, and their tests.
+- [x] `TrackModelSource.Baked` (enum trimmed to `None`/`Baked`; `Derived` + `DerivedFromLapTimeMs` removed).
+- [x] `CornerGeometryDataset` — read-only loader: schema-version pin + lap-length check + ADR-0010 range guard (`0 ≤ start < end ≤ 1`; one bad range disqualifies the track); maps entries → `Corner`.
+- [x] Rewire `TrackModelStore.Get` to `Baked → None`; delete the mid-session `Derive` block in `ComputeSession`; rewire DI in `TelemetryComposition`.
+- [x] Delete the CrewChief/derive surface: `LandmarkDataset`, `TrackModelBuilder`, `ITrackModelRepository`/`JsonTrackModelRepository`, `Data/trackLandmarksData.json` + `Data/LICENSE-CrewChief`, and their tests.
 
-### Phase 3 — Golden + ADR supersession + docs  `[ ]`
-- [ ] Rewrite `Phase2ComputeE2EGoldenTests` against a baked test fixture (synthetic `world_pos` is a perfect circle, not a geometry oracle).
-- [ ] Mark ADR-0010 `Superseded by ADR-0014`; update implementation/KB doc references.
+### Phase 3 — Golden + ADR supersession + docs  `[x]`
+- [x] `Phase2ComputeE2EGoldenTests` builds the store from a baked test fixture (`BakedGeometryFixture.Spa()`); structural assertions unchanged (synthetic `world_pos` is a perfect circle, not a geometry oracle).
+- [x] ADR-0010 marked `Superseded by ADR-0014`; KB references updated (`.gitignore` negation comment, INDEX, build-quirks). The older `phase-2-detailed-plan.md` is kept as a historical record.
 
 ## Open items (require a live ACC run)
 

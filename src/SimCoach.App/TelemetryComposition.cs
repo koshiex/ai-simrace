@@ -85,9 +85,7 @@ internal static class TelemetryComposition
         computeOptions.EnsureValid();
         builder.Services.AddSingleton(computeOptions);
 
-        builder.Services.AddSingleton(LandmarkDataset.Load());
-        builder.Services.AddSingleton<ITrackModelRepository>(
-            new JsonTrackModelRepository(Path.Combine(dataRoot, "track_models")));
+        builder.Services.AddSingleton(CornerGeometryDataset.Load());
         builder.Services.AddSingleton<TrackModelStore>();
 
         builder.Services.AddSingleton(new ReferenceStorageOptions

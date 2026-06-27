@@ -33,7 +33,7 @@ sessions/
 *.db-shm
 *.db-wal
 
-# Vendored, source-controlled corner-landmark dataset (overrides the data/ rule above)
+# Vendored, source-controlled corner geometry (overrides the data/ rule above)
 !src/SimCoach.Reference/Data/
 !src/SimCoach.Reference/Data/**
 
