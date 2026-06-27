@@ -45,22 +45,27 @@ Net posture: **triggered one-glance human review**, not 100% full-auto.
 ## Bake workflow
 
 ```
-dotnet run --project tools/SimCoach.Bake -- <recording-dir> [output path]
+dotnet run --project tools/SimCoach.Bake -- [recordings-root] [output-dir]
+```
+Defaults: `recordings-root` = `%LOCALAPPDATA%/SimCoach/recordings`, `output-dir` = current directory.
+Bake straight into the vendored data dir, e.g.:
+```
+dotnet run --project tools/SimCoach.Bake -- "%LOCALAPPDATA%\SimCoach\recordings" "src\SimCoach.Reference\Data"
 ```
 
-Reads the recording's MCAP, segments laps by position-wrap, runs the offline coherence gate, builds the
-median centerline, detects corners, and writes the geometry JSON + a static HTML review page.
+The tool **scans every recording under the root, pools all CLEAN laps per track across all sessions**, and
+for each track with ≥ 3 clean laps writes `cornerGeometry.<trackId>.json` + an HTML review page. One run bakes
+every covered track at once. Always using all recordings means more clean laps → a more robust median
+centerline and fewer single-lap/line artifacts (e.g. a mid-corner correction on one session averages out).
 
-**Bake from CLEAN laps only.** The tool aggregates only `IsClean` laps (track-limits / off-track laps are
-erratic and would bias the centerline — ADR-0010/0014) and **refuses to bake (NO-GO)** with fewer than 3
-clean laps. Console prints `N clean lap(s) of M recorded`. So **record ≥ 3 clean laps per track** (any pace,
-but take corners with real load; no track-limits, spins, or pit mid-lap). A mostly-dirty recording is NO-GO
-by design — re-record cleaner rather than baking off-track artifacts.
+**Clean laps only.** Track-limits / off-track laps are erratic and would bias the centerline (ADR-0010/0014),
+so they are excluded; a track with < 3 clean laps is **NO-GO** (skipped, with a reason). Console prints
+`<track>: N clean lap(s) of M recorded … GO=`. So drive ≥ 3 clean laps per track over time (any pace, but take
+corners with real load; no track-limits/spins/pit mid-lap) — they need not be in one session.
 
-Geometry is **one file per track**: `cornerGeometry.<trackId>.json` (the default output name; the loader
-embeds all of them via the `Data\cornerGeometry.*.json` glob and indexes by `trackId`, so a bake never
-overwrites another track). Open the HTML, confirm the apexes sit on the real corners, then commit the JSON
-to `src/SimCoach.Reference/Data/` (e.g. bake straight to `src\SimCoach.Reference\Data\cornerGeometry.spa.json`).
+Geometry is **one file per track** (`cornerGeometry.<trackId>.json`); the loader embeds all of them via the
+`Data\cornerGeometry.*.json` glob and indexes by `trackId`. Open each HTML, confirm the apexes sit on the real
+corners, then commit the JSON(s) under `src/SimCoach.Reference/Data/` (the review `.html` is git-ignored there).
 
 ### After every bake: add/update corner NAMES (do not skip)
 

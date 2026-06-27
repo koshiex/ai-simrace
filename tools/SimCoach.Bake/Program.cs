@@ -5,84 +5,121 @@ using SimCoach.Pipeline.Segmentation;
 using SimCoach.Reference;
 using SimCoach.Storage.Mcap;
 
-// Offline bake (ADR-0014): read a recording's MCAP, aggregate a median centerline, detect corners,
-// and — only if the offline coherence gate passes — write cornerGeometry.json + an HTML review page.
-// Telemetry recordings are never committed; this runs locally against %LOCALAPPDATA%/SimCoach/recordings.
-if (args.Length < 1)
+// Offline bake (ADR-0014). Scans ALL recordings under the root, pools every CLEAN lap per track across
+// all of them, and writes cornerGeometry.<trackId>.json + an HTML review page for each track that has
+// >= MinLapsForTrust clean laps. More clean laps (even across sessions) => a more robust median
+// centerline and fewer single-lap/line artifacts. Track-limits / off-track laps are excluded.
+//   usage: SimCoach.Bake [recordings-root] [output-dir]
+//   defaults: root = %LOCALAPPDATA%/SimCoach/recordings, output-dir = current directory.
+string recordingsRoot = args.Length >= 1
+    ? args[0]
+    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SimCoach", "recordings");
+string outputDir = args.Length >= 2 ? args[1] : ".";
+
+if (!Directory.Exists(recordingsRoot))
 {
-    Console.Error.WriteLine("usage: SimCoach.Bake <recording-dir> [output cornerGeometry.json]");
+    Console.Error.WriteLine($"recordings root not found: {recordingsRoot}");
     return 2;
 }
 
-string recordingDir = args[0];
-string? explicitOutput = args.Length >= 2 ? args[1] : null;
+Dictionary<string, List<IReadOnlyList<TelemetryFrame>>> cleanLapsByTrack = new(StringComparer.Ordinal);
+Dictionary<string, int> totalLapsByTrack = new(StringComparer.Ordinal);
+Dictionary<string, float> maxDistByTrack = new(StringComparer.Ordinal);
 
-List<TelemetryFrame> frames = [.. McapSegmentEnumerator.Read(recordingDir)];
-if (frames.Count == 0)
+Console.WriteLine($"scanning {recordingsRoot}");
+foreach (string recordingDir in Directory.GetDirectories(recordingsRoot).OrderBy(d => d, StringComparer.Ordinal))
 {
-    Console.Error.WriteLine($"no telemetry frames under {recordingDir}");
-    return 1;
-}
+    List<TelemetryFrame> frames;
+    try
+    {
+        frames = [.. McapSegmentEnumerator.Read(recordingDir)];
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"  {Path.GetFileName(recordingDir)}: skipped ({ex.GetType().Name})");
+        continue;
+    }
 
-TelemetryFrame? identified = frames.Find(frame => !string.IsNullOrWhiteSpace(frame.TrackId));
-string trackId = identified?.TrackId ?? string.Empty;
-if (string.IsNullOrWhiteSpace(trackId))
-{
-    Console.Error.WriteLine("no track id in telemetry");
-    return 1;
-}
-
-// Per-track file by default so a bake never overwrites another track's geometry.
-string outputPath = explicitOutput ?? $"cornerGeometry.{trackId}.json";
-
-float lapLengthM = AccTrackCatalog.TryGetLapLengthM(trackId, out float catalogLength)
-    ? catalogLength
-    : frames.Max(frame => frame.LapDistanceM);
-
-// Bake from CLEAN laps only (ADR-0010/0014): track-limits / off-track laps are erratic and would bias
-// the median centerline. A track therefore needs >= MinLapsForTrust CLEAN laps or the gate is NO-GO.
-LapSegmenter segmenter = new();
-List<IReadOnlyList<TelemetryFrame>> cleanLaps = [];
-int totalLaps = 0;
-foreach (TelemetryFrame frame in frames)
-{
-    CompletedLap? completed = segmenter.Accept(frame);
-    if (completed is null)
+    TelemetryFrame? identified = frames.Find(frame => !string.IsNullOrWhiteSpace(frame.TrackId));
+    string trackId = identified?.TrackId ?? string.Empty;
+    if (frames.Count == 0 || string.IsNullOrWhiteSpace(trackId))
     {
         continue;
     }
 
-    totalLaps++;
-    if (completed.IsClean)
+    if (!cleanLapsByTrack.TryGetValue(trackId, out List<IReadOnlyList<TelemetryFrame>>? trackLaps))
     {
-        cleanLaps.Add(completed.Frames);
+        trackLaps = [];
+        cleanLapsByTrack[trackId] = trackLaps;
     }
+
+    LapSegmenter segmenter = new();
+    int clean = 0;
+    int total = 0;
+    foreach (TelemetryFrame frame in frames)
+    {
+        CompletedLap? completed = segmenter.Accept(frame);
+        if (completed is null)
+        {
+            continue;
+        }
+
+        total++;
+        if (completed.IsClean)
+        {
+            trackLaps.Add(completed.Frames);
+            clean++;
+        }
+    }
+
+    totalLapsByTrack[trackId] = totalLapsByTrack.GetValueOrDefault(trackId) + total;
+    float recordingMaxDist = frames.Max(frame => frame.LapDistanceM);
+    if (recordingMaxDist > maxDistByTrack.GetValueOrDefault(trackId))
+    {
+        maxDistByTrack[trackId] = recordingMaxDist;
+    }
+
+    Console.WriteLine($"  {Path.GetFileName(recordingDir)}: {trackId} (+{clean} clean of {total})");
 }
 
-CoherenceReport coherence = CenterlineCoherence.Evaluate(trackId, lapLengthM, cleanLaps);
-Console.WriteLine($"{trackId}: {coherence.LapCount} clean lap(s) of {totalLaps} recorded, median dev {coherence.MedianDeviationM:0.00} m, max {coherence.MaxDeviationM:0.0} m, GO={coherence.Go}");
-foreach (string reason in coherence.Reasons)
+if (cleanLapsByTrack.Count == 0)
 {
-    Console.WriteLine($"  - {reason}");
-}
-
-if (!coherence.Go)
-{
-    Console.Error.WriteLine("coherence NO-GO; refusing to bake");
+    Console.Error.WriteLine("no track recordings with clean laps found");
     return 1;
 }
 
-MedianCenterline centerline = MedianCenterlineBuilder.Build(trackId, lapLengthM, cleanLaps);
-IReadOnlyList<DetectedCorner> corners = CornerCenterlineDetector.Detect(centerline);
-string sourceRecording = Path.GetFileName(Path.TrimEndingDirectorySeparator(recordingDir));
-var document = CornerGeometryDocument.FromDetected(trackId, lapLengthM, coherence.LapCount, corners, sourceRecording);
+Directory.CreateDirectory(outputDir);
+int bakedTracks = 0;
+foreach ((string trackId, List<IReadOnlyList<TelemetryFrame>> laps) in cleanLapsByTrack.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+{
+    float lapLengthM = AccTrackCatalog.TryGetLapLengthM(trackId, out float catalogLength)
+        ? catalogLength
+        : maxDistByTrack[trackId];
 
-JsonSerializerOptions options = new() { WriteIndented = true };
-File.WriteAllText(outputPath, JsonSerializer.Serialize(document, options));
-Console.WriteLine($"baked {corners.Count} corner(s) -> {outputPath}");
+    CoherenceReport coherence = CenterlineCoherence.Evaluate(trackId, lapLengthM, laps);
+    Console.WriteLine(
+        $"{trackId}: {coherence.LapCount} clean lap(s) of {totalLapsByTrack[trackId]} recorded, "
+        + $"median dev {coherence.MedianDeviationM:0.00} m, max {coherence.MaxDeviationM:0.0} m, GO={coherence.Go}");
+    foreach (string reason in coherence.Reasons)
+    {
+        Console.WriteLine($"  - {reason}");
+    }
 
-string reviewPath = Path.ChangeExtension(outputPath, ".html");
-File.WriteAllText(reviewPath, CornerGeometryReviewPage.Render(document, centerline));
-Console.WriteLine($"review page -> {reviewPath}");
+    if (!coherence.Go)
+    {
+        continue;
+    }
 
-return 0;
+    MedianCenterline centerline = MedianCenterlineBuilder.Build(trackId, lapLengthM, laps);
+    IReadOnlyList<DetectedCorner> corners = CornerCenterlineDetector.Detect(centerline);
+    var document = CornerGeometryDocument.FromDetected(trackId, lapLengthM, coherence.LapCount, corners);
+
+    string jsonPath = Path.Combine(outputDir, $"cornerGeometry.{trackId}.json");
+    JsonSerializerOptions jsonOptions = new() { WriteIndented = true };
+    File.WriteAllText(jsonPath, JsonSerializer.Serialize(document, jsonOptions));
+    File.WriteAllText(Path.ChangeExtension(jsonPath, ".html"), CornerGeometryReviewPage.Render(document, centerline));
+    Console.WriteLine($"  baked {corners.Count} corner(s) -> {jsonPath} (+ review html)");
+    bakedTracks++;
+}
+
+return bakedTracks > 0 ? 0 : 1;
