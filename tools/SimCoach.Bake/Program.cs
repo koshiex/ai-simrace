@@ -39,18 +39,28 @@ float lapLengthM = AccTrackCatalog.TryGetLapLengthM(trackId, out float catalogLe
     ? catalogLength
     : frames.Max(frame => frame.LapDistanceM);
 
+// Bake from CLEAN laps only (ADR-0010/0014): track-limits / off-track laps are erratic and would bias
+// the median centerline. A track therefore needs >= MinLapsForTrust CLEAN laps or the gate is NO-GO.
 LapSegmenter segmenter = new();
-List<IReadOnlyList<TelemetryFrame>> laps = [];
+List<IReadOnlyList<TelemetryFrame>> cleanLaps = [];
+int totalLaps = 0;
 foreach (TelemetryFrame frame in frames)
 {
-    if (segmenter.Accept(frame) is { } lap)
+    CompletedLap? completed = segmenter.Accept(frame);
+    if (completed is null)
     {
-        laps.Add(lap.Frames);
+        continue;
+    }
+
+    totalLaps++;
+    if (completed.IsClean)
+    {
+        cleanLaps.Add(completed.Frames);
     }
 }
 
-CoherenceReport coherence = CenterlineCoherence.Evaluate(trackId, lapLengthM, laps);
-Console.WriteLine($"{trackId}: {coherence.LapCount} lap(s), median dev {coherence.MedianDeviationM:0.00} m, max {coherence.MaxDeviationM:0.0} m, GO={coherence.Go}");
+CoherenceReport coherence = CenterlineCoherence.Evaluate(trackId, lapLengthM, cleanLaps);
+Console.WriteLine($"{trackId}: {coherence.LapCount} clean lap(s) of {totalLaps} recorded, median dev {coherence.MedianDeviationM:0.00} m, max {coherence.MaxDeviationM:0.0} m, GO={coherence.Go}");
 foreach (string reason in coherence.Reasons)
 {
     Console.WriteLine($"  - {reason}");
@@ -62,7 +72,7 @@ if (!coherence.Go)
     return 1;
 }
 
-MedianCenterline centerline = MedianCenterlineBuilder.Build(trackId, lapLengthM, laps);
+MedianCenterline centerline = MedianCenterlineBuilder.Build(trackId, lapLengthM, cleanLaps);
 IReadOnlyList<DetectedCorner> corners = CornerCenterlineDetector.Detect(centerline);
 string sourceRecording = Path.GetFileName(Path.TrimEndingDirectorySeparator(recordingDir));
 var document = CornerGeometryDocument.FromDetected(trackId, lapLengthM, coherence.LapCount, corners, sourceRecording);

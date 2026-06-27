@@ -48,13 +48,35 @@ Net posture: **triggered one-glance human review**, not 100% full-auto.
 dotnet run --project tools/SimCoach.Bake -- <recording-dir> [output path]
 ```
 
-Reads the recording's MCAP, segments laps by position-wrap, runs the offline coherence gate
-(**refuses to bake on NO-GO** or < 3 laps), builds the median centerline, detects corners, and writes
-the geometry JSON + a static HTML review page. Geometry is **one file per track**:
-`cornerGeometry.<trackId>.json` (the default output name; the loader embeds all of them via the
-`Data\cornerGeometry.*.json` glob and indexes by `trackId`, so a bake never overwrites another track).
-Open the HTML, confirm the apexes sit on the real corners, then commit the JSON to
-`src/SimCoach.Reference/Data/` (e.g. bake straight to `src\SimCoach.Reference\Data\cornerGeometry.spa.json`).
+Reads the recording's MCAP, segments laps by position-wrap, runs the offline coherence gate, builds the
+median centerline, detects corners, and writes the geometry JSON + a static HTML review page.
+
+**Bake from CLEAN laps only.** The tool aggregates only `IsClean` laps (track-limits / off-track laps are
+erratic and would bias the centerline — ADR-0010/0014) and **refuses to bake (NO-GO)** with fewer than 3
+clean laps. Console prints `N clean lap(s) of M recorded`. So **record ≥ 3 clean laps per track** (any pace,
+but take corners with real load; no track-limits, spins, or pit mid-lap). A mostly-dirty recording is NO-GO
+by design — re-record cleaner rather than baking off-track artifacts.
+
+Geometry is **one file per track**: `cornerGeometry.<trackId>.json` (the default output name; the loader
+embeds all of them via the `Data\cornerGeometry.*.json` glob and indexes by `trackId`, so a bake never
+overwrites another track). Open the HTML, confirm the apexes sit on the real corners, then commit the JSON
+to `src/SimCoach.Reference/Data/` (e.g. bake straight to `src\SimCoach.Reference\Data\cornerGeometry.spa.json`).
+
+### After every bake: add/update corner NAMES (do not skip)
+
+Corner ids are positional (`<trackId>_tNN`) and **depend on the bake** — a re-bake can change the count or
+shift ids. So whenever you bake or re-bake a track, **add or update that track's entry in
+`src/SimCoach.Coach/Data/cornerNames.json`** (`corner_id → human name`, the Phase-3 prompt layer) to match
+the new ids, and review the names against the HTML. Geometry stays nameless in compute; names live only here.
+Commit the names change together with the geometry.
+
+### Manual review overrides (rare)
+
+If a clean-lap bake still shows a corner you know is a single-lap/line artifact (e.g. a mid-corner throttle
+correction read as a second apex), you may hand-merge/adjust the entries in the committed
+`cornerGeometry.<trackId>.json` — this is the "triggered one-glance review" override. Note it is **not durable
+across a re-bake** (the detector regenerates it); prefer fixing it at the source with cleaner laps. Re-number
+ids after a merge and update `cornerNames.json` to match.
 
 ## Phases
 
