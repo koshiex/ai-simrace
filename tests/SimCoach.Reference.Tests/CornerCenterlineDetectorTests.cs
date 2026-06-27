@@ -39,6 +39,21 @@ public sealed class CornerCenterlineDetectorTests
     }
 
     [Fact]
+    public void Splits_a_close_chicane_into_two_corners()
+    {
+        // Two opposite arcs 60 m apart: the fusion gate merges them into one complex, the splitter must
+        // separate them at the curvature sign-change / load valley between the two apexes.
+        MedianCenterline centerline = BuildChicane(
+            lengthM: 460, c1: 200, c2: 260, halfWidthM: 40, peakRadiusM: 40f, peakLateralG: 1.5f);
+
+        IReadOnlyList<DetectedCorner> corners = CornerCenterlineDetector.Detect(centerline);
+
+        corners.Should().HaveCount(2);
+        (corners[0].ApexPosition * centerline.LapLengthM).Should().BeApproximately(200f, 15f);
+        (corners[1].ApexPosition * centerline.LapLengthM).Should().BeApproximately(260f, 15f);
+    }
+
+    [Fact]
     public void Finds_no_corner_on_a_straight()
     {
         MedianCenterline centerline = BuildCenterline(
@@ -76,6 +91,46 @@ public sealed class CornerCenterlineDetectorTests
             });
 
             heading += turnSign * peakKappa * profile;
+            x += MathF.Cos(heading);
+            z += MathF.Sin(heading);
+        }
+
+        return new MedianCenterline
+        {
+            TrackId = "test",
+            LapLengthM = lengthM,
+            LapCount = 5,
+            Bins = bins,
+        };
+    }
+
+    /// <summary>
+    /// Synthesizes a chicane: two opposite-sign triangular curvature humps centered at
+    /// <paramref name="c1"/> and <paramref name="c2"/>, each carrying lateral g, so the fusion gate sees
+    /// one merged complex with a sign-change/load valley between the apexes.
+    /// </summary>
+    private static MedianCenterline BuildChicane(
+        int lengthM, int c1, int c2, int halfWidthM, float peakRadiusM, float peakLateralG)
+    {
+        float peakKappa = 1f / peakRadiusM;
+        float heading = 0f;
+        float x = 0f;
+        float z = 0f;
+        List<CenterlineBin> bins = new(lengthM);
+        for (int i = 0; i < lengthM; i++)
+        {
+            float p1 = MathF.Max(0f, 1f - (MathF.Abs(i - c1) / halfWidthM));
+            float p2 = MathF.Max(0f, 1f - (MathF.Abs(i - c2) / halfWidthM));
+            bins.Add(new CenterlineBin
+            {
+                DistanceM = i,
+                X = x,
+                Z = z,
+                LateralG = peakLateralG * (p1 + p2),
+                LapSamples = 5,
+            });
+
+            heading += peakKappa * (p1 - p2);
             x += MathF.Cos(heading);
             z += MathF.Sin(heading);
         }

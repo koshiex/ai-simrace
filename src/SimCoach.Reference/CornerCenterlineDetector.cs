@@ -5,9 +5,9 @@ namespace SimCoach.Reference;
 /// ONCE (ADR-0014): heading is atan2 of the world-position delta over a fixed span, curvature is the
 /// heading delta over the same span. Detection fuses two SIGN-STABLE channels — centerline curvature
 /// (R below threshold) and median |lateral g| — so flat/large-radius corners that pure curvature would
-/// miss are still found. The apex is the argmax of |curvature|, never the argmax of lateral g.
-/// This stage produces the baseline (merged-complex) corners; splitting close complexes is layered on
-/// top separately.
+/// miss are still found. Close complexes that the fusion gate merges are then split at a curvature
+/// sign-change or a fused-load valley between two peaks. The apex is the argmax of |curvature|, never
+/// the argmax of lateral g.
 /// </summary>
 public static class CornerCenterlineDetector
 {
@@ -17,16 +17,25 @@ public static class CornerCenterlineDetector
     /// <summary>Median |lateral g| at or above this fires the load channel.</summary>
     public const float CornerLateralGThreshold = 1.0f;
 
-    /// <summary>Detected arcs shorter than this (metres) are discarded as noise.</summary>
+    /// <summary>Detected arcs shorter than this (metres) are discarded as noise (applied post-split too).</summary>
     public const int MinArcM = 35;
 
     /// <summary>Inactive gaps shorter than this (metres) between active runs are bridged.</summary>
     public const int MergeGapM = 45;
 
+    /// <summary>Minimum spacing (metres) between two load peaks for them to be split candidates.</summary>
+    public const int MinPeakSeparationM = 25;
+
+    /// <summary>Signed curvature beyond ±this (rad/m) on both sides of a valley counts as a sign reversal.</summary>
+    public const float SplitSignedCurvatureThreshold = 0.0015f;
+
+    /// <summary>A valley below this fraction of the smaller flanking peak splits the complex.</summary>
+    public const float SplitValleyFraction = 0.65f;
+
     private const int HeadingSpanM = 8;
     private const int SmoothRadius = 3;
 
-    /// <summary>Detects baseline corners on the centerline, in ascending position order.</summary>
+    /// <summary>Detects corners on the centerline, in ascending position order.</summary>
     public static IReadOnlyList<DetectedCorner> Detect(MedianCenterline centerline)
     {
         ArgumentNullException.ThrowIfNull(centerline);
@@ -37,14 +46,22 @@ public static class CornerCenterlineDetector
             return [];
         }
 
-        float[] absKappa = Smooth(SignedCurvature(bins), n, takeAbsoluteFirst: true);
-        float[] latG = Smooth(LateralGate(bins), n, takeAbsoluteFirst: false);
+        float[] rawKappa = SignedCurvature(bins);
+        float[] signedKappa = Smooth(rawKappa, n);
+        float[] absKappa = Smooth(Absolute(rawKappa), n);
+        float[] latG = Smooth(LateralGate(bins), n);
+
         float curvatureThreshold = 1f / CornerRadiusThresholdM;
+        float[] fusedLoad = new float[n];
+        for (int i = 0; i < n; i++)
+        {
+            fusedLoad[i] = MathF.Max(absKappa[i] / curvatureThreshold, latG[i] / CornerLateralGThreshold);
+        }
 
         bool[] active = new bool[n];
         for (int i = 0; i < n; i++)
         {
-            active[i] = absKappa[i] >= curvatureThreshold || latG[i] >= CornerLateralGThreshold;
+            active[i] = fusedLoad[i] >= 1f;
         }
 
         CloseSmallGaps(active, MergeGapM);
@@ -59,24 +76,26 @@ public static class CornerCenterlineDetector
             }
             else if (!active[i] && start >= 0)
             {
-                TryAddCorner(corners, bins, absKappa, latG, curvatureThreshold, start, i - 1, centerline.LapLengthM);
+                EmitSegment(corners, bins, absKappa, signedKappa, latG, fusedLoad, curvatureThreshold, start, i - 1, centerline.LapLengthM);
                 start = -1;
             }
         }
 
         if (start >= 0)
         {
-            TryAddCorner(corners, bins, absKappa, latG, curvatureThreshold, start, n - 1, centerline.LapLengthM);
+            EmitSegment(corners, bins, absKappa, signedKappa, latG, fusedLoad, curvatureThreshold, start, n - 1, centerline.LapLengthM);
         }
 
         return corners;
     }
 
-    private static void TryAddCorner(
+    private static void EmitSegment(
         List<DetectedCorner> corners,
         IReadOnlyList<CenterlineBin> bins,
         float[] absKappa,
+        float[] signedKappa,
         float[] latG,
+        float[] fusedLoad,
         float curvatureThreshold,
         int startIdx,
         int endIdx,
@@ -87,6 +106,26 @@ public static class CornerCenterlineDetector
             return;
         }
 
+        foreach ((int Start, int End) range in Split(startIdx, endIdx, fusedLoad, signedKappa))
+        {
+            if (bins[range.End].DistanceM - bins[range.Start].DistanceM < MinArcM)
+            {
+                continue;
+            }
+
+            corners.Add(BuildCorner(bins, absKappa, latG, curvatureThreshold, range.Start, range.End, lapLengthM));
+        }
+    }
+
+    private static DetectedCorner BuildCorner(
+        IReadOnlyList<CenterlineBin> bins,
+        float[] absKappa,
+        float[] latG,
+        float curvatureThreshold,
+        int startIdx,
+        int endIdx,
+        float lapLengthM)
+    {
         int apexIdx = startIdx;
         float peakG = latG[startIdx];
         for (int i = startIdx + 1; i <= endIdx; i++)
@@ -103,7 +142,7 @@ public static class CornerCenterlineDetector
         }
 
         float apexKappa = absKappa[apexIdx];
-        corners.Add(new DetectedCorner
+        return new DetectedCorner
         {
             StartPosition = bins[startIdx].DistanceM / lapLengthM,
             ApexPosition = bins[apexIdx].DistanceM / lapLengthM,
@@ -111,7 +150,93 @@ public static class CornerCenterlineDetector
             ApexRadiusM = apexKappa > 1e-6f ? 1f / apexKappa : float.PositiveInfinity,
             PeakLateralG = peakG,
             Trigger = Classify(apexKappa, peakG, curvatureThreshold),
-        });
+        };
+    }
+
+    private static List<(int Start, int End)> Split(int startIdx, int endIdx, float[] fusedLoad, float[] signedKappa)
+    {
+        List<int> peaks = FindPeaks(fusedLoad, startIdx, endIdx);
+        if (peaks.Count < 2)
+        {
+            return [(startIdx, endIdx)];
+        }
+
+        List<int> cuts = [];
+        for (int p = 0; p < peaks.Count - 1; p++)
+        {
+            int left = peaks[p];
+            int right = peaks[p + 1];
+            int valley = left;
+            float maxSigned = float.NegativeInfinity;
+            float minSigned = float.PositiveInfinity;
+            for (int i = left; i <= right; i++)
+            {
+                if (fusedLoad[i] < fusedLoad[valley])
+                {
+                    valley = i;
+                }
+
+                maxSigned = MathF.Max(maxSigned, signedKappa[i]);
+                minSigned = MathF.Min(minSigned, signedKappa[i]);
+            }
+
+            bool signReverses = maxSigned > SplitSignedCurvatureThreshold && minSigned < -SplitSignedCurvatureThreshold;
+            bool valleyDeep = fusedLoad[valley] < SplitValleyFraction * MathF.Min(fusedLoad[left], fusedLoad[right]);
+            if (signReverses || valleyDeep)
+            {
+                cuts.Add(valley);
+            }
+        }
+
+        if (cuts.Count == 0)
+        {
+            return [(startIdx, endIdx)];
+        }
+
+        List<(int Start, int End)> ranges = [];
+        int rangeStart = startIdx;
+        foreach (int cut in cuts)
+        {
+            ranges.Add((rangeStart, cut));
+            rangeStart = cut + 1;
+        }
+
+        ranges.Add((rangeStart, endIdx));
+        return ranges;
+    }
+
+    private static List<int> FindPeaks(float[] fusedLoad, int startIdx, int endIdx)
+    {
+        List<int> peaks = [];
+        for (int i = startIdx; i <= endIdx; i++)
+        {
+            if (fusedLoad[i] < 1f)
+            {
+                continue;
+            }
+
+            bool risesFromLeft = i == startIdx || fusedLoad[i] > fusedLoad[i - 1];
+            bool fallsToRight = i == endIdx || fusedLoad[i] > fusedLoad[i + 1];
+            bool plateauTop = (i == startIdx || fusedLoad[i] >= fusedLoad[i - 1]) && (i == endIdx || fusedLoad[i] >= fusedLoad[i + 1]);
+            if (!plateauTop || !(risesFromLeft || fallsToRight))
+            {
+                continue;
+            }
+
+            if (peaks.Count > 0 && (i - peaks[^1]) < MinPeakSeparationM)
+            {
+                if (fusedLoad[i] > fusedLoad[peaks[^1]])
+                {
+                    peaks[^1] = i;
+                }
+
+                continue;
+            }
+
+            peaks.Add(i);
+        }
+
+        return peaks;
     }
 
     private static CornerChannel Classify(float apexKappa, float peakG, float curvatureThreshold)
@@ -160,7 +285,18 @@ public static class CornerCenterlineDetector
         return g;
     }
 
-    private static float[] Smooth(float[] values, int n, bool takeAbsoluteFirst)
+    private static float[] Absolute(float[] values)
+    {
+        float[] result = new float[values.Length];
+        for (int i = 0; i < values.Length; i++)
+        {
+            result[i] = MathF.Abs(values[i]);
+        }
+
+        return result;
+    }
+
+    private static float[] Smooth(float[] values, int n)
     {
         float[] result = new float[n];
         for (int i = 0; i < n; i++)
@@ -168,8 +304,7 @@ public static class CornerCenterlineDetector
             float sum = 0f;
             for (int j = -SmoothRadius; j <= SmoothRadius; j++)
             {
-                float value = values[Mod(i + j, n)];
-                sum += takeAbsoluteFirst ? MathF.Abs(value) : value;
+                sum += values[Mod(i + j, n)];
             }
 
             result[i] = sum / ((2 * SmoothRadius) + 1);
