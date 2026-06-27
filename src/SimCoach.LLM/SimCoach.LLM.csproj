@@ -5,6 +5,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="SimCoach.LLM.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\SimCoach.Contracts\SimCoach.Contracts.csproj" />
     <ProjectReference Include="..\SimCoach.Storage\SimCoach.Storage.csproj" />
   </ItemGroup>
