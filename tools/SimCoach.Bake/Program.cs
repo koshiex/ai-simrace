@@ -64,8 +64,12 @@ foreach (string recordingDir in Directory.GetDirectories(recordingsRoot).OrderBy
             continue;
         }
 
+        // "Clean" for GEOMETRY = the lap was never invalidated by track limits (is_valid_lap true on every
+        // frame). NOT CompletedLap.IsClean / CleanLapPredicate — that also requires tyres_out == 0 on every
+        // frame, which a normal kerb-riding racing lap never satisfies, so it would reject every lap here.
+        // Kerb use is fine for geometry; only off-track-limit excursions bias the centerline.
         total++;
-        if (completed.IsClean)
+        if (completed.Frames.Count > 0 && completed.Frames.All(frame => frame.IsValidLap))
         {
             trackLaps.Add(completed.Frames);
             clean++;

@@ -58,10 +58,13 @@ for each track with ≥ 3 clean laps writes `cornerGeometry.<trackId>.json` + an
 every covered track at once. Always using all recordings means more clean laps → a more robust median
 centerline and fewer single-lap/line artifacts (e.g. a mid-corner correction on one session averages out).
 
-**Clean laps only.** Track-limits / off-track laps are erratic and would bias the centerline (ADR-0010/0014),
-so they are excluded; a track with < 3 clean laps is **NO-GO** (skipped, with a reason). Console prints
-`<track>: N clean lap(s) of M recorded … GO=`. So drive ≥ 3 clean laps per track over time (any pace, but take
-corners with real load; no track-limits/spins/pit mid-lap) — they need not be in one session.
+**Clean laps only.** Here "clean" = **the lap was never invalidated by track limits** (`is_valid_lap` true on
+every frame) — riding kerbs is fine; only off-track-limit excursions are excluded, because they bias the
+centerline (ADR-0010/0014). (This is deliberately *not* `CleanLapPredicate`/`CompletedLap.IsClean`, which also
+demands `tyres_out == 0` every frame and so rejects every normal racing lap.) A track with < 3 such laps is
+**NO-GO** (skipped, with a reason). Console prints `<track>: N clean lap(s) of M recorded … GO=`. So drive ≥ 3
+laps per track without track-limits (any pace, corners with real load; no spins/pit mid-lap) — across sessions
+is fine, they need not be in one recording.
 
 Geometry is **one file per track** (`cornerGeometry.<trackId>.json`); the loader embeds all of them via the
 `Data\cornerGeometry.*.json` glob and indexes by `trackId`. Open each HTML, confirm the apexes sit on the real
