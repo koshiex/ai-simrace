@@ -45,13 +45,16 @@ Net posture: **triggered one-glance human review**, not 100% full-auto.
 ## Bake workflow
 
 ```
-dotnet run --project tools/SimCoach.Bake -- <recording-dir> [output cornerGeometry.json]
+dotnet run --project tools/SimCoach.Bake -- <recording-dir> [output path]
 ```
 
 Reads the recording's MCAP, segments laps by position-wrap, runs the offline coherence gate
 (**refuses to bake on NO-GO** or < 3 laps), builds the median centerline, detects corners, and writes
-`cornerGeometry.json` + a static `cornerGeometry.html` review page. Open the HTML, confirm the apexes
-sit on the real corners, then commit the JSON to `src/SimCoach.Reference/Data/`.
+the geometry JSON + a static HTML review page. Geometry is **one file per track**:
+`cornerGeometry.<trackId>.json` (the default output name; the loader embeds all of them via the
+`Data\cornerGeometry.*.json` glob and indexes by `trackId`, so a bake never overwrites another track).
+Open the HTML, confirm the apexes sit on the real corners, then commit the JSON to
+`src/SimCoach.Reference/Data/` (e.g. bake straight to `src\SimCoach.Reference\Data\cornerGeometry.spa.json`).
 
 ## Phases
 

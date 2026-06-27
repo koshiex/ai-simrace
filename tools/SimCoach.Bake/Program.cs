@@ -15,7 +15,7 @@ if (args.Length < 1)
 }
 
 string recordingDir = args[0];
-string outputPath = args.Length >= 2 ? args[1] : "cornerGeometry.json";
+string? explicitOutput = args.Length >= 2 ? args[1] : null;
 
 List<TelemetryFrame> frames = [.. McapSegmentEnumerator.Read(recordingDir)];
 if (frames.Count == 0)
@@ -31,6 +31,9 @@ if (string.IsNullOrWhiteSpace(trackId))
     Console.Error.WriteLine("no track id in telemetry");
     return 1;
 }
+
+// Per-track file by default so a bake never overwrites another track's geometry.
+string outputPath = explicitOutput ?? $"cornerGeometry.{trackId}.json";
 
 float lapLengthM = AccTrackCatalog.TryGetLapLengthM(trackId, out float catalogLength)
     ? catalogLength
