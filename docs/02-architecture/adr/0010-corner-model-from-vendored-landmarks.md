@@ -1,6 +1,6 @@
 # ADR-0010: Corner model from a vendored landmark dataset; names at the prompt layer
 
-**Status**: Accepted
+**Status**: Superseded by [ADR-0014](0014-first-party-baked-corner-geometry.md) — corner geometry is now first-party baked (only the SOURCING is replaced; ADR-0010's general truths — geometry decoupled from skill, all tracks without authoring, names at the prompt layer, sectors from the sim, the range-sanity guard — still hold)
 **Date**: 2026-06-21
 
 ## Context

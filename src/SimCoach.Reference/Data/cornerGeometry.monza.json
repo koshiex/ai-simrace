@@ -1,0 +1,108 @@
+{
+  "SchemaVersion": 1,
+  "TrackId": "monza",
+  "LapLengthM": 5793,
+  "LapCount": 4,
+  "SourceRecording": null,
+  "Corners": [
+    {
+      "Id": "monza_t01",
+      "StartPosition": 0.15570517,
+      "ApexPosition": 0.16019334,
+      "EndPosition": 0.16485414,
+      "ApexRadiusM": 28.104876,
+      "PeakLateralG": 0.84792864,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "monza_t02",
+      "StartPosition": 0.16502675,
+      "ApexPosition": 0.16934231,
+      "EndPosition": 0.17383048,
+      "ApexRadiusM": 20.750776,
+      "PeakLateralG": 1.0945044,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "monza_t03",
+      "StartPosition": 0.22906956,
+      "ApexPosition": 0.2496116,
+      "EndPosition": 0.27015364,
+      "ApexRadiusM": 255.93562,
+      "PeakLateralG": 1.4634428,
+      "Trigger": "LateralG"
+    },
+    {
+      "Id": "monza_t04",
+      "StartPosition": 0.36578628,
+      "ApexPosition": 0.37027445,
+      "EndPosition": 0.37476265,
+      "ApexRadiusM": 37.31547,
+      "PeakLateralG": 1.1243486,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "monza_t05",
+      "StartPosition": 0.37493527,
+      "ApexPosition": 0.37890556,
+      "EndPosition": 0.3828759,
+      "ApexRadiusM": 41.63593,
+      "PeakLateralG": 0.90112156,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "monza_t06",
+      "StartPosition": 0.42810288,
+      "ApexPosition": 0.44191265,
+      "EndPosition": 0.45572242,
+      "ApexRadiusM": 78.63109,
+      "PeakLateralG": 1.3303852,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "monza_t07",
+      "StartPosition": 0.4899016,
+      "ApexPosition": 0.49732435,
+      "EndPosition": 0.5049197,
+      "ApexRadiusM": 59.113453,
+      "PeakLateralG": 1.593056,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "monza_t08",
+      "StartPosition": 0.67909545,
+      "ApexPosition": 0.6849646,
+      "EndPosition": 0.69083375,
+      "ApexRadiusM": 60.590992,
+      "PeakLateralG": 1.1451757,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "monza_t09",
+      "StartPosition": 0.69100636,
+      "ApexPosition": 0.7001554,
+      "EndPosition": 0.70930433,
+      "ApexRadiusM": 91.08266,
+      "PeakLateralG": 1.3077257,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "monza_t10",
+      "StartPosition": 0.70947695,
+      "ApexPosition": 0.7151735,
+      "EndPosition": 0.72104263,
+      "ApexRadiusM": 133.50586,
+      "PeakLateralG": 1.2900506,
+      "Trigger": "Both"
+    },
+    {
+      "Id": "monza_t11",
+      "StartPosition": 0.88278955,
+      "ApexPosition": 0.9026411,
+      "EndPosition": 0.9224927,
+      "ApexRadiusM": 72.37145,
+      "PeakLateralG": 1.372291,
+      "Trigger": "Both"
+    }
+  ]
+}

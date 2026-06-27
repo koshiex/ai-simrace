@@ -49,8 +49,7 @@ public sealed class Phase2ComputeE2EGoldenTests : IDisposable
         var lengths = FakeTrackLengths.Spa();
 
         var trackModels = new TrackModelStore(
-            LandmarkDataset.Load(),
-            new JsonTrackModelRepository(Path.Combine(_root, "track_models")),
+            BakedGeometryFixture.Spa(),
             lengths,
             NullLogger<TrackModelStore>.Instance);
         var referenceStore = new ReferenceStore(

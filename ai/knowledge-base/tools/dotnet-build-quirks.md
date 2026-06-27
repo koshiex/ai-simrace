@@ -104,7 +104,7 @@ trim), but if it were ever enabled the sink assemblies would also need a trimmer
 `.gitignore` has a generic `data/` rule (plus `*.parquet`, `*.mcap`) for runtime output. It also
 matches `src/SimCoach.Reference/Data/` (git path-matches `data/` against any `Data/` dir;
 `core.ignorecase` on macOS makes the case match too). A vendored file committed as an
-`<EmbeddedResource>` there (e.g. `Data/trackLandmarksData.json`) is silently untracked — local
+`<EmbeddedResource>` there (e.g. `Data/cornerGeometry.json`) is silently untracked — local
 builds pass (the file is on disk) but CI checks out without it and the embedded-resource load fails.
 
 `git status` won't list the file; confirm with `git check-ignore -v <path>`. Fix is an explicit

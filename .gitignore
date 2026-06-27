@@ -33,9 +33,14 @@ sessions/
 *.db-shm
 *.db-wal
 
-# Vendored, source-controlled corner-landmark dataset (overrides the data/ rule above)
+# Vendored, source-controlled corner geometry (overrides the data/ rule above)
 !src/SimCoach.Reference/Data/
 !src/SimCoach.Reference/Data/**
+# ...but never the bake tool's generated review HTML — it is a local artifact, not shipped
+src/SimCoach.Reference/Data/*.html
+# Vendored, source-controlled corner names — Phase-3 prompt layer (overrides the data/ rule above)
+!src/SimCoach.Coach/Data/
+!src/SimCoach.Coach/Data/**
 
 # Secrets
 secrets.json
