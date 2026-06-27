@@ -40,6 +40,10 @@ Done: **PR-A** (#8) + **PR-B** (#9) + **PR-D** + **PR-E**. Phase 2 complete.
 
 ## Phase 3 — Coach Engine + LLM (week 4)
 
+Per-PR status lives in [phase-3-detailed-plan.md](./phase-3-detailed-plan.md) (8 PRs, A–H).
+UI contracts this phase must expose: [ui-client-requirements.md](../03-functional/ui-client-requirements.md).
+Scope deferred out of the MVP: [mvp-deferrals.md](./mvp-deferrals.md).
+
 - [ ] `GoldArtifactBuilder` per cadence
 - [ ] `ActionRegistry` with ~20 actions + RU templates
 - [ ] `PromptBuilder` system + few-shot
