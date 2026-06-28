@@ -927,7 +927,30 @@ separate from rendering (`PhraseRenderer.Render`), so each PR-C commit builds st
 "Derived corner scalar obligation" bullet). (3) The first `.resx` is named **neutrally** (`CoachStrings.resx`,
 not `.ru.resx`) because `Directory.Build.props` sets `NeutralLanguage=ru-RU` — a culture-qualified name would
 build a satellite assembly and return `null` under the default culture; the accessor is hand-rolled (no
-designer codegen) with an explicit `CultureInfo` to satisfy CA1304/CA1305. PR-D…PR-H: todo.
+designer codegen) with an explicit `CultureInfo` to satisfy CA1304/CA1305.
+
+✅ **PR-D done** (`feat/phase-3-pr4` → PR #19, merged to `main`) — D3: per-cadence `GoldArtifactBuilder` +
+Gold records (B1 scalars, `aggregated_losses`, per-sector aggregates, consistency, theoretical-best, fuel/tyre
+summary, `setup_hint`), `IGoldView` adapters over the typed records, determinism + privacy-serializer +
+`aggregated_losses` cap tests; the derived `trail_brake_diff_pct` corner scalar PR-C owed.
+
+✅ **PR-E done** (`feat/phase-3-pr5`) — D2b + D4: `PromptBuilder` (real-time vs debrief branch) + versioned
+embedded `Prompts/coach.system.v1.ru.txt`/`coach.system.debrief.v1.ru.txt`/`coach.fewshot.v1.ru.json` +
+`PromptOptions`/`PromptSelection` + `PromptResources` loader; per-request `OutputSchema` (real-time `action_id`
+enum = subset; debrief `top_losses` `maxItems`); `PhraseWordCount` (pure, consumed by PR-G). 19 new Coach unit
+tests (144 total); build/format/full-suite green. **Implementation notes / intentional deviations:**
+(1) **Prompts live in `SimCoach.Coach/Prompts/`, not `SimCoach.LLM/Prompts/`** (§"Module map" line ~183): the
+builder loads from its own assembly like `ActionRegistry`/`CornerNameMap`, and the LLM lib stays cadence-blind
+(no cadence-named files leak into it). (2) **Authored `hint_en` added to all 25 `actionRegistry.json` entries +
+`CoachAction` + the loader** (fail-fast like every other field); the LLM `valid_actions` menu carries
+`{id, hint}` rather than synthesizing a hint from `when` clauses (which would leak internal field names). (3)
+The `.ru.`-infixed prompt resources need **both** `<WithCulture>false</WithCulture>` **and** an explicit
+`<LogicalName>` in the csproj — `<LogicalName>` alone does not stop MSBuild `AssignCulture` from routing them
+into a `ru` satellite assembly (same `NeutralLanguage=ru-RU` trap as PR-C note (3)); the `PromptResourcesTests`
+manifest-name assertion guards this. (4) `valid_actions`/`phrase_limits` are injected into the user message at
+the `JsonObject` level over the **unmodified** `GoldArtifact` (the `GoldSerializer` privacy choke point is
+untouched); debrief carries no `valid_actions` and is never subset-gated (the registry has no session actions).
+PR-F…PR-H: todo.
 
 Phase 3 ships as **8 PRs** (merge order = build order) that each merge to `main` without breaking it.
 A PR is mergeable when CI stays green (build + `dotnet format --verify` + xUnit on windows+macos, **no
