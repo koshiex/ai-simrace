@@ -25,7 +25,7 @@ public sealed class RuleEngine
     }
 
     public RuleDecision ShouldSpeak(
-        IReadOnlyList<CoachAction> subset, CoachCadence cadence, in GateSnapshot frame, decimal sessionCostUsd)
+        IReadOnlyList<CoachAction> subset, CoachCadence cadence, in GateSnapshot frame, in BudgetState budget)
     {
         ArgumentNullException.ThrowIfNull(subset);
 
@@ -94,10 +94,14 @@ public sealed class RuleEngine
             return RuleDecision.Silent(QuietReason.PriorityFloor);
         }
 
-        return sessionCostUsd >= _options.SessionBudgetUsd
+        return IsOverBudget(budget)
             ? RuleDecision.TemplateOnly(QuietReason.OverBudget)
             : RuleDecision.Speak;
     }
+
+    private bool IsOverBudget(in BudgetState budget) =>
+        budget.SessionCostUsd >= _options.SessionBudgetUsd ||
+        (_options.MonthlyBudgetUsd > 0 && budget.RollingMonthlyCostUsd >= _options.MonthlyBudgetUsd);
 
     /// <summary>Records that a tip was emitted for <paramref name="cadence"/>, arming its cooldown.</summary>
     public void NoteTip(CoachCadence cadence, DateTimeOffset emittedAtUtc) => _lastEmit[cadence] = emittedAtUtc;

@@ -45,6 +45,13 @@ public sealed class RuleEngineOptions
     public decimal SessionBudgetUsd { get; init; } = 0.50m;
 
     /// <summary>
+    /// Rolling 30-day spend ceiling (FR-072), fed by <c>ICostQueryRepository.GetRolling30DayCostAsync</c> and
+    /// set from the <c>budget.monthly_usd</c> setting. <c>0</c> = no monthly cap (the default until the user
+    /// sets one — distinct from the always-on per-session cap).
+    /// </summary>
+    public decimal MonthlyBudgetUsd { get; init; }
+
+    /// <summary>
     /// Floor on the most-urgent available action: if even the best action in the subset is strictly less
     /// urgent than this, stay silent. Default = the least-urgent possible priority, so it never floors.
     /// </summary>
@@ -64,6 +71,11 @@ public sealed class RuleEngineOptions
         if (SessionBudgetUsd <= 0)
         {
             throw new InvalidOperationException("RuleEngineOptions.SessionBudgetUsd must be positive.");
+        }
+
+        if (MonthlyBudgetUsd < 0)
+        {
+            throw new InvalidOperationException("RuleEngineOptions.MonthlyBudgetUsd must be non-negative (0 = no cap).");
         }
 
         if (ApexWindowFraction is <= 0 or > 0.5)

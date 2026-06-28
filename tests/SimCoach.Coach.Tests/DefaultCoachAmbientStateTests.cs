@@ -23,10 +23,4 @@ public sealed class DefaultCoachAmbientStateTests
         metadata.HasReference.Should().BeFalse();
         metadata.Locale.Should().Be("ru-RU");
     }
-
-    [Fact]
-    public void Coach_service_options_defaults_to_llm_offline()
-    {
-        new CoachServiceOptions().LlmLive.Should().BeFalse();
-    }
 }

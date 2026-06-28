@@ -15,21 +15,21 @@ public sealed class RuleEngineTests
     [Fact]
     public void Strategy_cadence_is_always_silent_reserved()
     {
-        RuleDecision decision = Engine().ShouldSpeak(_oneAction, CoachCadence.Strategy, Frame(), 0m);
+        RuleDecision decision = Engine().ShouldSpeak(_oneAction, CoachCadence.Strategy, Frame(), BudgetState.Zero);
         decision.Should().Be(RuleDecision.Silent(QuietReason.StrategyReserved));
     }
 
     [Fact]
     public void Empty_subset_is_silent()
     {
-        RuleDecision decision = Engine().ShouldSpeak([], CoachCadence.Corner, Frame(), 0m);
+        RuleDecision decision = Engine().ShouldSpeak([], CoachCadence.Corner, Frame(), BudgetState.Zero);
         decision.Should().Be(RuleDecision.Silent(QuietReason.EmptySubset));
     }
 
     [Fact]
     public void Green_in_corner_speaks()
     {
-        RuleDecision decision = Engine().ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), 0m);
+        RuleDecision decision = Engine().ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero);
         decision.Should().Be(RuleDecision.Speak);
     }
 
@@ -40,21 +40,21 @@ public sealed class RuleEngineTests
     [InlineData(SessionFlag.Paused)]
     public void Session_not_green_is_silent(SessionFlag state)
     {
-        RuleDecision decision = Engine().ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(state: state), 0m);
+        RuleDecision decision = Engine().ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(state: state), BudgetState.Zero);
         decision.Should().Be(RuleDecision.Silent(QuietReason.SessionNotGreen));
     }
 
     [Fact]
     public void Recent_contact_is_silent()
     {
-        RuleDecision decision = Engine().ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(contact: true), 0m);
+        RuleDecision decision = Engine().ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(contact: true), BudgetState.Zero);
         decision.Should().Be(RuleDecision.Silent(QuietReason.RecentContact));
     }
 
     [Fact]
     public void Recent_off_track_is_silent()
     {
-        RuleDecision decision = Engine().ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(offTrack: true), 0m);
+        RuleDecision decision = Engine().ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(offTrack: true), BudgetState.Zero);
         decision.Should().Be(RuleDecision.Silent(QuietReason.RecentOffTrack));
     }
 
@@ -62,7 +62,7 @@ public sealed class RuleEngineTests
     public void User_quiet_zone_is_silent()
     {
         var options = new RuleEngineOptions { UserQuietZones = [new QuietZoneRange(0.4, 0.6)] };
-        RuleDecision decision = Engine(options).ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(pos: 0.5), 0m);
+        RuleDecision decision = Engine(options).ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(pos: 0.5), BudgetState.Zero);
         decision.Should().Be(RuleDecision.Silent(QuietReason.UserZone));
     }
 
@@ -70,7 +70,7 @@ public sealed class RuleEngineTests
     public void Apex_window_is_silent_for_realtime()
     {
         RuleDecision decision =
-            Engine().ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(phase: GateCornerPhase.Apex), 0m);
+            Engine().ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(phase: GateCornerPhase.Apex), BudgetState.Zero);
         decision.Should().Be(RuleDecision.Silent(QuietReason.ApexWindow));
     }
 
@@ -78,7 +78,7 @@ public sealed class RuleEngineTests
     public void On_a_straight_is_silent_for_realtime()
     {
         RuleDecision decision = Engine().ShouldSpeak(
-            _oneAction, CoachCadence.Corner, Frame(phase: GateCornerPhase.None, steer: 0.0, speed: 220), 0m);
+            _oneAction, CoachCadence.Corner, Frame(phase: GateCornerPhase.None, steer: 0.0, speed: 220), BudgetState.Zero);
         decision.Should().Be(RuleDecision.Silent(QuietReason.Straight));
     }
 
@@ -86,7 +86,7 @@ public sealed class RuleEngineTests
     public void High_workload_is_silent_for_realtime()
     {
         RuleDecision decision = Engine().ShouldSpeak(
-            _oneAction, CoachCadence.Corner, Frame(brake: 1.0, steer: 0.9), 0m);
+            _oneAction, CoachCadence.Corner, Frame(brake: 1.0, steer: 0.9), BudgetState.Zero);
         decision.Should().Be(RuleDecision.Silent(QuietReason.Workload));
     }
 
@@ -97,7 +97,7 @@ public sealed class RuleEngineTests
         GateSnapshot hostile = Frame(phase: GateCornerPhase.Apex, steer: 0.9, brake: 1.0);
         IReadOnlyList<CoachAction> lapAction = [Action(CoachCadence.Lap, new CoachPriority(CoachPhase.Brake, 100))];
 
-        RuleDecision decision = Engine().ShouldSpeak(lapAction, CoachCadence.Lap, hostile, 0m);
+        RuleDecision decision = Engine().ShouldSpeak(lapAction, CoachCadence.Lap, hostile, BudgetState.Zero);
 
         decision.Should().Be(RuleDecision.Speak);
     }
@@ -111,11 +111,11 @@ public sealed class RuleEngineTests
         engine.NoteTip(CoachCadence.Corner, clock.GetUtcNow());
 
         clock.Advance(TimeSpan.FromSeconds(2));
-        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), 0m)
+        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero)
             .Should().Be(RuleDecision.Silent(QuietReason.Cooldown));
 
         clock.Advance(TimeSpan.FromSeconds(3)); // total 5 s > 4 s corner cooldown
-        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), 0m)
+        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero)
             .Should().Be(RuleDecision.Speak);
     }
 
@@ -128,7 +128,7 @@ public sealed class RuleEngineTests
 
         engine.ResetSession();
 
-        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), 0m).Should().Be(RuleDecision.Speak);
+        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero).Should().Be(RuleDecision.Speak);
     }
 
     [Fact]
@@ -137,17 +137,36 @@ public sealed class RuleEngineTests
         var options = new RuleEngineOptions { PriorityFloor = new CoachPriority(CoachPhase.Brake, 50) };
         IReadOnlyList<CoachAction> weak = [Action(CoachCadence.Corner, new CoachPriority(CoachPhase.Exit, 10))];
 
-        RuleDecision decision = Engine(options).ShouldSpeak(weak, CoachCadence.Corner, Frame(), 0m);
+        RuleDecision decision = Engine(options).ShouldSpeak(weak, CoachCadence.Corner, Frame(), BudgetState.Zero);
 
         decision.Should().Be(RuleDecision.Silent(QuietReason.PriorityFloor));
     }
 
     [Fact]
-    public void Over_budget_downgrades_to_template_only()
+    public void Over_session_budget_downgrades_to_template_only()
     {
         var options = new RuleEngineOptions { SessionBudgetUsd = 0.50m };
-        RuleDecision decision = Engine(options).ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), 0.50m);
+        RuleDecision decision = Engine(options)
+            .ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), new BudgetState(0.50m, 0m));
         decision.Should().Be(RuleDecision.TemplateOnly(QuietReason.OverBudget));
+    }
+
+    [Fact]
+    public void Over_monthly_budget_downgrades_to_template_only()
+    {
+        var options = new RuleEngineOptions { MonthlyBudgetUsd = 5.00m };
+        RuleDecision decision = Engine(options)
+            .ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), new BudgetState(0m, 5.00m));
+        decision.Should().Be(RuleDecision.TemplateOnly(QuietReason.OverBudget));
+    }
+
+    [Fact]
+    public void Zero_monthly_budget_means_no_monthly_cap()
+    {
+        // Default MonthlyBudgetUsd = 0 → a large rolling spend must not trip the monthly gate.
+        RuleDecision decision = Engine()
+            .ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), new BudgetState(0m, 999m));
+        decision.Should().Be(RuleDecision.Speak);
     }
 
     [Fact]
@@ -158,7 +177,7 @@ public sealed class RuleEngineTests
         var options = new RuleEngineOptions { UserQuietZones = [new QuietZoneRange(0.0, 0.1)] };
 
         RuleDecision decision =
-            Engine(options).ShouldSpeak(_oneAction, CoachCadence.Corner, GateSnapshot.Unknown, 0m);
+            Engine(options).ShouldSpeak(_oneAction, CoachCadence.Corner, GateSnapshot.Unknown, BudgetState.Zero);
 
         decision.Should().Be(RuleDecision.Speak);
     }
