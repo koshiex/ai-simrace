@@ -950,7 +950,42 @@ into a `ru` satellite assembly (same `NeutralLanguage=ru-RU` trap as PR-C note (
 manifest-name assertion guards this. (4) `valid_actions`/`phrase_limits` are injected into the user message at
 the `JsonObject` level over the **unmodified** `GoldArtifact` (the `GoldSerializer` privacy choke point is
 untouched); debrief carries no `valid_actions` and is never subset-gated (the registry has no session actions).
-PR-F…PR-H: todo.
+
+✅ **PR-F done** (`feat/phase-3-pr6`) — D5 + D6 + D7(breaker) + B3, shipped as ONE PR (owner decision) over 9
+logical commits: `ISchemaTranslator`/selector + 4 family translators (strict/Gemini-strip/Anthropic-forced-tool/
+json_object); `OpenRouterProvider` (typed `HttpClient`, usage→`LlmUsage` incl. cached+reasoning, HTTP→`LlmFailure`
+classifier, injected `TimeProvider` latency, buffered only); `BearerAuthHandler`; `CircuitBreaker` +
+`ICircuitBreakerRegistry` + `CircuitBreakerProvider` (per-`providerId`, infra-only trips, fake-clock);
+`CostCalculator` (decimal) + `SqliteCostMeter` + `CostMeterProvider` + `LlmUsageRepository` + **migration
+`002_llm_usage_cost.sql`** + `DatabaseMigrator.AssertContiguous`; `ICostQueryRepository`/`SqliteCostQueryRepository`
+(Storage) + `IRateCardQuery`/`RateCardQuery`/`RateCardOptions` (Coach); `LlmStartupValidator` (#1/#3/#5) +
+`CoachStartupValidator` (#2/#4/#6); `LlmRouter` decorator chain + `LlmProviderChain` + fallback-on-circuit-open.
+~50 new unit tests (LLM 101 / Storage 90 / Coach 150 total); build/format/full-suite green; **no live network**
+(default route `FakeProvider`, mocked `HttpMessageHandler`). **Repro:** `DOTNET_ROLL_FORWARD=LatestMajor dotnet
+test SimCoach.sln` (WSL: the `-e DOTNET_ROLL_FORWARD=Major` form). Not runtime-observable beyond the migration:
+on next host boot `DatabaseMigrator` applies `002` (verify `PRAGMA user_version`→2 / `PRAGMA table_info(llm_usage)`
+shows `provider`+`cached_input_tokens`). **Implementation notes / intentional deviations (folded from the
+three-phase plan review):**
+(1) **The B3 validator is SPLIT across two assemblies** — `LlmStartupValidator` (LLM, #1/#3/#5) +
+`CoachStartupValidator` (Coach, #2/#4/#6) — because `SimCoach.Coach` already references `SimCoach.LLM`, so a single
+LLM-side validator pulling Coach types would be a reference cycle. Registered separately in `AddLlm`/`AddCoaching`
+at PR-H. (2) **`IRateCardQuery`/`RateCardQuery` live in `SimCoach.Coach`, not Storage** (§"UI query contracts"
+implied Storage): pricing couples `LlmOptions.Rates` with per-cadence token assumptions (`RateCardOptions`), and
+only Coach sits above both — Storage references neither. `ICostQueryRepository` (raw SQL → records) correctly
+stays in Storage. (3) **Check #4 is action-driven, no reflection:** each action's `when`/`param` field is probed
+through the real per-cadence `IGoldView` (`GoldView.For`) on a fully-populated artifact; iterates only
+Corner/Sector/Lap (`GoldFieldNames.For(Session/Strategy)` throws). (4) **`session_id` is persisted NULL** —
+the cost meter does not inject Pipeline's `SessionContext` (layering inversion); Coach supplies the id in PR-G/H.
+(5) **Cost math is decimal** end-to-end, narrowed to `double` only at the `cost_usd REAL` write. (6) Cost-query
+read DTOs use `long` for counts/tokens (SQLite `Int64`; Dapper's record-ctor path does not narrow). (7) Failure
+calls also persist (cost 0, status = the failure kind) for call-count dashboards. (8) `AssertContiguous` needed a
+test seam: extracted `internal static` + `InternalsVisibleTo SimCoach.Storage.Tests`. **Deferred — written into
+the PR-H/D9 row + §"deferred" below:** the `Microsoft.Extensions.Http` package + typed-client/`AddHttpClient`
+wiring, the two validators' `ValidateOnStart` registration, `RateCardOptions`/`RateCardQuery` DI, the `appsettings`
+`Llm` section (incl. the reserved `strategy` route bound to a real rated provider), and the D5-named "settings
+`model.corner` override changes the resolved modelId" test (depends on `SqliteSettingsConfigurationSource`, PR-H).
+The PR-F-row `ISseDecoder`/SSE stub is **deferred to P6** (buffered `CompleteAsync` needs no SSE).
+PR-G…PR-H: todo.
 
 Phase 3 ships as **8 PRs** (merge order = build order) that each merge to `main` without breaking it.
 A PR is mergeable when CI stays green (build + `dotnet format --verify` + xUnit on windows+macos, **no
@@ -970,9 +1005,9 @@ startup**; guarded by the replay e2e + chunk tests).
 | **PR-C** `feat(coach): action registry + corner-name injection` | D1, D2a | D1 (+M5, M6), D2a (+m4) | `actionRegistry.json` (~24 actions, total-order `Priority`, M6 reference-free + `overdrove_entry` + gated catch-alls) + loader + `WhenClause` evaluator + template renderer (yields `RenderedParam`); `CoachOptions` (+ `RouteKeys` incl. strategy); valid-subset filter; `CornerNameMap` positional `.resx` + short + spoken-RU forms. No LLM. | Dead-until-wired | ~720 |
 | **PR-D** `feat(coach): gold artifact builders` | D3 | D3 (+B1 fields, B2 losses, M3 envelope) | Per-cadence `GoldArtifactBuilder` + Gold records (incl. B1 scalars, `aggregated_losses`, per-sector aggregates, consistency, theoretical-best, `setup_hint`); determinism + privacy-serializer + `aggregated_losses` cap tests on synthetic events. | Dead-until-wired | ~640 |
 | **PR-E** `feat(coach): prompt builder + per-cadence prompts + output schema` | D2b, D4 | D2b, D4 (+M4) | Versioned per-cadence system/few-shot resources (incl. `coach.system.debrief.v1.ru.txt` + sector/lap/no-PB/negative/debrief few-shots, number rule) + `PromptOptions`; per-request output-schema (enum=subset) + `SchemaName` + schema-lint + debrief `maxItems`; `LlmRequest` assembly. Few-shots double as golden fixtures. | Dead-until-wired | ~600 |
-| **PR-F** `feat(llm): openrouter client + cost meter + circuit breaker + validate-on-start` | D5, D6, D7(breaker), B3 | D5, D6 (+cost-query, rate-card), D7-breaker, B3 | `OpenRouterProvider` (model-family-keyed `ISchemaTranslator`, SSE stub, failure classifier) registered under two ids (`openrouter-google`/`openrouter-anthropic`) + `LlmRouter`/CircuitBreaker/CostMeter decorator chain; debrief route → Sonnet 4.6 / Reasoning=Low / `MaxOutputTokens=2000`, DeepSeek registered-but-gated; `SqliteCostMeter` + `ICostQueryRepository` + `IRateCardQuery` + **migration `002_llm_usage_cost.sql`** (adds `provider`, `cached_input_tokens`) + migrator contiguity guard; per-provider breaker (isolation test); the **B3 `ValidateOnStart` checklist** + its six tests. Mocked `HttpMessageHandler` goldens; **no live network**. | **Runtime-touching** (migration runs at startup) | ~880 |
+| **PR-F** ✅ `feat(llm): openrouter client + cost meter + circuit breaker + validate-on-start` (`feat/phase-3-pr6`) | D5, D6, D7(breaker), B3 | D5, D6 (+cost-query, rate-card), D7-breaker, B3 | `OpenRouterProvider` (model-family-keyed `ISchemaTranslator`, SSE stub, failure classifier) registered under two ids (`openrouter-google`/`openrouter-anthropic`) + `LlmRouter`/CircuitBreaker/CostMeter decorator chain; debrief route → Sonnet 4.6 / Reasoning=Low / `MaxOutputTokens=2000`, DeepSeek registered-but-gated; `SqliteCostMeter` + `ICostQueryRepository` + `IRateCardQuery` + **migration `002_llm_usage_cost.sql`** (adds `provider`, `cached_input_tokens`) + migrator contiguity guard; per-provider breaker (isolation test); the **B3 `ValidateOnStart` checklist** + its six tests. Mocked `HttpMessageHandler` goldens; **no live network**. | **Runtime-touching** (migration runs at startup) | ~880 |
 | **PR-G** `feat(coach): rule engine + coach service + tip sink` (dead-until-wired) | D7(rules), D8 | D7-rules (+M7 gate snapshot, strategy-zone), D8 | `RuleEngine` quiet zones + the **M7 gate-snapshot struct (`normalized_car_position` + corner-phase marker) that consumes the frame field** + reserved strategy-zone; `CoachService` orchestration + full `CoachTip` build (`ActionLabelShort`/`RenderedParam`/`Priority`+`Severity`/full+short+spoken name) + cadence-aware validation/retry/template (incl. deterministic `DebriefTemplate`) + drain-to-completion; `ICoachTipSink`/`ConsoleTipSink`; `CoachTipRepository`. **No host registration** — exercised by its own tests. | Dead-until-wired | ~640 |
-| **PR-H** `feat(coach): host wiring + persistence + settings + e2e` | D9 | D9 (+migration 003, settings, declared repos) | `AddCoaching`/`AddLlm` DI + **stop-order insertion** (CoachService between Compute and Recorder) + gate-only frame subscription; **migration `003_coach_tips.sql`** (`rendered_param`/`priority`); `ISettingsStore` impl + `SqliteSettingsConfigurationSource` (model/budget re-bind) + declared `IReferenceQueryRepository`/`ISessionHistoryRepository` + reserved `debrief` columns (incl. `top_losses_json`); `IRateCardQuery` registration; replay e2e against `FakeProvider`. The single host-flip; LLM call still flag-off. | **Runtime-touching** (migration + composition at startup) | ~520 |
+| **PR-H** `feat(coach): host wiring + persistence + settings + e2e` | D9 | D9 (+migration 003, settings, declared repos) | `AddCoaching`/`AddLlm` DI + **stop-order insertion** (CoachService between Compute and Recorder) + gate-only frame subscription; **migration `003_coach_tips.sql`** (`rendered_param`/`priority`); `ISettingsStore` impl + `SqliteSettingsConfigurationSource` (model/budget re-bind) + declared `IReferenceQueryRepository`/`ISessionHistoryRepository` + reserved `debrief` columns (incl. `top_losses_json`); `IRateCardQuery` registration; replay e2e against `FakeProvider`. The single host-flip; LLM call still flag-off. **Carried from PR-F (dead-until-wired there):** add the `Microsoft.Extensions.Http` `PackageVersion` + typed `AddHttpClient` clients (the two provider ids + `BearerAuthHandler`); register `LlmStartupValidator` in `AddLlm` and `CoachStartupValidator` in `AddCoaching` via `ValidateOnStart`; bind `RateCardOptions` + register `RateCardQuery`; author the `appsettings` `Llm` section with the reserved `strategy` route bound to a real rated provider; add the D5-named "settings `model.corner` override changes the resolved modelId" test (needs `SqliteSettingsConfigurationSource`). | **Runtime-touching** (migration + composition at startup) | ~520 |
 
 **Why 8, not 6:** the original 6-PR shape predates blockers B1/B2 and bundled the host-flip with a large
 new component. Two deliberate splits fix that. **(1) PR-B** is a distinct *compute-layer* concern (Pipeline
