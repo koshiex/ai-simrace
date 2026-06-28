@@ -121,6 +121,14 @@ public static class AccFrameMapper
             TyresOut = physics.NumberOfTyresOut,
             // ACC int → bool (mirrors the Tc/Abs int→bool conversions above).
             IsValidLap = graphics.IsValidLap != 0,
+            // Phase 3 strategy plumb (data-only, no consumer in MVP). The int aid LEVELS from the
+            // graphics page are distinct from the tc_active/abs_active bools (physics intervention) above.
+            EngineMap = graphics.EngineMap,
+            Tc = graphics.Tc,
+            TcCut = graphics.TcCut,
+            Abs = graphics.Abs,
+            IsInPit = graphics.IsInPit != 0,
+            IsInPitLane = graphics.IsInPitLane != 0,
         };
 
         frame.TyreTempC.AddRange(physics.TyreCoreTemperature);
@@ -134,6 +142,8 @@ public static class AccFrameMapper
         frame.TyreWearPct.AddRange(physics.TyreWear);
         frame.BrakeTempC.AddRange(physics.BrakeTemp);
         frame.WheelSlip.AddRange(physics.WheelSlip);
+        // Longitudinal slip ratio — the drive-wheel wheelspin source (distinct from combined WheelSlip).
+        frame.SlipRatio.AddRange(physics.SlipRatio);
         frame.WheelLoadN.AddRange(physics.WheelLoad);
         frame.SuspensionTravelM.AddRange(physics.SuspensionTravel);
         return frame;

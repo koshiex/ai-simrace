@@ -44,12 +44,16 @@ internal static class CornerEventBuilder
             UndersteerScore = balanceSelf.UndersteerScore,
             OversteerScore = balanceSelf.OversteerScore,
             OffTrack = offTrack,
+            WheelspinScore = WheelspinKernels.WheelspinScore(selfFrames),
+            BrakeOverlapSteerPct = BrakeOverlapSteerKernels.OverlapPct(selfFrames),
+            SteeringJitter = SteeringJitterKernels.SteeringJitter(selfFrames),
         };
 
         bool hasReference = reference is not null && lapLengthM > 0f;
         if (!hasReference)
         {
             string selfReason = offTrack ? "off_track" : string.Empty;
+            ev.Reason = selfReason;
             return (ev, new CornerContribution(
                 corner.Id, 0, speedSelf.MinSpeedPosition, selfReason,
                 balanceSelf.UndersteerScore, balanceSelf.OversteerScore));
@@ -63,6 +67,7 @@ internal static class CornerEventBuilder
         {
             // Degenerate mapping — fall back to self-only.
             string selfReason = offTrack ? "off_track" : string.Empty;
+            ev.Reason = selfReason;
             return (ev, new CornerContribution(
                 corner.Id, 0, speedSelf.MinSpeedPosition, selfReason,
                 balanceSelf.UndersteerScore, balanceSelf.OversteerScore));
@@ -92,6 +97,7 @@ internal static class CornerEventBuilder
         ev.RacingLineDeviationM = racingLineDeviationM;
 
         string reason = ChooseReason(offTrack, throttleResumeDiffM, brakePointDiffM, minSpeedDiffKmh);
+        ev.Reason = reason;
         return (ev, new CornerContribution(
             corner.Id, deltaMs, speedSelf.MinSpeedPosition, reason,
             balanceSelf.UndersteerScore, balanceSelf.OversteerScore));
