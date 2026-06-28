@@ -66,7 +66,7 @@ future registry entries — the data lands now, the actions do not.
 | **Real-time cadences: no streaming, reasoning OFF; debrief reasoning LOW** | The whole structured-JSON response must be parsed before any `action_id` is actionable, so streaming buys nothing at real-time cadence, and a half-parsed `action_id` is unvalidatable. Action selection is classification over a pre-validated subset — all metric reasoning already happened deterministically in compute — so "thinking" is pure latency/cost real-time. **The "no accuracy upside" claim is design-asserted, gated by the RU eval, not measured (m3).** `Stream`/`ReasoningEffort` are provider-neutral **route** knobs (config). Debrief runs Reasoning=Low (Sonnet 4.6 adaptive thinking) within its 8000 ms budget. The streaming debrief seam is declared (`StreamAsync`) but only consumed in P6. |
 | **UI read/persistence/settings contracts are designed in P3, not built** | The mockups (7 screens) bind to spine contracts. P3 **implements** the `CoachTip` DTO + `ICoachTipSink`, the `coach_tips`/`llm_usage` columns, the `ISettingsStore` over the existing `settings` table, and the `ICostQueryRepository` over `llm_usage`; it **declares** (signatures + reserved nullable columns) the `IReferenceQueryRepository`, `ISessionHistoryRepository`, and the `debrief` row shape that P6/P7 fill. The live intra-lap delta / per-sector-delta / speed-trace **reads** are noted as P5 compute extensions and explicitly do **not** block P3. The only Phase-3 *call* among them is M7 — add `normalizedCarPosition` to the gate snapshot, taken below. |
 | **M7: `normalizedCarPosition` is added to the gate snapshot (not deferred)** | The apex-window / straight / user-quiet-zone gates need lap position, and the dashboard `ПОЗИЦИЯ НА КРУГЕ` panel needs it too. Rather than let those gates silently no-op, the gate-only frame snapshot gains `normalized_car_position` (already a frame field — trivial) plus a corner-phase marker derived from the active corner window. Decision recorded so the gates are real, not stubs. |
-| **New `coach_tips` table + `llm_usage` extension via new numbered migrations, numbered in MERGE order** | `002_llm_usage_cost.sql` ships in PR-F (adds `provider`, `cached_input_tokens` — **not** `model_id`, which already exists in `001`); `003_coach_tips.sql` ships in **PR-H** with `rendered_param` + `priority` columns (so the tip log / debrief re-render the `+4м` chip and ordering offline). Numbering follows merge order so an incrementally-upgraded DB never silently skips the later one. `001_initial.sql` is never modified (migrator owns the transaction). |
+| **New `coach_tips` table + `llm_usage` extension via new numbered migrations, numbered in MERGE order** | `002_llm_usage_cost.sql` ships in PR-F (adds `provider`, `cached_input_tokens` — **not** `model_id`, which already exists in `001`); `003_coach_tips.sql` ships in **PR-G** (moved from PR-H per the 2026-06-29 plan-v2 review — see the PR-G status note — so `CoachTipRepository`/`ConsoleTipSink` test on a real migrated table) with `rendered_param` + `priority` columns (so the tip log / debrief re-render the `+4м` chip and ordering offline); the reserved `debrief` columns become **`004` in PR-H**. Numbering follows merge order so an incrementally-upgraded DB never silently skips the later one. `001_initial.sql` is never modified (migrator owns the transaction). |
 
 Build-order dependency: **D0 → D1 → {D2a ∥ D3} → {D2b/D4} → D5 → D6 → D7 → D8 → D9**, where the LLM-seam
 contract **PR-A** lands first of all (it is the only edit to existing `ILlmClient` code). D3 precedes
@@ -985,7 +985,52 @@ wiring, the two validators' `ValidateOnStart` registration, `RateCardOptions`/`R
 `Llm` section (incl. the reserved `strategy` route bound to a real rated provider), and the D5-named "settings
 `model.corner` override changes the resolved modelId" test (depends on `SqliteSettingsConfigurationSource`, PR-H).
 The PR-F-row `ISseDecoder`/SSE stub is **deferred to P6** (buffered `CompleteAsync` needs no SSE).
-PR-G…PR-H: todo.
+⏳ **PR-G in progress** (`feat/phase-3-pr7`) — D7(rules) + D8. Plan v2 validated through a Strict→Defender→Judge
+review pass (2026-06-29). Key decisions folded in: (1) **migration `003_coach_tips.sql` is pulled INTO PR-G**
+(owner) so `CoachTipRepository`/`ConsoleTipSink` test on a real migrated table — `003` carries ONLY the
+`CoachTipRow` columns + `idx_coach_tips_session`, FK `session_id → sessions(id) ON DELETE CASCADE`, and the
+PR-G commit **updates `DatabaseMigratorTests`** (table/index set, `user_version` 2→3, idempotency). (2)
+`CoachTipRepository` uses **Dapper** (matches existing repos). (3) **One ambient seam `ICoachAmbientState`**
+{ `GoldSessionContext SessionMetadata()`; `GateSnapshot LatestGate()` } resolves the gap that corner/sector/lap
+proto events carry **no** `track_id`/`car_class`/`weather_bucket`/`has_reference` — PR-G ships a
+`DefaultCoachAmbientState` (Unknown gate / `has_reference=false`), `CoachService` tracks current lap from
+`LapEvent`; **PR-H backs the seam for real**. (4) `GateSnapshot.Unknown` sentinel; frame-derived gates
+**fail-open** on `!HasFrame`. (5) Drain-on-shutdown uses the **consumer** pattern (re-loop
+`ReadAllAsync(CancellationToken.None)` in `finally` to fan-out completion) — NOT a copy of `ComputeService`
+(a producer). (6) Retry RU reminder is a versioned `Prompts/coach.retry.v1.ru.txt` resource, not an inline
+literal. (7) RuleEngine cooldown resets at the session boundary. Six commits, each green standalone.
+
+**Deferred from PR-G → PR-H (recorded so the host-wiring PR doesn't miss them):**
+- **`llm_usage.session_id` threading** — PR-F persists it NULL (layering: the cost meter is a decorator and
+  `LlmRequest` carries no session id); Coach supplies the id at host-wiring time. PR-G persists session id on
+  `coach_tips` only.
+- **Real `ICoachAmbientState` backing** — replace `DefaultCoachAmbientState` with the sim-adapter `car_class`
+  + `ReferenceLookup` `has_reference` + the gate-only `TelemetryFanOut` **latest-frame** feed (M7). This is the
+  source of `GoldSessionContext` for the real-time cadences and of the live gate snapshot.
+- **Migration `004`** — the reserved `debrief` columns (incl. `top_losses_json`) PR-H's row owes (migrations
+  are immutable post-merge, so `003` cannot be amended; `004` is numbered after PR-G's `003`).
+- **Host wiring** — `AddCoaching`/`AddLlm`, the stop-order insertion (CoachService between Compute and
+  Recorder), the gate-only frame subscription, `CoachComposition.cs`; the carried-from-PR-F items already in
+  the PR-H row (`Microsoft.Extensions.Http` + typed `AddHttpClient`, the two `ValidateOnStart` registrations,
+  `RateCardOptions`/`RateCardQuery` DI, the `appsettings` `Llm` section, the settings-override resolved-modelId test).
+- **`CoachTipRepository` read side + async write path** — `GetBySessionAsync` / the declared
+  `ISessionHistoryRepository`, plus an `InsertAsync` (Dapper `ExecuteAsync`) so `ConsoleTipSink` honours its
+  non-blocking contract; convert write+read to async together.
+- **Live debrief network path** (PR-G keeps the `Llm:Live` flag, default off — FakeProvider/mock only) and the
+  **replay e2e** against `FakeProvider`.
+
+**Carried from the PR-G plan-v2 code review (Strict→Defender→Judge, 2026-06-29) — deferred, with reason:**
+- **Rolling session cost → the RuleEngine budget gate** — `CoachService` calls `ShouldSpeak(..., sessionCostUsd: 0m)`
+  today, so the `OverBudget → TemplateOnly` downgrade is unreachable until PR-H threads rolling spend (blocked on
+  the `llm_usage.session_id` feed above). When wired, give the downgrade an **observable signal** (a distinct
+  `TipSource`/flag) so a budget cap is distinguishable from an ordinary template fallback in the persisted row.
+- **Harden `CornerNameMap.GetShort`/`GetSpokenRu` for a whitespace `trackId`** — they throw `ArgumentException`
+  (asymmetric with `ResolveName`, which falls back to positional). Not reachable in PR-G (`DefaultCoachAmbientState`
+  ships `TrackId:"unknown"`); the real ambient must supply a non-empty track id, or these two methods fall back.
+- **Structural validation of debrief `top_losses` items in `TipValidator`** — a non-string `why` is currently
+  counted as 0 words; only matters on the live-LLM debrief path and lands with the `004` debrief-columns work.
+
+PR-H: todo.
 
 Phase 3 ships as **8 PRs** (merge order = build order) that each merge to `main` without breaking it.
 A PR is mergeable when CI stays green (build + `dotnet format --verify` + xUnit on windows+macos, **no
@@ -1021,9 +1066,9 @@ diff and the new component does not inflate the blast radius of the one composit
 structure is unchanged: **PR-A** is the only edit to *existing* contract code and lands alone; **PR-C/D/E**
 are independent dead-until-wired libraries that parallelize cleanly; **PR-F** bundles the three agnostic
 LLM-runtime pieces (client/cost/breaker) + the `002` migration its CostMeter needs + the B3 validator.
-Migrations are numbered in **merge order** (`002` in PR-F precedes `003` in PR-H) so an incrementally-upgraded
-DB — already at `user_version=2` after PR-F — still applies `003` (the migrator only runs versions
-`> user_version`; the inverse numbering would silently skip the later table forever). If **PR-F** itself
+Migrations are numbered in **merge order** (`002` in PR-F precedes `003` in **PR-G** precedes `004` in PR-H)
+so an incrementally-upgraded DB — already at `user_version=2` after PR-F — still applies `003`/`004` (the
+migrator only runs versions `> user_version`; the inverse numbering would silently skip the later table forever). If **PR-F** itself
 overruns the ~600-line review ceiling, it splits cleanly (client+breaker | cost-meter+cost-query+migration+B3);
 likewise PR-B (kernels | accumulator+proto) — ceilings, not the plan.
 

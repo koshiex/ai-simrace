@@ -8,6 +8,8 @@
     <ProjectReference Include="..\SimCoach.Contracts\SimCoach.Contracts.csproj" />
     <ProjectReference Include="..\SimCoach.Reference\SimCoach.Reference.csproj" />
     <ProjectReference Include="..\SimCoach.LLM\SimCoach.LLM.csproj" />
+    <!-- ConsoleTipSink persists tips via CoachTipRepository (was only visible transitively via Reference). -->
+    <ProjectReference Include="..\SimCoach.Storage\SimCoach.Storage.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -38,6 +40,10 @@
     <EmbeddedResource Include="Prompts\coach.fewshot.v1.ru.json">
       <WithCulture>false</WithCulture>
       <LogicalName>SimCoach.Coach.Prompts.coach.fewshot.v1.ru.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Prompts\coach.retry.v1.ru.txt">
+      <WithCulture>false</WithCulture>
+      <LogicalName>SimCoach.Coach.Prompts.coach.retry.v1.ru.txt</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 

@@ -45,10 +45,22 @@ public sealed class DatabaseMigratorTests : IDisposable
 
         // sqlite_master stores the unquoted name 'references'.
         tables.Should().BeEquivalentTo(
-            "laps", "llm_usage", "references", "sessions", "settings");
+            "coach_tips", "laps", "llm_usage", "references", "sessions", "settings");
         indexes.Should().BeEquivalentTo(
-            "idx_laps_session", "idx_llm_usage_ts", "idx_sessions_track_car");
-        connection.ExecuteScalar<long>("PRAGMA user_version;").Should().Be(2);
+            "idx_coach_tips_session", "idx_laps_session", "idx_llm_usage_ts", "idx_sessions_track_car");
+        connection.ExecuteScalar<long>("PRAGMA user_version;").Should().Be(3);
+    }
+
+    [Fact]
+    public void Migrate_creates_coach_tips_with_tip_log_columns()
+    {
+        new DatabaseMigrator(_factory).Migrate();
+
+        using SqliteConnection connection = _factory.Create();
+        List<string> columns =
+            [.. connection.Query<string>("SELECT name FROM pragma_table_info('coach_tips')")];
+
+        columns.Should().Contain(["session_id", "rendered_param", "priority_rank", "severity", "no_pb_yet"]);
     }
 
     [Fact]
@@ -98,7 +110,7 @@ public sealed class DatabaseMigratorTests : IDisposable
         // Assert
         secondRun.Should().NotThrow();
         using SqliteConnection connection = _factory.Create();
-        connection.ExecuteScalar<long>("PRAGMA user_version;").Should().Be(2);
+        connection.ExecuteScalar<long>("PRAGMA user_version;").Should().Be(3);
     }
 
     [Fact]

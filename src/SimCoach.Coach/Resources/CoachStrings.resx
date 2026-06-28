@@ -80,4 +80,27 @@
   <data name="Ordinal_6" xml:space="preserve">
     <value>шестой</value>
   </data>
+  <data name="Reason_off_track" xml:space="preserve">
+    <value>вылет с трассы</value>
+    <comment>Debrief loss reason (closed set from compute).</comment>
+  </data>
+  <data name="Reason_late_throttle" xml:space="preserve">
+    <value>поздний газ на выходе</value>
+  </data>
+  <data name="Reason_early_brake" xml:space="preserve">
+    <value>раннее торможение</value>
+  </data>
+  <data name="Reason_low_min_speed" xml:space="preserve">
+    <value>низкая минимальная скорость</value>
+  </data>
+  <data name="Reason_slower" xml:space="preserve">
+    <value>потеря времени</value>
+  </data>
+  <data name="Debrief_TopPriority_Format" xml:space="preserve">
+    <value>Больше всего теряешь в {0}: {1}.</value>
+    <comment>Deterministic debrief top-priority sentence; {0} corner name, {1} reason.</comment>
+  </data>
+  <data name="Debrief_TopPriority_None" xml:space="preserve">
+    <value>Серьёзных потерь нет — так держать.</value>
+  </data>
 </root>
