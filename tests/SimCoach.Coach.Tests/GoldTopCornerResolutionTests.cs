@@ -7,7 +7,7 @@ namespace SimCoach.Coach.Tests;
 
 public sealed class GoldTopCornerResolutionTests
 {
-    private static string TopCorner(SectorEvent ev, string track = "spa") =>
+    private static string? TopCorner(SectorEvent ev, string track = "spa") =>
         GoldTestData.Builder().BuildSector(ev, GoldTestData.Ctx(track: track)).Event.TopCorner;
 
     [Fact]
@@ -17,12 +17,12 @@ public sealed class GoldTopCornerResolutionTests
     }
 
     [Fact]
-    public void Empty_top_losses_yields_an_empty_top_corner()
+    public void Empty_top_losses_yields_a_null_top_corner()
     {
         SectorEvent ev = GoldTestData.Sector();
         ev.TopLosses.Clear();
 
-        TopCorner(ev).Should().BeEmpty();
+        TopCorner(ev).Should().BeNull();
     }
 
     [Fact]

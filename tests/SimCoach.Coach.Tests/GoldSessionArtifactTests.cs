@@ -46,4 +46,15 @@ public sealed class GoldSessionArtifactTests
         e.AggregatedLosses[0].TotalLossMs.Should().Be(600);
         e.AggregatedLosses[0].Reason.Should().Be("low_min_speed");
     }
+
+    [Fact]
+    public void Resolves_aggregated_loss_names_from_the_event_track_not_the_context()
+    {
+        // Context track deliberately disagrees with the SessionEvent track; names must follow the event.
+        GoldSessionPayload e = GoldTestData.Builder()
+            .BuildSession(GoldTestData.Session(), GoldTestData.Ctx(track: "silverstone"))
+            .Event;
+
+        e.AggregatedLosses[0].Corner.Should().Be("Eau Rouge");
+    }
 }

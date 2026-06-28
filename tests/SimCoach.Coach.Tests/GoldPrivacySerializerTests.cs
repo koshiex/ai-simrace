@@ -59,7 +59,7 @@ public sealed class GoldPrivacySerializerTests
     [InlineData("corner")]
     [InlineData("sector")]
     [InlineData("lap")]
-    public void Real_time_gold_never_carries_a_car_id_key(string cadence)
+    public void Real_time_gold_carries_no_forbidden_keys(string cadence)
     {
         GoldArtifactBuilder builder = GoldTestData.Builder();
         string json = cadence switch
@@ -72,7 +72,8 @@ public sealed class GoldPrivacySerializerTests
         using var doc = JsonDocument.Parse(json);
         IReadOnlyList<string> keys = [.. Keys(doc.RootElement)];
 
-        keys.Should().NotContain("car_id");
+        // The lap cadence carries the flattened thermal block, so sweep the full forbidden set on every cadence.
+        keys.Should().NotIntersectWith(_forbiddenKeys);
         keys.Should().Contain("car_class");
     }
 }

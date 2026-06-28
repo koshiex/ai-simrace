@@ -12,6 +12,6 @@ public sealed record GoldLapEvent(
     int? DeltaMs,
     bool IsPb,
     bool IsClean,
-    string TopCorner,
+    string? TopCorner,
     GoldThermalSummary Thermal,
     IReadOnlyList<GoldCornerLoss> TopLosses);

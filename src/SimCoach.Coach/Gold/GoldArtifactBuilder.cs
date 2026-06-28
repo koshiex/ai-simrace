@@ -44,34 +44,36 @@ public sealed class GoldArtifactBuilder
             OffTrack: e.OffTrack,
             Reason: string.IsNullOrEmpty(e.Reason) ? null : e.Reason);
 
-        return Envelope("corner", Header(ctx, ctx.TrackId, ctx.WeatherBucket, ctx.LapNumber), payload, ctx.Locale);
+        return Envelope("corner", Header(ctx), payload, ctx.Locale);
     }
 
     public GoldArtifact<GoldSectorEvent> BuildSector(SectorEvent e, GoldSessionContext ctx)
     {
+        IReadOnlyList<GoldCornerLoss> losses = Losses(ctx.TrackId, e.TopLosses);
         var payload = new GoldSectorEvent(
             SectorIdx: e.SectorIdx,
             SectorTimeMs: e.SectorTimeMs,
             DeltaMs: ctx.HasReference ? e.DeltaMs : null,
-            TopCorner: TopCorner(ctx.TrackId, e.TopLosses),
-            TopLosses: Losses(ctx.TrackId, e.TopLosses));
+            TopCorner: TopCornerOf(losses),
+            TopLosses: losses);
 
-        return Envelope("sector", Header(ctx, ctx.TrackId, ctx.WeatherBucket, ctx.LapNumber), payload, ctx.Locale);
+        return Envelope("sector", Header(ctx), payload, ctx.Locale);
     }
 
     public GoldArtifact<GoldLapEvent> BuildLap(LapEvent e, GoldSessionContext ctx)
     {
+        IReadOnlyList<GoldCornerLoss> losses = Losses(ctx.TrackId, e.TopLosses);
         var payload = new GoldLapEvent(
             LapNumber: e.LapNumber,
             LapTimeMs: e.LapTimeMs,
             DeltaMs: ctx.HasReference ? e.DeltaMs : null,
             IsPb: e.IsPb,
             IsClean: e.IsClean,
-            TopCorner: TopCorner(ctx.TrackId, e.TopLosses),
+            TopCorner: TopCornerOf(losses),
             Thermal: Thermal(e.Thermal),
-            TopLosses: Losses(ctx.TrackId, e.TopLosses));
+            TopLosses: losses);
 
-        return Envelope("lap", Header(ctx, ctx.TrackId, ctx.WeatherBucket, ctx.LapNumber), payload, ctx.Locale);
+        return Envelope("lap", Header(ctx), payload, ctx.Locale);
     }
 
     public GoldArtifact<GoldSessionPayload> BuildSession(SessionEvent e, GoldSessionContext ctx)
@@ -82,12 +84,12 @@ public sealed class GoldArtifactBuilder
             PbTimeMs: e.PbTimeMs > 0 ? e.PbTimeMs : null,
             AverageLapMs: e.AverageLapMs > 0 ? e.AverageLapMs : null,
             UndersteerTrend: Rounding.Score(e.UndersteerTrend),
-            AggregatedLosses: AggregatedLosses(ctx.TrackId, e.AggregatedLosses),
+            AggregatedLosses: AggregatedLosses(e.TrackId, e.AggregatedLosses),
             SectorAvgDeltaMs: ctx.HasReference ? e.SectorAvgDeltaMs.ToList() : null,
-            ConsistencyStddevMs: e.CleanLapCount >= 2 ? Rounding.Score(e.ConsistencyStddevMs) : null,
+            ConsistencyStddevMs: e.CleanLapCount >= 2 ? Rounding.Stddev(e.ConsistencyStddevMs) : null,
             TheoreticalBestGapMs: e.CleanLapCount >= 1 ? e.TheoreticalBestGapMs : null,
             SetupHint: null,
-            FuelTyre: new GoldFuelTyreSummary(Rounding.Fuel(e.AvgFuelPerLapL), Rounding.Score(e.EndTyreWearPct)),
+            FuelTyre: new GoldFuelTyreSummary(Rounding.Fuel(e.AvgFuelPerLapL), Rounding.Percent(e.EndTyreWearPct)),
             Stints: Stints(e.Stints));
 
         // Session metadata comes off the event itself; only class/has-reference/locale ride the context.
@@ -98,8 +100,8 @@ public sealed class GoldArtifactBuilder
     private static GoldArtifact<TEvent> Envelope<TEvent>(string cadence, GoldSessionBlock header, TEvent payload, string locale) =>
         new(SchemaVersion, cadence, locale, header, payload);
 
-    private static GoldSessionBlock Header(GoldSessionContext ctx, string trackId, string weather, int? lapNumber) =>
-        new(trackId, ctx.CarClass, weather, lapNumber, ctx.HasReference);
+    private static GoldSessionBlock Header(GoldSessionContext ctx) =>
+        new(ctx.TrackId, ctx.CarClass, ctx.WeatherBucket, ctx.LapNumber, ctx.HasReference);
 
     private static GoldThermalSummary Thermal(LapEvent.Types.ThermalSummary? thermal) =>
         thermal is null
@@ -110,8 +112,10 @@ public sealed class GoldArtifactBuilder
                 thermal.TyreOverheat,
                 thermal.BrakeOverheat);
 
-    private string TopCorner(string trackId, IReadOnlyList<CornerLoss> losses) =>
-        losses.Count > 0 ? _names.ResolveName(trackId, losses[0].CornerId) : string.Empty;
+    // The biggest-loss corner name, reusing the already-resolved first loss (top_losses arrives pre-sorted
+    // descending from compute). Null — so the field drops — when there were no losses to talk about.
+    private static string? TopCornerOf(IReadOnlyList<GoldCornerLoss> losses) =>
+        losses.Count > 0 ? losses[0].Corner : null;
 
     private IReadOnlyList<GoldCornerLoss> Losses(string trackId, IReadOnlyList<CornerLoss> losses) =>
     [
@@ -131,6 +135,6 @@ public sealed class GoldArtifactBuilder
     private static IReadOnlyList<GoldStint> Stints(IReadOnlyList<StintSummary> stints) =>
     [
         .. stints.Select(s => new GoldStint(
-            s.StartLap, s.EndLap, s.TyreCompound, Rounding.Score(s.TyreDegradationPct), s.AvgLapMs)),
+            s.StartLap, s.EndLap, s.TyreCompound, Rounding.Percent(s.TyreDegradationPct), s.AvgLapMs)),
     ];
 }

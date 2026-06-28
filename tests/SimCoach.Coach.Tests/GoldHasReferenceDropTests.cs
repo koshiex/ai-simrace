@@ -40,6 +40,26 @@ public sealed class GoldHasReferenceDropTests
     }
 
     [Fact]
+    public void Sector_drops_delta_without_a_reference()
+    {
+        string json = GoldSerializer.Serialize(
+            GoldTestData.Builder().BuildSector(GoldTestData.Sector(), GoldTestData.Ctx(hasReference: false)));
+
+        json.Should().NotContain("delta_ms");
+        json.Should().Contain("sector_time_ms");
+    }
+
+    [Fact]
+    public void Lap_drops_delta_without_a_reference()
+    {
+        string json = GoldSerializer.Serialize(
+            GoldTestData.Builder().BuildLap(GoldTestData.Lap(), GoldTestData.Ctx(hasReference: false)));
+
+        json.Should().NotContain("delta_ms");
+        json.Should().Contain("lap_time_ms");
+    }
+
+    [Fact]
     public void Session_drops_sector_avg_delta_without_a_reference_but_keeps_consistency()
     {
         string json = SessionJson(GoldTestData.Session(), hasReference: false);
