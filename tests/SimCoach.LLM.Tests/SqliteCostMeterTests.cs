@@ -1,10 +1,10 @@
+using Dapper;
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
 using SimCoach.LLM;
 using SimCoach.Storage.Database;
 using SimCoach.Storage.Repositories;
-using Dapper;
 using Xunit;
 
 namespace SimCoach.LLM.Tests;
