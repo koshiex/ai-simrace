@@ -45,9 +45,18 @@ public sealed class CornerNameMap
         return name.Length > 0;
     }
 
-    /// <summary>The full name, or the positional fallback ("поворот N") for an unknown corner.</summary>
-    public string ResolveName(string trackId, string cornerId) =>
-        TryGetName(trackId, cornerId, out string name) ? name : CornerNameForms.Positional(cornerId);
+    /// <summary>The full name, or the positional fallback ("поворот N") for an unknown or empty corner id.</summary>
+    public string ResolveName(string trackId, string cornerId)
+    {
+        // A degenerate empty/whitespace id (e.g. a proto-default "") falls back to positional phrasing rather
+        // than tripping TryGetEntry's argument guard — names are a best-effort display layer, never fatal.
+        if (string.IsNullOrWhiteSpace(cornerId))
+        {
+            return CornerNameForms.Positional(cornerId);
+        }
+
+        return TryGetName(trackId, cornerId, out string name) ? name : CornerNameForms.Positional(cornerId);
+    }
 
     /// <summary>The authored slim display form, falling back to the full/positional name when none is authored.</summary>
     public string GetShort(string trackId, string cornerId)

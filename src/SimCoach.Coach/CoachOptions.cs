@@ -26,6 +26,12 @@ public sealed class CoachOptions
     /// <summary>How many actions survive the valid-subset filter into the LLM menu.</summary>
     public int MaxActionsInMenu { get; init; } = 5;
 
+    /// <summary>
+    /// How many per-corner aggregated losses the debrief Gold carries (the post-parse cap, shared with the
+    /// debrief output-schema <c>maxItems</c> in a later PR).
+    /// </summary>
+    public int MaxDebriefLosses { get; init; } = 5;
+
     /// <summary>Maps each coaching cadence to the opaque LLM route key the router resolves.</summary>
     public IReadOnlyDictionary<CoachCadence, string> RouteKeys { get; init; } =
         new Dictionary<CoachCadence, string>
@@ -76,6 +82,11 @@ public sealed class CoachOptions
         if (MaxActionsInMenu <= 0)
         {
             throw new InvalidOperationException("CoachOptions.MaxActionsInMenu must be positive.");
+        }
+
+        if (MaxDebriefLosses <= 0)
+        {
+            throw new InvalidOperationException("CoachOptions.MaxDebriefLosses must be positive.");
         }
 
         foreach (CoachCadence cadence in Enum.GetValues<CoachCadence>())

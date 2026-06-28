@@ -22,6 +22,16 @@ public sealed class CornerNameFormsTests
     }
 
     [Fact]
+    public void Resolve_name_falls_back_instead_of_throwing_for_an_empty_corner_id()
+    {
+        var names = CornerNameMap.Load();
+
+        Action act = () => names.ResolveName("spa", string.Empty);
+
+        act.Should().NotThrow();
+    }
+
+    [Fact]
     public void Short_form_resolves_the_authored_value()
     {
         var names = CornerNameMap.Load();
