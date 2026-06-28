@@ -52,4 +52,10 @@ public sealed class CornerNameFormsTests
 
         names.GetSpokenRu("spa", "spa_t02").Should().Be("Eau Rouge");
     }
+
+    [Fact]
+    public void Spoken_keeps_the_raw_paren_when_no_ordinal_is_authored()
+    {
+        CornerNameForms.Spoken("Foo (7)").Should().Be("Foo (7)");
+    }
 }

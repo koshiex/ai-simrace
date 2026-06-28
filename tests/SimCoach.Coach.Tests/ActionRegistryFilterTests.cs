@@ -87,6 +87,22 @@ public sealed class ActionRegistryFilterTests
     }
 
     [Fact]
+    public void Corner_catch_all_phrase_is_direction_neutral_on_a_gain()
+    {
+        var gold = new DictionaryGoldView(
+            CoachCadence.Corner,
+            hasReference: true,
+            numbers: new Dictionary<string, double> { ["delta_ms"] = -200.0 },
+            strings: new Dictionary<string, string> { ["corner_name"] = "Eau Rouge" });
+        CoachAction catchAll = _registry.Actions.Single(a => a.Id == "corner_catch_all");
+
+        RenderedAction rendered = PhraseRenderer.Render(catchAll, gold);
+
+        rendered.PhraseRu.Should().Be("В Eau Rouge отклонение около 200мс.");
+        rendered.PhraseRu.Should().NotContain("Теряешь");
+    }
+
+    [Fact]
     public void Caps_at_max_actions_in_menu()
     {
         var options = new CoachOptions { MaxActionsInMenu = 2 };

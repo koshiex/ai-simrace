@@ -218,7 +218,7 @@
         { "name": "corner", "from": "corner_name" },
         { "name": "loss", "from": "delta_ms", "transform": "abs_round0", "unit": "мс" }
       ],
-      "phrase_template_ru": "Теряешь в {corner} около {loss}."
+      "phrase_template_ru": "В {corner} отклонение около {loss}."
     },
     {
       "id": "sector_summary_loss",

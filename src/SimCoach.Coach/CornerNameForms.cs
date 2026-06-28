@@ -34,7 +34,15 @@ internal static class CornerNameForms
         }
 
         int number = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+        string ordinalKey = $"Ordinal_{number}";
+        string ordinal = CoachStrings.Get(ordinalKey);
+        if (ordinal == ordinalKey)
+        {
+            // No ordinal authored for this N: keep the raw "(N)" rather than leak the resx key.
+            return fullName;
+        }
+
         string baseName = fullName[..match.Index];
-        return $"{baseName}, {CoachStrings.Get($"Ordinal_{number}")}";
+        return $"{baseName}, {ordinal}";
     }
 }
