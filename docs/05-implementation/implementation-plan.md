@@ -86,6 +86,13 @@ provider config, internal `LlmRouter`/`FakeProvider`, `CoachCadence`; dead-until
 - [ ] DeepSeek V3.2 debrief prompt
 - [ ] Debrief window: sector chart, trace overlay, TTS playback
 - [ ] PDF/MD export
+- [ ] **Real ACC tyre-degradation source for the debrief tyre summary (FR-060).** ACC exposes no
+      tyre-wear channel — Phase 3 plumbs `end_tyre_wear_pct` as an honest-zero (deferred from PR-B,
+      see `phase-3-detailed-plan.md` risks #2). Phase 6 owns the real source because the debrief is
+      first *delivered* to the user here, so the zero would otherwise become visible: derive degradation
+      from clean-lap pace fall-off across the stint and/or populate `StintSummary.tyre_degradation_pct`
+      (the proto field reserved for this, `[]` in MVP). Until then the debrief copy states the ACC
+      limitation rather than rendering a fake `0%`.
 
 ## Phase 7 — Beta polish (week 8)
 
