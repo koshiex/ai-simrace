@@ -8,6 +8,8 @@
     <ProjectReference Include="..\SimCoach.Contracts\SimCoach.Contracts.csproj" />
     <ProjectReference Include="..\SimCoach.Reference\SimCoach.Reference.csproj" />
     <ProjectReference Include="..\SimCoach.LLM\SimCoach.LLM.csproj" />
+    <!-- ConsoleTipSink persists tips via CoachTipRepository (was only visible transitively via Reference). -->
+    <ProjectReference Include="..\SimCoach.Storage\SimCoach.Storage.csproj" />
   </ItemGroup>
 
   <ItemGroup>
