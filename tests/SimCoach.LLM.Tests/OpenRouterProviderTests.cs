@@ -109,22 +109,21 @@ public sealed class OpenRouterProviderTests
     }
 
     [Fact]
-    public async Task Debrief_route_does_not_truncate_at_2000_tokens()
+    public async Task Debrief_route_sends_configured_max_tokens_budget()
     {
-        // A representative Low-effort debrief response returns a non-truncation finish reason under
-        // MaxOutputTokens=2000 (the headroom the plan sizes for adaptive thinking + 200-word output).
+        // The debrief budget (2000) must reach the wire — the headroom the plan sizes for Low-effort thinking
+        // + the 200-word output, so the model does not truncate (finish_reason=max_tokens → invalid JSON).
         var handler = MockHttpMessageHandler.Json(
-            HttpStatusCode.OK,
-            AnthropicToolSuccess("{\"top_priority\":\"x\"}", finish: "tool_calls"));
+            HttpStatusCode.OK, AnthropicToolSuccess("{\"top_priority\":\"x\"}"));
         OpenRouterProvider provider = Provider(handler);
 
-        LlmResult result = await provider.CompleteAsync(
+        await provider.CompleteAsync(
             Request(RealTimeSchema, "coach_debrief"),
             Route("openrouter-anthropic", "anthropic/claude-sonnet-4.6", maxTokens: 2000, reasoning: ReasoningEffort.Low),
             CancellationToken.None);
 
-        LlmResult.Success success = result.Should().BeOfType<LlmResult.Success>().Subject;
-        success.Info.FinishReason.Should().NotBe("max_tokens");
+        JsonObject body = JsonNode.Parse(handler.LastRequestBody!)!.AsObject();
+        body["max_tokens"]!.GetValue<int>().Should().Be(2000);
     }
 
     [Fact]

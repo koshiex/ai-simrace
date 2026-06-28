@@ -91,6 +91,20 @@ internal sealed class CircuitBreaker
         }
     }
 
+    /// <summary>Releases a half-open probe that neither succeeded nor failed (the inner call threw, e.g. caller
+    /// cancellation) so the breaker can admit the next probe instead of wedging HalfOpen forever. A bare throw is
+    /// not provider health, so it neither closes nor reopens the circuit.</summary>
+    public void ReleaseProbe()
+    {
+        lock (_gate)
+        {
+            if (_state == CircuitState.HalfOpen)
+            {
+                _probeInFlight = false;
+            }
+        }
+    }
+
     public void RecordFailure(LlmFailure failure)
     {
         ArgumentNullException.ThrowIfNull(failure);
@@ -137,9 +151,12 @@ internal sealed class CircuitBreaker
             ? retryAfter
             : _options.BreakDuration;
 
+    // Only infra failures trip. A 4xx (bad request / unknown model / out-of-credits) is a deterministic client
+    // error that fallback/retry can't fix and must NOT open the whole provider's breaker, so ServerError trips
+    // only at HTTP 5xx.
     private static bool IsTripWorthy(LlmFailure failure)
         => failure is LlmFailure.Timeout
             or LlmFailure.RateLimited
-            or LlmFailure.ServerError
-            or LlmFailure.Transport;
+            or LlmFailure.Transport
+            or LlmFailure.ServerError { StatusCode: >= 500 };
 }

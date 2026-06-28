@@ -86,6 +86,24 @@ public sealed class SchemaTranslatorTests
     }
 
     [Fact]
+    public void Gemini_keeps_a_property_named_like_a_banned_keyword()
+    {
+        const string schema =
+            """
+            { "type": "object", "properties": {
+                "minimum": { "type": "number", "maximum": 5 },
+                "phrase": { "type": "string" } } }
+            """;
+
+        SchemaDirective directive = new GeminiSchemaTranslator().Translate(schema, "x");
+
+        JsonObject props = directive.ResponseFormat!["json_schema"]!["schema"]!["properties"]!.AsObject();
+        props.Should().ContainKey("minimum");                                     // property NAME survives
+        props["minimum"]!["type"]!.GetValue<string>().Should().Be("number");
+        props["minimum"]!.AsObject().ContainsKey("maximum").Should().BeFalse();    // keyword INSIDE it stripped
+    }
+
+    [Fact]
     public void Anthropic_emits_forced_tool_shape()
     {
         SchemaDirective directive = new AnthropicToolSchemaTranslator().Translate(DebriefSchema, "coach_debrief");

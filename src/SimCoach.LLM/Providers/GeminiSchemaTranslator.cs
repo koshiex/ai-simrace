@@ -21,6 +21,16 @@ internal sealed class GeminiSchemaTranslator : ISchemaTranslator
         "maxItems",
     };
 
+    // Maps whose keys are NAMES (property/definition names), not schema keywords — never strip their keys; only
+    // recurse into their value schemas. Otherwise a property literally named "minimum" would be deleted.
+    private static readonly HashSet<string> _schemaNameMaps = new(StringComparer.Ordinal)
+    {
+        "properties",
+        "patternProperties",
+        "$defs",
+        "definitions",
+    };
+
     public SchemaFamily Family => SchemaFamily.Gemini;
 
     public SchemaDirective Translate(string jsonSchema, string schemaName)
@@ -54,10 +64,22 @@ internal sealed class GeminiSchemaTranslator : ISchemaTranslator
 
         foreach (KeyValuePair<string, JsonNode?> pair in obj)
         {
-            Recurse(pair.Value);
+            if (_schemaNameMaps.Contains(pair.Key) && pair.Value is JsonObject schemaMap)
+            {
+                foreach (KeyValuePair<string, JsonNode?> entry in schemaMap)
+                {
+                    Recurse(entry.Value);
+                }
+            }
+            else
+            {
+                Recurse(pair.Value);
+            }
         }
     }
 
+    // Handles only the OpenAI [X,"null"] nullability union the Coach output schemas emit. A multi-type union is
+    // not produced by those schemas; this keeps the last non-null type and is not a general union collapser.
     private static void RewriteNullableUnion(JsonObject obj, JsonArray typeUnion)
     {
         string? primary = null;

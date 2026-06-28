@@ -27,7 +27,19 @@ internal sealed class CircuitBreakerProvider : ILlmProvider
                 new LlmFailure.CircuitOpen($"Circuit open for provider '{route.ProviderId}'."));
         }
 
-        LlmResult result = await _inner.CompleteAsync(request, route, ct);
+        LlmResult result;
+        try
+        {
+            result = await _inner.CompleteAsync(request, route, ct);
+        }
+        catch (Exception)
+        {
+            // The inner call threw rather than returning a Failure (e.g. caller cancellation propagates from
+            // OpenRouterProvider). Release any half-open probe so the breaker doesn't wedge, then rethrow.
+            breaker.ReleaseProbe();
+            throw;
+        }
+
         if (result is LlmResult.Failure failure)
         {
             breaker.RecordFailure(failure.Error);

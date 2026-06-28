@@ -66,6 +66,27 @@ public sealed class CircuitBreakerProviderTests
         fourth.Should().BeOfType<LlmResult.Failure>().Which.Error.Should().BeOfType<LlmFailure.CircuitOpen>();
     }
 
+    [Fact]
+    public async Task Probe_that_throws_releases_the_half_open_slot()
+    {
+        var clock = new FakeTimeProvider();
+        var registry = new CircuitBreakerRegistry(new CircuitBreakerOptions(), clock);
+        CircuitBreaker breaker = registry.For(_route.ProviderId);
+        for (int i = 0; i < 3; i++)
+        {
+            breaker.RecordFailure(new LlmFailure.ServerError("down", 503));
+        }
+
+        clock.Advance(TimeSpan.FromSeconds(60)); // half-open eligible
+        var decorated = new CircuitBreakerProvider(new ThrowingProvider(), registry);
+
+        Func<Task> act = () => decorated.CompleteAsync(_request, _route, CancellationToken.None);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+
+        // Without ReleaseProbe the breaker would be wedged HalfOpen (TryEnter false forever).
+        breaker.TryEnter().Should().BeTrue();
+    }
+
     private static LlmResult Success()
         => new LlmResult.Success("{}", new LlmUsage(1, 1), new LlmCallInfo("openrouter-google", "m", TimeSpan.Zero, "stop"));
 
@@ -82,6 +103,15 @@ public sealed class CircuitBreakerProviderTests
             CallCount++;
             return Task.FromResult(_result);
         }
+
+        public IAsyncEnumerable<LlmDelta> StreamAsync(LlmRequest request, ResolvedRoute route, CancellationToken ct)
+            => throw new NotSupportedException();
+    }
+
+    private sealed class ThrowingProvider : ILlmProvider
+    {
+        public Task<LlmResult> CompleteAsync(LlmRequest request, ResolvedRoute route, CancellationToken ct)
+            => throw new OperationCanceledException();
 
         public IAsyncEnumerable<LlmDelta> StreamAsync(LlmRequest request, ResolvedRoute route, CancellationToken ct)
             => throw new NotSupportedException();

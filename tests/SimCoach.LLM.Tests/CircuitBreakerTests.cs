@@ -65,6 +65,21 @@ public sealed class CircuitBreakerTests
     }
 
     [Fact]
+    public void Client_4xx_server_error_does_not_trip()
+    {
+        var clock = new FakeTimeProvider();
+        CircuitBreaker breaker = Breaker(clock);
+
+        for (int i = 0; i < 5; i++)
+        {
+            breaker.RecordFailure(new LlmFailure.ServerError("bad request", 400));
+        }
+
+        breaker.State.Should().Be(CircuitState.Closed);
+        breaker.TryEnter().Should().BeTrue();
+    }
+
+    [Fact]
     public void Opens_then_admits_single_probe_after_break()
     {
         var clock = new FakeTimeProvider();

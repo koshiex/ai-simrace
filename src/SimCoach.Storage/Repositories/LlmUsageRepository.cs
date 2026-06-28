@@ -18,6 +18,11 @@ public sealed class LlmUsageRepository
     public void Insert(LlmUsageRow row)
     {
         ArgumentNullException.ThrowIfNull(row);
+
+        // ts_utc must be stored UTC: the cost queries compare/bucket it lexicographically on the "o" string,
+        // which is only instant-ordered when every offset is +00:00. Normalize defensively (no-op if already UTC).
+        LlmUsageRow normalized = row with { TsUtc = row.TsUtc.ToUniversalTime() };
+
         using SqliteConnection connection = _factory.Create();
         connection.Execute(
             """
@@ -28,6 +33,6 @@ public sealed class LlmUsageRepository
               (@SessionId, @TsUtc, @ModelId, @Provider, @Cadence,
                @InputTokens, @OutputTokens, @CachedInputTokens, @CostUsd, @LatencyMs, @Status)
             """,
-            row);
+            normalized);
     }
 }
