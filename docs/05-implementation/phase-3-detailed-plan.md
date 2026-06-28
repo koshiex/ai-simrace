@@ -656,9 +656,16 @@ The compute-layer prerequisite that makes the registry loader pass (B3 #4) and t
   serialized to a string for `ILlmClient`. A serializer unit test asserts the JSON contains **no** forbidden
   raw fields (world coords, frame arrays, exact car id, raw strategy/fuel telemetry) — mechanically
   enforcing "only Gold-tier leaves the machine."
+- **`has_reference=false` field-drop is D3's responsibility (surfaced by the PR-B/D0 review, #8):** the
+  reference-relative **session/M3** fields PR-B emits as proto-default `0` without a PB —
+  `sector_avg_delta_ms` and `theoretical_best_gap_ms` (alongside the corner `*_diff_*`/`delta_ms`/`*_ref`
+  fields already noted) — must be **dropped from the Gold artifact**, not serialized as misleading zeros that
+  read as "perfectly on reference." PR-B intentionally leaves them at `0` (matching the existing
+  `CornerEventBuilder` honest-zeros contract); the drop happens here at the Coach/Gold layer.
 - **Tests:** synthetic events with known deltas → expected fields/values (incl. B1 fields and
-  `aggregated_losses`); `has_reference=false` drops the diff fields; first-session / no-PB / off-track
-  edge cases; the `aggregated_losses` post-parse cap (m2); the privacy-serializer assertion.
+  `aggregated_losses`); `has_reference=false` drops the diff fields **and the M3 `sector_avg_delta_ms`/
+  `theoretical_best_gap_ms`**; first-session / no-PB / off-track edge cases; the `aggregated_losses` post-parse
+  cap (m2); the privacy-serializer assertion.
 
 ### D4. PromptBuilder integration + output-schema compilation (`SimCoach.Coach`) — FR-031, FR-033, M2/M4
 
@@ -975,6 +982,7 @@ likewise PR-B (kernels | accumulator+proto) — ceilings, not the plan.
 | Budget-default mismatch ($5 mockup vs $10 FR-072) | `budget.monthly_usd` default reconciled to **$5.00** (matches the shipped mockup); owner may override via settings. |
 | Open: debrief delivery & streaming | Declared (`StreamAsync`) but **not built** in P3 — deferred to P6; the buffered debrief artifact/schema + Sonnet 4.6 route ship, live call flag-off. |
 | Open: e2e fixture source | Reuse the Phase-2 synthesized multi-lap fixture (regenerated for the B1 fields); rebake against a live capture when Windows capture lands. |
+| **FR-060 tyre-degradation element not real on ACC (surfaced by PR-B/D0 review, #2 — MUST address later, not in PR-B)** | ACC's `TyreWear` SHM channel is "Not used" (always 0), so `end_tyre_wear_pct` is an **honest-zero forward-compat field** (like `tyres_out`/`wheel_load`): the M3 fuel summary is real on ACC, the **tyre** half is not. A later phase must source tyre degradation from a channel ACC *does* provide — derive from clean-lap-time fall-off / stint pace trend, or pull per-stint `tyre_degradation_pct` (the `StintSummary` field already in the proto, `[]` in MVP). Until then FR-060's tyre-summary element is closed only for sims that report wear; document the ACC limitation in the debrief copy rather than render a fake `0%`. |
 
 ## Draft docs to amend
 
