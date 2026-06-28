@@ -835,6 +835,16 @@ The compute-layer prerequisite that makes the registry loader pass (B3 #4) and t
   `ICoachTipSink`→`ConsoleTipSink`, `CoachService` as a hosted service **between ComputeService and
   McapRecorderService** (stop order above). `CoachService` takes both the `DomainEventFanOut` and
   `TelemetryFanOut` subscriptions in its ctor.
+- **`car_class` sourcing (owed by PR-H, surfaced by PR-D):** PR-D's `GoldArtifactBuilder` consumes a
+  coarse `car_class` via `GoldSessionContext` and **never serializes the raw `car_id`** (privacy: the
+  exact car id must not leave the machine — it is a forbidden field in the Gold-serializer test). PR-H
+  must supply that class at the composition edge — in the MVP from a config/constant default (`"gt3"`;
+  ACC is GT3-only and the system prompt already says "ACC, GT3"); when F1 25 / iRacing land, the
+  **sim adapter** provides the real class through a sim-agnostic seam (mirroring `ITrackLengthProvider`),
+  **not** a hardcoded car→class table baked into Coach (that does not scale across sims). `SessionEvent`
+  carries only `car_id`, so the class is threaded through the Coach-layer context, never read off the
+  event. Future-phase note: consider an append-only `car_class` proto field fed by the adapter so the
+  debrief (session) cadence has a first-class source too.
 - **Persistence:** migration `003_coach_tips.sql` (with `rendered_param` + `priority` columns); the
   `IReferenceQueryRepository`/`ISessionHistoryRepository` signatures are **declared** (interfaces +
   reserved `debrief` nullable columns: prose, checklist+checked, per-sector aggregate deltas, balance
@@ -1051,7 +1061,8 @@ likewise PR-B (kernels | accumulator+proto) — ceilings, not the plan.
   `IRateCardQuery` + `ISettingsStore` (implemented P3, with the `SqliteSettingsConfigurationSource` read-path),
   `IReferenceQueryRepository`/`ISessionHistoryRepository` (declared P3), `coach_tips`(`rendered_param`/`priority`)/
   `llm_usage` migrations, and the reserved `debrief` columns (incl. `top_losses_json`) are all delivered/declared
-  by the PR table above.
+  by the PR table above. Privacy note: the Gold artifact carries a coarse `car_class`, **never** the raw
+  `car_id` (PR-D decision; the class is caller-supplied context sourced by the sim adapter, see D9/PR-H).
 - **`docs/05-implementation/implementation-plan.md`** — fix the stale Phase-3 PromptBuilder bullet ("vendored
   CrewChief landmark file" → "first-party baked `cornerGeometry.json` per ADR-0014"); scope the OpenRouter
   "streaming" bullet to the **debrief only (P6)** (real-time is buffered); update the Phase-3 header from
