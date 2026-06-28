@@ -18,6 +18,12 @@
   <ItemGroup>
     <!-- First-party authored corner names for the Phase-3 prompt layer (ADR-0010/0014). -->
     <EmbeddedResource Include="Data\cornerNames.json" />
+    <!-- The bounded action registry the LLM selects from (data, not code). -->
+    <EmbeddedResource Include="Data\actionRegistry.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SimCoach.Coach.Tests" />
   </ItemGroup>
 
 </Project>
