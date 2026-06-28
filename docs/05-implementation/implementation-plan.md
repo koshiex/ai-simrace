@@ -44,6 +44,9 @@ Per-PR status lives in [phase-3-detailed-plan.md](./phase-3-detailed-plan.md) (8
 UI contracts this phase must expose: [ui-client-requirements.md](../03-functional/ui-client-requirements.md).
 Scope deferred out of the MVP: [mvp-deferrals.md](./mvp-deferrals.md).
 
+Done: **PR-A** — provider-agnostic `ILlmClient` seam (Ring-0 contract + records, `LlmOptions`/route/
+provider config, internal `LlmRouter`/`FakeProvider`, `CoachCadence`; dead-until-wired, FakeProvider default).
+
 - [ ] `GoldArtifactBuilder` per cadence
 - [ ] `ActionRegistry` with ~20 actions + RU templates
 - [ ] `PromptBuilder` system + few-shot
