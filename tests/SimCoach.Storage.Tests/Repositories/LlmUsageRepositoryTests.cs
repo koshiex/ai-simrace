@@ -13,7 +13,7 @@ public sealed class LlmUsageRepositoryTests : RepositoryTestBase
     public LlmUsageRepositoryTests() => _usage = new LlmUsageRepository(Factory);
 
     [Fact]
-    public void Insert_round_trips_all_columns_including_provider_and_cached()
+    public async Task Insert_round_trips_all_columns_including_provider_and_cached()
     {
         var row = new LlmUsageRow
         {
@@ -30,7 +30,7 @@ public sealed class LlmUsageRepositoryTests : RepositoryTestBase
             Status = "success",
         };
 
-        _usage.Insert(row);
+        await _usage.InsertAsync(row, CancellationToken.None);
 
         using SqliteConnection connection = Factory.Create();
         LlmUsageRow read = connection.QuerySingle<LlmUsageRow>("SELECT * FROM llm_usage");

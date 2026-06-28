@@ -21,7 +21,7 @@ public sealed class ConsoleTipSink : ICoachTipSink
         _logger = logger;
     }
 
-    public Task EmitTipAsync(CoachTip tip, CancellationToken ct)
+    public async Task EmitTipAsync(CoachTip tip, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(tip);
 
@@ -29,8 +29,7 @@ public sealed class ConsoleTipSink : ICoachTipSink
             "Coach tip [{Cadence}/{Severity}] {ActionId} \"{PhraseRu}\" (source={Source}, noPb={NoPbYet})",
             tip.Cadence, tip.Severity, tip.ActionId, tip.PhraseRu, tip.Source, tip.NoPbYet);
 
-        _repository.Insert(ToRow(tip));
-        return Task.CompletedTask;
+        await _repository.InsertAsync(ToRow(tip), ct).ConfigureAwait(false);
     }
 
     private static CoachTipRow ToRow(CoachTip tip) => new()

@@ -25,7 +25,7 @@ public sealed class SqliteCostMeter : ICostMeter
         _timeProvider = timeProvider;
     }
 
-    public Task RecordAsync(LlmCostEntry entry, CancellationToken ct)
+    public async Task RecordAsync(LlmCostEntry entry, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(entry);
         decimal cost = TryGetRate(entry.ProviderId, entry.ModelId, out ModelRate? rate)
@@ -47,8 +47,7 @@ public sealed class SqliteCostMeter : ICostMeter
             Status = entry.Status,
         };
 
-        _repository.Insert(row);
-        return Task.CompletedTask;
+        await _repository.InsertAsync(row, ct).ConfigureAwait(false);
     }
 
     private bool TryGetRate(string providerId, string modelId, out ModelRate? rate)

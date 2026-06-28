@@ -25,9 +25,9 @@ public sealed class SqliteCostQueryRepositoryTests : RepositoryTestBase
     {
         SeedSession("s1");
         SeedSession("s2");
-        Seed("s1", _now, "corner", "openrouter-google", "gemini", 0.001);
-        Seed("s1", _now, "corner", "openrouter-google", "gemini", 0.002);
-        Seed("s2", _now, "corner", "openrouter-google", "gemini", 0.005);
+        await Seed("s1", _now, "corner", "openrouter-google", "gemini", 0.001);
+        await Seed("s1", _now, "corner", "openrouter-google", "gemini", 0.002);
+        await Seed("s2", _now, "corner", "openrouter-google", "gemini", 0.005);
 
         CostSummary summary = await _query.GetSessionCostAsync("s1", CancellationToken.None);
 
@@ -38,8 +38,8 @@ public sealed class SqliteCostQueryRepositoryTests : RepositoryTestBase
     [Fact]
     public async Task GetRolling30Day_excludes_rows_older_than_the_window()
     {
-        Seed(null, _now.AddDays(-10), "corner", "openrouter-google", "gemini", 0.002);
-        Seed(null, _now.AddDays(-40), "corner", "openrouter-google", "gemini", 0.009);
+        await Seed(null, _now.AddDays(-10), "corner", "openrouter-google", "gemini", 0.002);
+        await Seed(null, _now.AddDays(-40), "corner", "openrouter-google", "gemini", 0.009);
 
         RollingCost rolling = await _query.GetRolling30DayCostAsync(CancellationToken.None);
 
@@ -50,9 +50,9 @@ public sealed class SqliteCostQueryRepositoryTests : RepositoryTestBase
     [Fact]
     public async Task GetCostByDay_groups_by_iso_date()
     {
-        Seed(null, _now, "corner", "openrouter-google", "gemini", 0.001);
-        Seed(null, _now, "corner", "openrouter-google", "gemini", 0.001);
-        Seed(null, _now.AddDays(-1), "corner", "openrouter-google", "gemini", 0.004);
+        await Seed(null, _now, "corner", "openrouter-google", "gemini", 0.001);
+        await Seed(null, _now, "corner", "openrouter-google", "gemini", 0.001);
+        await Seed(null, _now.AddDays(-1), "corner", "openrouter-google", "gemini", 0.004);
 
         IReadOnlyList<CostByDay> byDay = await _query.GetCostByDayAsync(7, CancellationToken.None);
 
@@ -66,9 +66,9 @@ public sealed class SqliteCostQueryRepositoryTests : RepositoryTestBase
     [Fact]
     public async Task GetCostByRoute_groups_and_orders_by_cost_desc()
     {
-        Seed(null, _now, "corner", "openrouter-google", "gemini", 0.001);
-        Seed(null, _now, "corner", "openrouter-google", "gemini", 0.001);
-        Seed(null, _now, "debrief", "openrouter-anthropic", "sonnet", 0.020);
+        await Seed(null, _now, "corner", "openrouter-google", "gemini", 0.001);
+        await Seed(null, _now, "corner", "openrouter-google", "gemini", 0.001);
+        await Seed(null, _now, "debrief", "openrouter-anthropic", "sonnet", 0.020);
 
         IReadOnlyList<CostByRoute> byRoute = await _query.GetCostByRouteAsync(_now.AddDays(-1), CancellationToken.None);
 
@@ -92,25 +92,27 @@ public sealed class SqliteCostQueryRepositoryTests : RepositoryTestBase
             McapPath = $"{id}.mcap",
         });
 
-    private void Seed(
+    private Task Seed(
         string? session,
         DateTimeOffset ts,
         string cadence,
         string provider,
         string model,
         double cost)
-        => _writer.Insert(new LlmUsageRow
-        {
-            SessionId = session,
-            TsUtc = ts,
-            ModelId = model,
-            Provider = provider,
-            Cadence = cadence,
-            InputTokens = 100,
-            OutputTokens = 20,
-            CachedInputTokens = 0,
-            CostUsd = cost,
-            LatencyMs = 100,
-            Status = "success",
-        });
+        => _writer.InsertAsync(
+            new LlmUsageRow
+            {
+                SessionId = session,
+                TsUtc = ts,
+                ModelId = model,
+                Provider = provider,
+                Cadence = cadence,
+                InputTokens = 100,
+                OutputTokens = 20,
+                CachedInputTokens = 0,
+                CostUsd = cost,
+                LatencyMs = 100,
+                Status = "success",
+            },
+            CancellationToken.None);
 }

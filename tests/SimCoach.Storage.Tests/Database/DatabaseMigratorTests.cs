@@ -48,11 +48,11 @@ public sealed class DatabaseMigratorTests : IDisposable
             "coach_tips", "laps", "llm_usage", "references", "sessions", "settings");
         indexes.Should().BeEquivalentTo(
             "idx_coach_tips_session", "idx_laps_session", "idx_llm_usage_ts", "idx_sessions_track_car");
-        connection.ExecuteScalar<long>("PRAGMA user_version;").Should().Be(3);
+        connection.ExecuteScalar<long>("PRAGMA user_version;").Should().Be(4);
     }
 
     [Fact]
-    public void Migrate_creates_coach_tips_with_tip_log_columns()
+    public void Migrate_creates_coach_tips_with_tip_log_and_debrief_columns()
     {
         new DatabaseMigrator(_factory).Migrate();
 
@@ -61,6 +61,10 @@ public sealed class DatabaseMigratorTests : IDisposable
             [.. connection.Query<string>("SELECT name FROM pragma_table_info('coach_tips')")];
 
         columns.Should().Contain(["session_id", "rendered_param", "priority_rank", "severity", "no_pb_yet"]);
+        // 004 reserved debrief columns.
+        columns.Should().Contain(
+            ["top_losses_json", "debrief_prose", "setup_hint", "checklist_json",
+             "per_sector_deltas_json", "balance_verdict", "audio_artifact_ref"]);
     }
 
     [Fact]
@@ -80,6 +84,7 @@ public sealed class DatabaseMigratorTests : IDisposable
     [InlineData(new[] { 1 })]
     [InlineData(new[] { 1, 2 })]
     [InlineData(new[] { 1, 2, 3 })]
+    [InlineData(new[] { 1, 2, 3, 4 })]
     public void AssertContiguous_accepts_contiguous_runs(int[] versions)
     {
         Action act = () => DatabaseMigrator.AssertContiguous(versions);
@@ -110,7 +115,7 @@ public sealed class DatabaseMigratorTests : IDisposable
         // Assert
         secondRun.Should().NotThrow();
         using SqliteConnection connection = _factory.Create();
-        connection.ExecuteScalar<long>("PRAGMA user_version;").Should().Be(3);
+        connection.ExecuteScalar<long>("PRAGMA user_version;").Should().Be(4);
     }
 
     [Fact]

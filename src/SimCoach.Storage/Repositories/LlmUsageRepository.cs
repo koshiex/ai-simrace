@@ -15,7 +15,7 @@ public sealed class LlmUsageRepository
         _factory = factory;
     }
 
-    public void Insert(LlmUsageRow row)
+    public async Task InsertAsync(LlmUsageRow row, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(row);
 
@@ -24,7 +24,7 @@ public sealed class LlmUsageRepository
         LlmUsageRow normalized = row with { TsUtc = row.TsUtc.ToUniversalTime() };
 
         using SqliteConnection connection = _factory.Create();
-        connection.Execute(
+        await connection.ExecuteAsync(new CommandDefinition(
             """
             INSERT INTO llm_usage
               (session_id, ts_utc, model_id, provider, cadence,
@@ -33,6 +33,7 @@ public sealed class LlmUsageRepository
               (@SessionId, @TsUtc, @ModelId, @Provider, @Cadence,
                @InputTokens, @OutputTokens, @CachedInputTokens, @CostUsd, @LatencyMs, @Status)
             """,
-            normalized);
+            normalized,
+            cancellationToken: ct)).ConfigureAwait(false);
     }
 }
