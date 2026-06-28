@@ -52,6 +52,7 @@ internal sealed class ComputeSession
     private long _cleanLapSumMs;
     private double _cleanLapSumSqMs;
     private double _fuelPerLapAccum;
+    private int _racingLapCount;
     private float _endTyreWearPct;
     private int? _pbTimeMs;
     private double _understeerAccum;
@@ -148,7 +149,7 @@ internal sealed class ComputeSession
                 UndersteerTrend = understeerTrend,
                 ConsistencyStddevMs = ConsistencyStddevMs(),
                 TheoreticalBestGapMs = TheoreticalBestGapMs(),
-                AvgFuelPerLapL = _lapCount > 0 ? (float)(_fuelPerLapAccum / _lapCount) : 0f,
+                AvgFuelPerLapL = _racingLapCount > 0 ? (float)(_fuelPerLapAccum / _racingLapCount) : 0f,
                 EndTyreWearPct = _endTyreWearPct,
             };
             // Stints are descoped for Phase 2 — the empty repeated field is proto3-valid.
@@ -236,7 +237,15 @@ internal sealed class ComputeSession
     private void HandleLap(CompletedLap completed, TelemetryFrame frame)
     {
         _lapCount++;
-        _fuelPerLapAccum += frame.FuelPerLapL;
+        // Fuel summary averages over racing laps only — an in/out/pit lap's per-lap estimate is skewed.
+        // The completing `frame` is the next lap's start-line crossing, so read fuel from the completed
+        // lap's own last frame, not from `frame`.
+        if (completed.Frames.Count > 0 && !completed.Frames.Any(f => f.IsInPitLane))
+        {
+            _fuelPerLapAccum += completed.Frames[^1].FuelPerLapL;
+            _racingLapCount++;
+        }
+
         bool clean = completed.IsClean;
         if (clean)
         {

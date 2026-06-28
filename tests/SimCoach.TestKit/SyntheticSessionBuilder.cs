@@ -26,7 +26,8 @@ public static class SyntheticSessionBuilder
         int lapCount,
         IReadOnlySet<int>? dirtyLaps = null,
         int samplesPerLap = 200,
-        DateTimeOffset? startUtc = null)
+        DateTimeOffset? startUtc = null,
+        IReadOnlySet<int>? pitLaps = null)
     {
         ArgumentNullException.ThrowIfNull(track);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(lapCount);
@@ -44,15 +45,16 @@ public static class SyntheticSessionBuilder
             int lapNumber = (i / samplesPerLap) + 1;
             float pos = (i % samplesPerLap) / (float)samplesPerLap; // 0..<1, wraps each lap
             bool isValid = dirtyLaps is null || !dirtyLaps.Contains(lapNumber);
+            bool inPit = pitLaps is not null && pitLaps.Contains(lapNumber);
 
-            frames.Add(BuildFrame(track, lapNumber, pos, radiusM, isValid, start + (i * _frameInterval)));
+            frames.Add(BuildFrame(track, lapNumber, pos, radiusM, isValid, inPit, start + (i * _frameInterval)));
         }
 
         return frames;
     }
 
     private static TelemetryFrame BuildFrame(
-        SyntheticTrack track, int lapNumber, float pos, float radiusM, bool isValid, DateTimeOffset t)
+        SyntheticTrack track, int lapNumber, float pos, float radiusM, bool isValid, bool inPit, DateTimeOffset t)
     {
         CornerState corner = CornerStateAt(track.Corners, pos);
         int sectorIndex = Math.Min((int)(pos * track.SectorCount), track.SectorCount - 1);
@@ -83,6 +85,9 @@ public static class SyntheticSessionBuilder
             SectorCount = track.SectorCount,
             TyresOut = 0,
             IsValidLap = isValid,
+            // Pit laps carry a skewed (out-lap-reset) per-lap fuel estimate that must be excluded from the avg.
+            FuelPerLapL = inPit ? 0f : 2.5f,
+            IsInPitLane = inPit,
         };
 
         // Deterministic tip-quality inputs derived from the corner state (Phase 3 kernels exercise these

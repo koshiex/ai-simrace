@@ -37,6 +37,32 @@ public sealed class Phase3KernelsTests
     }
 
     [Fact]
+    public void Wheelspin_score_ignores_braking_lockup_and_off_throttle_frames()
+    {
+        // Braking-zone frames: throttle off, rear slip NEGATIVE (lockup). Must not score as wheelspin.
+        TelemetryFrame[] braking =
+        [
+            FrameWithSlip(-0.4f, -0.4f, -0.5f, -0.5f, throttle: 0f),
+            FrameWithSlip(-0.4f, -0.4f, -0.5f, -0.5f, throttle: 0f),
+        ];
+
+        WheelspinKernels.WheelspinScore(braking).Should().Be(0f);
+    }
+
+    [Fact]
+    public void Wheelspin_score_uses_only_throttle_phase_positive_slip()
+    {
+        // Mixed window: big negative slip while braking (ignored), modest positive slip on throttle.
+        TelemetryFrame[] mixed =
+        [
+            FrameWithSlip(-0.4f, -0.4f, -0.9f, -0.9f, throttle: 0f),   // lockup, off throttle → ignored
+            FrameWithSlip(0.02f, 0.02f, 0.25f, 0.20f, throttle: 0.8f), // power-down wheelspin → 0.5
+        ];
+
+        WheelspinKernels.WheelspinScore(mixed).Should().BeApproximately(0.5f, 1e-4f);
+    }
+
+    [Fact]
     public void Brake_overlap_is_fraction_of_window_braking_while_steering()
     {
         // 2 of 4 frames carry both brake > 0.1 and |steer| > 0.1 → 0.5.
@@ -160,9 +186,9 @@ public sealed class Phase3KernelsTests
         SteerRad = steer,
     };
 
-    private static TelemetryFrame FrameWithSlip(float fl, float fr, float rl, float rr)
+    private static TelemetryFrame FrameWithSlip(float fl, float fr, float rl, float rr, float throttle = 1f)
     {
-        TelemetryFrame frame = new();
+        TelemetryFrame frame = new() { ThrottlePct = throttle };
         frame.SlipRatio.AddRange([fl, fr, rl, rr]);
         return frame;
     }

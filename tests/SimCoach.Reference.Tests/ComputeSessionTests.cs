@@ -45,12 +45,28 @@ public sealed class ComputeSessionTests
         corners.Should().Contain(c => c.WheelspinScore > 0f);
         corners.Should().Contain(c => c.SteeringJitter > 0f);
         corners.Should().Contain(c => c.BrakeOverlapSteerPct > 0f);
-        corners.Should().OnlyContain(c => c.Reason != null);
+        // Reference-lap corners resolve a concrete reason ("" only on the first, reference-free lap).
+        corners.Should().Contain(c => c.Reason.Length > 0);
 
         // Lap-cadence thermal summary is wired kernel → LapEvent.
         IReadOnlyList<LapEvent> laps = [.. events.OfType<LapEvent>(DomainEventKind.Lap)];
         laps.Should().OnlyContain(l => l.Thermal != null);
         laps.Should().Contain(l => l.Thermal.MaxTyreTempC > 0f && l.Thermal.MaxBrakeTempC > 0f);
+    }
+
+    [Fact]
+    public async Task Avg_fuel_per_lap_excludes_pit_laps()
+    {
+        using var harness = new ComputeTestHarness();
+        // lapCount 4 → bounded laps are 2 and 3; mark lap 3 as a pit lap (skewed fuel = 0).
+        IReadOnlyList<TelemetryFrame> frames = SyntheticSessionBuilder.Build(
+            SyntheticTracks.Spa, lapCount: 4, pitLaps: new HashSet<int> { 3 });
+
+        IReadOnlyList<DomainEvent> events = await harness.RunAsync(frames, SessionId);
+
+        SessionEvent session = events.OfType<SessionEvent>(DomainEventKind.Session).Single();
+        // Only racing lap 2 (fuel 2.5) counts; the pit lap's 0 must not drag the mean to 1.25.
+        session.AvgFuelPerLapL.Should().BeApproximately(2.5f, 1e-4f);
     }
 
     [Fact]
