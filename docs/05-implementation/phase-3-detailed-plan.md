@@ -1013,9 +1013,22 @@ literal. (7) RuleEngine cooldown resets at the session boundary. Six commits, ea
   Recorder), the gate-only frame subscription, `CoachComposition.cs`; the carried-from-PR-F items already in
   the PR-H row (`Microsoft.Extensions.Http` + typed `AddHttpClient`, the two `ValidateOnStart` registrations,
   `RateCardOptions`/`RateCardQuery` DI, the `appsettings` `Llm` section, the settings-override resolved-modelId test).
-- **`CoachTipRepository` read side** — `GetBySessionAsync` / the declared `ISessionHistoryRepository`.
+- **`CoachTipRepository` read side + async write path** — `GetBySessionAsync` / the declared
+  `ISessionHistoryRepository`, plus an `InsertAsync` (Dapper `ExecuteAsync`) so `ConsoleTipSink` honours its
+  non-blocking contract; convert write+read to async together.
 - **Live debrief network path** (PR-G keeps the `Llm:Live` flag, default off — FakeProvider/mock only) and the
   **replay e2e** against `FakeProvider`.
+
+**Carried from the PR-G plan-v2 code review (Strict→Defender→Judge, 2026-06-29) — deferred, with reason:**
+- **Rolling session cost → the RuleEngine budget gate** — `CoachService` calls `ShouldSpeak(..., sessionCostUsd: 0m)`
+  today, so the `OverBudget → TemplateOnly` downgrade is unreachable until PR-H threads rolling spend (blocked on
+  the `llm_usage.session_id` feed above). When wired, give the downgrade an **observable signal** (a distinct
+  `TipSource`/flag) so a budget cap is distinguishable from an ordinary template fallback in the persisted row.
+- **Harden `CornerNameMap.GetShort`/`GetSpokenRu` for a whitespace `trackId`** — they throw `ArgumentException`
+  (asymmetric with `ResolveName`, which falls back to positional). Not reachable in PR-G (`DefaultCoachAmbientState`
+  ships `TrackId:"unknown"`); the real ambient must supply a non-empty track id, or these two methods fall back.
+- **Structural validation of debrief `top_losses` items in `TipValidator`** — a non-string `why` is currently
+  counted as 0 words; only matters on the live-LLM debrief path and lands with the `004` debrief-columns work.
 
 PR-H: todo.
 
