@@ -78,6 +78,29 @@ public sealed class CoachTipRepositoryTests : RepositoryTestBase
     }
 
     [Fact]
+    public void Deleting_a_session_cascades_to_its_coach_tips()
+    {
+        _sessions.Insert(Session("s1"));
+        _tips.Insert(new CoachTipRow
+        {
+            SessionId = "s1",
+            Cadence = "corner",
+            ActionId = "wider_entry",
+            PriorityPhase = "Entry",
+            PriorityRank = 80,
+            Severity = "Medium",
+            PhraseRu = "Шире вход.",
+            Source = "Template",
+            GeneratedAtUtc = Now,
+        });
+
+        using SqliteConnection connection = Factory.Create();
+        connection.Execute("DELETE FROM sessions WHERE id = 's1'");
+
+        connection.ExecuteScalar<long>("SELECT COUNT(*) FROM coach_tips").Should().Be(0);
+    }
+
+    [Fact]
     public void Insert_with_orphan_session_id_throws()
     {
         var row = new CoachTipRow

@@ -141,6 +141,49 @@ public sealed class CoachServiceTests
         harness.Sink.Tips.Should().Contain(t => t.Cadence == CoachCadence.Session);
     }
 
+    [Fact]
+    public async Task Llm_choosing_a_non_top_action_renders_that_action()
+    {
+        IReadOnlyList<CoachAction> subset = LapSubset();
+        subset.Count.Should().BeGreaterThan(1); // need a non-top choice to exist
+        CoachAction nonTop = subset[^1];
+        var harness = new Harness(llmLive: true, hasReference: true, Realtime(nonTop.Id, "Чуть аккуратнее в этом круге."));
+
+        await RunToCompletionAsync(harness, DomainEvent.Lap(GoldTestData.Lap()));
+
+        harness.Sink.Tips.Should().ContainSingle();
+        CoachTip tip = harness.Sink.Tips[0];
+        tip.Source.Should().Be(TipSource.Llm);
+        tip.ActionId.Should().Be(nonTop.Id).And.NotBe(subset[0].Id);
+        tip.ActionLabelShort.Should().Be(nonTop.ActionLabelShort);
+    }
+
+    [Fact]
+    public async Task Second_corner_within_cooldown_is_suppressed()
+    {
+        var harness = new Harness(llmLive: false, hasReference: true);
+
+        // Two corners in one run land microseconds apart — well inside the 4 s corner cooldown.
+        await RunToCompletionAsync(
+            harness, DomainEvent.Corner(GoldTestData.Corner()), DomainEvent.Corner(GoldTestData.Corner()));
+
+        harness.Sink.Tips.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task A_faulting_sink_is_isolated_and_the_drain_continues()
+    {
+        var sink = new ThrowOnceSink();
+        var harness = new Harness(llmLive: false, hasReference: true, sink);
+
+        // The corner tip's emit throws (isolated + logged); the session debrief must still be emitted.
+        Func<Task> run = () => RunToCompletionAsync(
+            harness, DomainEvent.Corner(GoldTestData.Corner()), DomainEvent.Session(GoldTestData.Session()));
+
+        await run.Should().NotThrowAsync();
+        sink.Tips.Should().Contain(t => t.Cadence == CoachCadence.Session);
+    }
+
     private static async Task RunToCompletionAsync(Harness harness, params DomainEvent[] events)
     {
         harness.Session.Resolve("s1", _now);
@@ -186,8 +229,14 @@ public sealed class CoachServiceTests
     private sealed class Harness
     {
         public Harness(bool llmLive, bool hasReference, params LlmResult[] responses)
+            : this(llmLive, hasReference, null, responses)
+        {
+        }
+
+        public Harness(bool llmLive, bool hasReference, ICoachTipSink? sink, params LlmResult[] responses)
         {
             Llm = new ScriptedLlm(responses);
+            ICoachTipSink effectiveSink = sink ?? Sink;
             var coachOptions = new CoachOptions();
             var names = CornerNameMap.Load();
             var ambient = new StubAmbient(
@@ -199,7 +248,7 @@ public sealed class CoachServiceTests
                 new PromptBuilder(coachOptions, new PromptOptions()),
                 Llm,
                 new RuleEngine(new RuleEngineOptions(), TimeProvider.System),
-                Sink,
+                effectiveSink,
                 ambient,
                 names,
                 coachOptions,
@@ -226,6 +275,25 @@ public sealed class CoachServiceTests
 
         public Task EmitTipAsync(CoachTip tip, CancellationToken ct)
         {
+            Tips.Add(tip);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ThrowOnceSink : ICoachTipSink
+    {
+        private bool _thrown;
+
+        public List<CoachTip> Tips { get; } = [];
+
+        public Task EmitTipAsync(CoachTip tip, CancellationToken ct)
+        {
+            if (!_thrown)
+            {
+                _thrown = true;
+                throw new InvalidOperationException("sink boom");
+            }
+
             Tips.Add(tip);
             return Task.CompletedTask;
         }

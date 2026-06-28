@@ -115,7 +115,7 @@ public sealed class CoachService : BackgroundService
         {
             await foreach (DomainEvent ev in _subscription.ReadAllAsync(stoppingToken).ConfigureAwait(false))
             {
-                await HandleAsync(ev, identity.SessionId, stoppingToken).ConfigureAwait(false);
+                await HandleSafelyAsync(ev, identity.SessionId, stoppingToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -125,12 +125,31 @@ public sealed class CoachService : BackgroundService
             // so this cannot hang, and a token-bound read would have dropped exactly that tail.
             await foreach (DomainEvent ev in _subscription.ReadAllAsync(CancellationToken.None).ConfigureAwait(false))
             {
-                await HandleAsync(ev, identity.SessionId, CancellationToken.None).ConfigureAwait(false);
+                await HandleSafelyAsync(ev, identity.SessionId, CancellationToken.None).ConfigureAwait(false);
             }
         }
         finally
         {
             _logger.LogInformation("Coach stopped for session {Session}", identity.SessionId);
+        }
+    }
+
+    // Coaching is best-effort: one malformed event must not fault the BackgroundService (which, under the
+    // default StopHost behavior, would tear down the whole host) or abort the shutdown drain. A cancellation
+    // tied to the live token is rethrown so ExecuteAsync still transitions into the drain.
+    private async Task HandleSafelyAsync(DomainEvent domainEvent, string sessionId, CancellationToken ct)
+    {
+        try
+        {
+            await HandleAsync(domainEvent, sessionId, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Coach dropped a {Kind} event after a handler fault", domainEvent.Kind);
         }
     }
 
@@ -276,7 +295,7 @@ public sealed class CoachService : BackgroundService
             : ComposeDebriefTip(gold, DebriefTemplate.BuildJson(gold, _coachOptions.MaxDebriefLosses), TipSource.Template, null, sessionId);
 
         await _sink.EmitTipAsync(tip, ct).ConfigureAwait(false);
-        _ruleEngine.NoteTip(CoachCadence.Session, _clock.GetUtcNow());
+        // The debrief is intentionally un-gated (terminal once-per-session summary), so it is not cooldown-tracked.
     }
 
     private async Task<CoachTip> CompleteDebriefAsync(GoldArtifact<GoldSessionPayload> gold, string sessionId, CancellationToken ct)
