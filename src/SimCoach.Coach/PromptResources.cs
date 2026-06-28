@@ -23,6 +23,11 @@ internal static class PromptResources
 
     internal static string FewShotResourceName(string version) => $"{Prefix}coach.fewshot.{version}.ru.json";
 
+    internal static string RetryReminderResourceName(string version) => $"{Prefix}coach.retry.{version}.ru.txt";
+
+    /// <summary>The stricter RU reminder appended to a retried prompt (sector/lap/debrief), embedded + versioned.</summary>
+    internal static string ReadRetryReminder(string version) => ReadEmbeddedText(RetryReminderResourceName(version));
+
     /// <summary>The system prompt text for a cadence: the on-disk override if set, else the embedded resource.</summary>
     internal static string ReadSystemText(CoachCadence cadence, PromptSelection selection) =>
         string.IsNullOrWhiteSpace(selection.OverridePath)

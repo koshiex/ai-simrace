@@ -41,6 +41,10 @@
       <WithCulture>false</WithCulture>
       <LogicalName>SimCoach.Coach.Prompts.coach.fewshot.v1.ru.json</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="Prompts\coach.retry.v1.ru.txt">
+      <WithCulture>false</WithCulture>
+      <LogicalName>SimCoach.Coach.Prompts.coach.retry.v1.ru.txt</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>
