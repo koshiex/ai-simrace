@@ -16,7 +16,8 @@ public sealed class PhraseRendererTests
             RequiresReference: false,
             When: [],
             Params: paramz,
-            template);
+            template,
+            HintEn: "test_hint");
 
     private static DictionaryGoldView Gold(
         IReadOnlyDictionary<string, double>? numbers = null,

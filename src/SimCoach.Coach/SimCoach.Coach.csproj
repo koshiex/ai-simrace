@@ -22,6 +22,23 @@
     <EmbeddedResource Include="Data\actionRegistry.json" />
     <!-- First (neutral = ru-RU) resx: positional + ordinal UI strings. No designer codegen (CA1304/1305). -->
     <EmbeddedResource Update="Resources\CoachStrings.resx" />
+    <!--
+      Versioned LLM prompt resources (model-facing payload, not localizable UI strings). Explicit
+      <LogicalName> pins the manifest name: the '.ru.' infix would otherwise be parsed by MSBuild
+      AssignCulture as a neutral culture (NeutralLanguage=ru-RU) and stripped from the manifest name.
+    -->
+    <EmbeddedResource Include="Prompts\coach.system.v1.ru.txt">
+      <WithCulture>false</WithCulture>
+      <LogicalName>SimCoach.Coach.Prompts.coach.system.v1.ru.txt</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Prompts\coach.system.debrief.v1.ru.txt">
+      <WithCulture>false</WithCulture>
+      <LogicalName>SimCoach.Coach.Prompts.coach.system.debrief.v1.ru.txt</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Prompts\coach.fewshot.v1.ru.json">
+      <WithCulture>false</WithCulture>
+      <LogicalName>SimCoach.Coach.Prompts.coach.fewshot.v1.ru.json</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>
