@@ -86,4 +86,81 @@ public static class AccCarCatalog
     /// <summary>Full lock-to-lock rotation in degrees; fallback for cars outside the catalog.</summary>
     public static float GetSteerLockDeg(string carId) =>
         _steerLockDeg.TryGetValue(carId, out float lockDeg) ? lockDeg : FallbackSteerLockDeg;
+
+    /// <summary>
+    /// Coarse ACC competition class per <c>static.carModel</c> id. An explicit map (not a suffix parse)
+    /// because the ids are irregular: <c>porsche_991ii_gt3_cup</c> contains "gt3" yet is a Cup car,
+    /// <c>chevrolet_camaro_gt4r</c> drops the underscore, <c>jaguar_g3</c>/<c>porsche_935</c> encode no class.
+    /// Classes: <c>gt3</c>, <c>gt4</c>, <c>gt2</c>, <c>gtc</c> (Challenger/Cup single-makes), <c>tcx</c>.
+    /// </summary>
+    private static readonly FrozenDictionary<string, string> _carClass = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        // GT3
+        ["amr_v12_vantage_gt3"] = "gt3",
+        ["amr_v8_vantage_gt3"] = "gt3",
+        ["audi_r8_lms"] = "gt3",
+        ["audi_r8_lms_evo"] = "gt3",
+        ["audi_r8_lms_evo_ii"] = "gt3",
+        ["bentley_continental_gt3_2016"] = "gt3",
+        ["bentley_continental_gt3_2018"] = "gt3",
+        ["bmw_m4_gt3"] = "gt3",
+        ["bmw_m6_gt3"] = "gt3",
+        ["ferrari_296_gt3"] = "gt3",
+        ["ferrari_488_gt3"] = "gt3",
+        ["ferrari_488_gt3_evo"] = "gt3",
+        ["ford_mustang_gt3"] = "gt3",
+        ["honda_nsx_gt3"] = "gt3",
+        ["honda_nsx_gt3_evo"] = "gt3",
+        ["jaguar_g3"] = "gt3",
+        ["lamborghini_gallardo_rex"] = "gt3",
+        ["lamborghini_huracan_gt3"] = "gt3",
+        ["lamborghini_huracan_gt3_evo"] = "gt3",
+        ["lamborghini_huracan_gt3_evo2"] = "gt3",
+        ["lexus_rc_f_gt3"] = "gt3",
+        ["mclaren_650s_gt3"] = "gt3",
+        ["mclaren_720s_gt3"] = "gt3",
+        ["mclaren_720s_gt3_evo"] = "gt3",
+        ["mercedes_amg_gt3"] = "gt3",
+        ["mercedes_amg_gt3_evo"] = "gt3",
+        ["nissan_gt_r_gt3_2017"] = "gt3",
+        ["nissan_gt_r_gt3_2018"] = "gt3",
+        ["porsche_991_gt3_r"] = "gt3",
+        ["porsche_991ii_gt3_r"] = "gt3",
+        ["porsche_992_gt3_r"] = "gt3",
+
+        // GT4
+        ["alpine_a110_gt4"] = "gt4",
+        ["amr_v8_vantage_gt4"] = "gt4",
+        ["audi_r8_gt4"] = "gt4",
+        ["bmw_m4_gt4"] = "gt4",
+        ["chevrolet_camaro_gt4r"] = "gt4",
+        ["ginetta_g55_gt4"] = "gt4",
+        ["ktm_xbow_gt4"] = "gt4",
+        ["maserati_mc_gt4"] = "gt4",
+        ["mclaren_570s_gt4"] = "gt4",
+        ["mercedes_amg_gt4"] = "gt4",
+        ["porsche_718_cayman_gt4_mr"] = "gt4",
+
+        // GT2
+        ["audi_r8_lms_gt2"] = "gt2",
+        ["ktm_xbow_gt2"] = "gt2",
+        ["maserati_mc20_gt2"] = "gt2",
+        ["mercedes_amg_gt2"] = "gt2",
+        ["porsche_935"] = "gt2",
+        ["porsche_991_gt2_rs_mr"] = "gt2",
+
+        // GTC (Challenger / Cup single-makes)
+        ["porsche_991ii_gt3_cup"] = "gtc",
+        ["porsche_992_gt3_cup"] = "gtc",
+        ["lamborghini_huracan_st"] = "gtc",
+        ["lamborghini_huracan_st_evo2"] = "gtc",
+        ["ferrari_488_challenge_evo"] = "gtc",
+
+        // TCX
+        ["bmw_m2_cs_racing"] = "tcx",
+    }.ToFrozenDictionary(StringComparer.Ordinal);
+
+    /// <summary>The coarse competition class for a car id, or <c>false</c> for cars outside the catalog.</summary>
+    public static bool TryGetCarClass(string carId, out string carClass) =>
+        _carClass.TryGetValue(carId, out carClass!);
 }

@@ -32,6 +32,12 @@ public sealed class RuleEngineOptions
     /// <summary>On-a-straight gate speed floor (km/h).</summary>
     public double StraightMinSpeedKmh { get; init; } = 150.0;
 
+    /// <summary>
+    /// Half-width of the apex quiet-zone band as a fraction of the corner's entry/exit length, used by the
+    /// corner-phase resolver (0 &lt; x ≤ 0.5). Larger = a wider apex band where real-time tips are suppressed.
+    /// </summary>
+    public double ApexWindowFraction { get; init; } = 0.25;
+
     /// <summary>Normalized-position ranges (0..1) the user marked quiet. Empty by default.</summary>
     public IReadOnlyList<QuietZoneRange> UserQuietZones { get; init; } = [];
 
@@ -58,6 +64,11 @@ public sealed class RuleEngineOptions
         if (SessionBudgetUsd <= 0)
         {
             throw new InvalidOperationException("RuleEngineOptions.SessionBudgetUsd must be positive.");
+        }
+
+        if (ApexWindowFraction is <= 0 or > 0.5)
+        {
+            throw new InvalidOperationException("RuleEngineOptions.ApexWindowFraction must be in (0, 0.5].");
         }
 
         foreach (QuietZoneRange zone in UserQuietZones)
