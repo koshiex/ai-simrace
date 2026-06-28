@@ -652,6 +652,24 @@ The compute-layer prerequisite that makes the registry loader pass (B3 #4) and t
   the debrief Gold carries the named losses the LLM/template need — per-sector aggregate deltas, consistency
   stddev, theoretical-best gap, the derived **fuel/tyre summary** (FR-060), `stints` [`[]` in MVP],
   `setup_hint` fed-or-omitted) [M3]. Determinism: same input → same JSON, no timestamps/UUIDs; floats rounded.
+- **Derived corner scalar obligation (`trail_brake_diff_pct`) — surfaced by the PR-C review:** the corner
+  builder **must emit a derived `trail_brake_diff_pct = trail_brake_pct_self − trail_brake_pct_ref`** scalar.
+  PR-C's `actionRegistry.json` already references it (the `more_trail_brake`/`less_trail_brake` actions: the
+  registry `WhenClause` is field-vs-constant, so the field-vs-field comparison the stale doc implied is encoded
+  as a single derived field instead) and PR-C's `GoldFieldNames` corner set lists it — so if D3 omits it those
+  two actions never fire. It is a Coach-layer derivation (like `corner_name`), **not** a proto/compute field,
+  and is **dropped when `has_reference=false`** (it is reference-relative). PR-F's `ValidateOnStart` #4
+  re-checks the registry fields against the real corner `GoldArtifact` record, so a missing derivation **fails
+  host startup**, not silently at runtime. (`sector_idx` is **not** such an obligation — no PR-C action uses
+  it; PR-C dropped it from the corner field-name set.)
+- **Bool-field population obligation (`off_track`, `is_pb`, `is_clean`, `tyre_overheat`, `brake_overheat`) —
+  surfaced by the PR-C review:** PR-C's `ClauseEvaluator` is **fail-closed** — an `eq`/`neq` clause on a field
+  the Gold view does not carry evaluates to `false`, so the action silently never fires. `brake_later_by_meters`,
+  `overdrove_entry`, and `higher_min_speed` all gate on `{off_track eq false}`; the lap actions gate on the
+  thermal/`is_pb`/`is_clean` bools. The D3 Gold adapter (and PR-G's `IGoldView` wrapper over the typed records)
+  **must always populate these bool fields**, not leave them absent. Unlike a missing *registry* field (caught
+  by PR-F `ValidateOnStart` #4), a missing *runtime value* is not load-validated — so this is a correctness
+  obligation on the Gold builder/adapter, not a startup check.
 - **Privacy choke point:** `GoldArtifactBuilder`/`PromptBuilder` is the *only* place a Gold artifact is
   serialized to a string for `ILlmClient`. A serializer unit test asserts the JSON contains **no** forbidden
   raw fields (world coords, frame arrays, exact car id, raw strategy/fuel telemetry) — mechanically
@@ -878,7 +896,28 @@ unit-tested via mocked `HttpMessageHandler` but stays flag-off.
 `ResolvedRoute`, `CoachCadence`; 49 LLM + 1 Coach-cadence unit tests; build/format/full-suite green.
 Implementation notes: `LlmResult.Failure`'s payload is named `Error` (CS0542 forbids a member matching the
 enclosing record name — the §"Key C# contract" sketch above is updated to match); options ship as
-`sealed record` (for `with`-ergonomics, within the records-over-classes rule). PR-B…PR-H: todo.
+`sealed record` (for `with`-ergonomics, within the records-over-classes rule).
+
+✅ **PR-B done** (`feat/phase-3-pr2` → PR #17, merged to `main`) — D0: tip-quality kernels
+(wheelspin/brake-overlap-steer/steering-jitter/thermal), `SessionLossAccumulator`, M3 envelope on
+`SessionEvent`, append-only proto fields (`CornerEvent.wheelspin_score`/`brake_overlap_steer_pct`/
+`steering_jitter`/`reason`, `LapEvent.ThermalSummary`, `SessionEvent.aggregated_losses`/`AggregatedLoss`),
+ACC strategy plumb; Phase-2 golden regenerated.
+
+✅ **PR-C done** (`feat/phase-3-pr3`) — D1 + D2a: embedded `actionRegistry.json` (**25** actions) + loader +
+`WhenClause`/`ClauseEvaluator` + `PhraseRenderer`; lexicographic `CoachPriority` + `CoachSeverity`/`SeverityBand`
+projection; `CoachOptions`; `GoldFieldNames` fail-fast catalog; `IGoldView`/`DictionaryGoldView` seam;
+`CornerNameMap` positional/short/spoken forms + first repo `.resx` (neutral `CoachStrings.resx`). 74 Coach unit
+tests; build/format/full-suite green. **Implementation notes / intentional deviations:**
+(1) **`ActionRegistry.ValidSubset(IGoldView, CoachOptions)` returns `IReadOnlyList<CoachAction>`**, not
+`IReadOnlyList<RenderedAction>` as the §"Module map"/pipeline sketch implied — filtering/ordering is kept
+separate from rendering (`PhraseRenderer.Render`), so each PR-C commit builds standalone; **PR-G's
+`CoachService` renders the subset** (it already orchestrates the renderer). (2) PR-C adds the derived
+`trail_brake_diff_pct` corner field to the registry + catalog; **D3 owes its emission** (see the D3
+"Derived corner scalar obligation" bullet). (3) The first `.resx` is named **neutrally** (`CoachStrings.resx`,
+not `.ru.resx`) because `Directory.Build.props` sets `NeutralLanguage=ru-RU` — a culture-qualified name would
+build a satellite assembly and return `null` under the default culture; the accessor is hand-rolled (no
+designer codegen) with an explicit `CultureInfo` to satisfy CA1304/CA1305. PR-D…PR-H: todo.
 
 Phase 3 ships as **8 PRs** (merge order = build order) that each merge to `main` without breaking it.
 A PR is mergeable when CI stays green (build + `dotnet format --verify` + xUnit on windows+macos, **no
