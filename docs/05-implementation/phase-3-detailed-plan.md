@@ -662,6 +662,14 @@ The compute-layer prerequisite that makes the registry loader pass (B3 #4) and t
   re-checks the registry fields against the real corner `GoldArtifact` record, so a missing derivation **fails
   host startup**, not silently at runtime. (`sector_idx` is **not** such an obligation — no PR-C action uses
   it; PR-C dropped it from the corner field-name set.)
+- **Bool-field population obligation (`off_track`, `is_pb`, `is_clean`, `tyre_overheat`, `brake_overheat`) —
+  surfaced by the PR-C review:** PR-C's `ClauseEvaluator` is **fail-closed** — an `eq`/`neq` clause on a field
+  the Gold view does not carry evaluates to `false`, so the action silently never fires. `brake_later_by_meters`,
+  `overdrove_entry`, and `higher_min_speed` all gate on `{off_track eq false}`; the lap actions gate on the
+  thermal/`is_pb`/`is_clean` bools. The D3 Gold adapter (and PR-G's `IGoldView` wrapper over the typed records)
+  **must always populate these bool fields**, not leave them absent. Unlike a missing *registry* field (caught
+  by PR-F `ValidateOnStart` #4), a missing *runtime value* is not load-validated — so this is a correctness
+  obligation on the Gold builder/adapter, not a startup check.
 - **Privacy choke point:** `GoldArtifactBuilder`/`PromptBuilder` is the *only* place a Gold artifact is
   serialized to a string for `ILlmClient`. A serializer unit test asserts the JSON contains **no** forbidden
   raw fields (world coords, frame arrays, exact car id, raw strategy/fuel telemetry) — mechanically
