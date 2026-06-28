@@ -1,0 +1,23 @@
+namespace SimCoach.Coach.Gold;
+
+/// <summary>
+/// The session/debrief Gold payload (FR-060). Fields backed by a no-data sentinel are nullable and dropped by
+/// their real precondition, not by <c>has_reference</c>: <see cref="SectorAvgDeltaMs"/> is reference-relative
+/// (dropped without a reference); <see cref="TheoreticalBestGapMs"/> is dropped with no clean lap;
+/// <see cref="ConsistencyStddevMs"/> is dropped with fewer than two clean laps (its <c>0</c> means "not
+/// measurable", not "perfectly consistent"). <see cref="PbTimeMs"/>/<see cref="AverageLapMs"/> drop when not yet
+/// known. <see cref="SetupHint"/> has no MVP source (omitted). <see cref="Stints"/> is empty in the MVP.
+/// </summary>
+public sealed record GoldSessionPayload(
+    int LapCount,
+    int CleanLapCount,
+    int? PbTimeMs,
+    int? AverageLapMs,
+    double UndersteerTrend,
+    IReadOnlyList<GoldAggregatedLoss> AggregatedLosses,
+    IReadOnlyList<int>? SectorAvgDeltaMs,
+    double? ConsistencyStddevMs,
+    int? TheoreticalBestGapMs,
+    string? SetupHint,
+    GoldFuelTyreSummary FuelTyre,
+    IReadOnlyList<GoldStint> Stints);
