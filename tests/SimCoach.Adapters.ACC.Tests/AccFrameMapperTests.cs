@@ -104,6 +104,49 @@ public sealed class AccFrameMapperTests
         frame.IsValidLap.Should().BeTrue();
     }
 
+    [Fact]
+    public void Strategy_fields_and_slip_ratio_map_from_the_pages()
+    {
+        // Graphics int aid LEVELS (distinct from the physics-derived tc_active/abs_active bools);
+        // pit-state ints; physics SlipRatio[RL] at offset 640 + 2*4.
+        AccTelemetrySnapshot snapshot = AccSnapshotFixture.Build(
+            physics: page => page.WithSingle(648, 0.18f),  // slipRatio[2] = RL
+            graphics: page => page
+                .WithInt32(160, 1)     // isInPit
+                .WithInt32(1236, 1)    // isInPitLane
+                .WithInt32(1268, 2)    // tc level
+                .WithInt32(1272, 1)    // tcCut
+                .WithInt32(1276, 4)    // engineMap
+                .WithInt32(1280, 3));  // abs level
+
+        TelemetryFrame frame = AccFrameMapper.Map(snapshot);
+
+        frame.Tc.Should().Be(2);
+        frame.TcCut.Should().Be(1);
+        frame.EngineMap.Should().Be(4);
+        frame.Abs.Should().Be(3);
+        frame.IsInPit.Should().BeTrue();
+        frame.IsInPitLane.Should().BeTrue();
+        frame.SlipRatio[2].Should().BeApproximately(0.18f, 1e-4f);
+    }
+
+    [Fact]
+    public void Strategy_fields_default_to_zero_when_unset_forward_compat()
+    {
+        // Old/zeroed snapshots (pre-Phase-3 captures) leave the new fields at proto defaults.
+        AccTelemetrySnapshot snapshot = AccSnapshotFixture.Build();
+
+        TelemetryFrame frame = AccFrameMapper.Map(snapshot);
+
+        frame.Tc.Should().Be(0);
+        frame.TcCut.Should().Be(0);
+        frame.EngineMap.Should().Be(0);
+        frame.Abs.Should().Be(0);
+        frame.IsInPit.Should().BeFalse();
+        frame.IsInPitLane.Should().BeFalse();
+        frame.SlipRatio.Should().OnlyContain(s => s == 0f);
+    }
+
     [Theory]
     [InlineData(0, -1)] // reverse
     [InlineData(1, 0)]  // neutral

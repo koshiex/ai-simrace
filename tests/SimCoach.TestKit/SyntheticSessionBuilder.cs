@@ -57,7 +57,7 @@ public static class SyntheticSessionBuilder
         CornerState corner = CornerStateAt(track.Corners, pos);
         int sectorIndex = Math.Min((int)(pos * track.SectorCount), track.SectorCount - 1);
 
-        return new TelemetryFrame
+        var frame = new TelemetryFrame
         {
             T = Timestamp.FromDateTimeOffset(t),
             Sim = "acc",
@@ -84,6 +84,17 @@ public static class SyntheticSessionBuilder
             TyresOut = 0,
             IsValidLap = isValid,
         };
+
+        // Deterministic tip-quality inputs derived from the corner state (Phase 3 kernels exercise these
+        // end-to-end). Values stay below the abuse bands so overheat flags are false by default, but the
+        // peaks are non-zero so the kernel→event wiring is actually proven (not all-zero).
+        float tyreTemp = 90f + (corner.BrakePct * 15f);          // < 110 abuse band
+        float brakeTemp = 300f + (corner.BrakePct * 300f);       // < 700 abuse band
+        float rearSlip = corner.ThrottlePct * 0.25f;             // drive-wheel slip on power
+        frame.TyreTempC.AddRange([tyreTemp, tyreTemp, tyreTemp, tyreTemp]);
+        frame.BrakeTempC.AddRange([brakeTemp, brakeTemp, brakeTemp, brakeTemp]);
+        frame.SlipRatio.AddRange([0.02f, 0.02f, rearSlip, rearSlip]);
+        return frame;
     }
 
     private readonly record struct CornerState(float SpeedMps, float ThrottlePct, float BrakePct, float SteerRad);

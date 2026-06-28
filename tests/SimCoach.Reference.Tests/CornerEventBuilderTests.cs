@@ -35,6 +35,9 @@ public sealed class CornerEventBuilderTests
         ev.RacingLineDeviationM.Should().BePositive("self runs a different world line");
         contribution.DeltaMs.Should().Be(ev.DeltaMs);
         contribution.Reason.Should().NotBeNullOrEmpty();
+        ev.Reason.Should().Be(contribution.Reason, "the event surfaces the same reason the contribution carries");
+        // Self-derived B1 overlap is populated (constant 0.3 steer through the 0.8-brake phase).
+        ev.BrakeOverlapSteerPct.Should().BePositive();
     }
 
     [Fact]
@@ -50,6 +53,7 @@ public sealed class CornerEventBuilderTests
         ev.ThrottleResumeDiffM.Should().Be(0);
         ev.RacingLineDeviationM.Should().Be(0);
         ev.CornerId.Should().Be("spa_t01");
+        ev.Reason.Should().BeEmpty("no reference and on-track → no quantifiable reason");
         contribution.DeltaMs.Should().Be(0, "no reference means no top-loss contribution");
     }
 
@@ -65,6 +69,7 @@ public sealed class CornerEventBuilderTests
 
         ev.OffTrack.Should().BeTrue();
         contribution.Reason.Should().Be("off_track");
+        ev.Reason.Should().Be("off_track");
     }
 
     // Self corner [0.30..0.50]: brakes earlier (0.31), slower apex (30 m/s), later throttle (0.48),

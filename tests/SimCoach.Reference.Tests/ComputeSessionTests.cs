@@ -33,6 +33,27 @@ public sealed class ComputeSessionTests
     }
 
     [Fact]
+    public async Task Tip_quality_kernel_outputs_flow_through_to_events()
+    {
+        using var harness = new ComputeTestHarness();
+        IReadOnlyList<TelemetryFrame> frames = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
+
+        IReadOnlyList<DomainEvent> events = await harness.RunAsync(frames, SessionId);
+
+        // B1 self-derived corner fields are wired kernel → CornerEvent (not left at all-zero).
+        IReadOnlyList<CornerEvent> corners = [.. events.OfType<CornerEvent>(DomainEventKind.Corner)];
+        corners.Should().Contain(c => c.WheelspinScore > 0f);
+        corners.Should().Contain(c => c.SteeringJitter > 0f);
+        corners.Should().Contain(c => c.BrakeOverlapSteerPct > 0f);
+        corners.Should().OnlyContain(c => c.Reason != null);
+
+        // Lap-cadence thermal summary is wired kernel → LapEvent.
+        IReadOnlyList<LapEvent> laps = [.. events.OfType<LapEvent>(DomainEventKind.Lap)];
+        laps.Should().OnlyContain(l => l.Thermal != null);
+        laps.Should().Contain(l => l.Thermal.MaxTyreTempC > 0f && l.Thermal.MaxBrakeTempC > 0f);
+    }
+
+    [Fact]
     public async Task Corner_ids_are_track_scoped_tokens()
     {
         using var harness = new ComputeTestHarness();
