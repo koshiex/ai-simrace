@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
+using SimCoach.Storage.Configuration;
 using SimCoach.Storage.Database;
 
 namespace SimCoach.App;
@@ -23,6 +24,22 @@ public static class Program
             .AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true)
             .AddEnvironmentVariables(prefix: "SIMCOACH_");
 
+        // Migrate the schema and open the SQLite-backed settings configuration source BEFORE Build(): the source
+        // reads the settings table at config-build time so a stored model/budget/Llm:Live override binds into
+        // IOptionsMonitor<LlmOptions> / the RuleEngine budget. DbPath is resolved from the same resolver the DI
+        // factory uses, so both open one database.
+        DatabaseOptions databaseOptions = TelemetryComposition.ResolveDatabaseOptions(builder.Configuration);
+        databaseOptions.EnsureValid();
+        var connectionFactory = new SqliteConnectionFactory(databaseOptions);
+        new DatabaseMigrator(connectionFactory).Migrate();
+
+        // Insert the settings source just BELOW the SIMCOACH_ env source (the last source added) so a deliberate
+        // env override still wins over a stored row — preserving the documented replay override loop.
+        var settingsSource = new SqliteSettingsConfigurationSource(connectionFactory);
+        IList<IConfigurationSource> sources = ((IConfigurationBuilder)builder.Configuration).Sources;
+        sources.Insert(sources.Count - 1, settingsSource);
+        builder.Services.AddSingleton<ISettingsReloadSignal>(settingsSource);
+
         NormalizeSerilogFilePath(builder.Configuration);
         builder.Services.AddSerilog((services, config) =>
             config.ReadFrom.Configuration(builder.Configuration));
@@ -30,8 +47,6 @@ public static class Program
         builder.AddTelemetryPipeline();
 
         using IHost host = builder.Build();
-        // Bring the SQLite schema up to date before any hosted service touches the database.
-        host.Services.GetRequiredService<DatabaseMigrator>().Migrate();
         await host.RunAsync();
         return 0;
     }
