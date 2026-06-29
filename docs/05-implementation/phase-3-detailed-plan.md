@@ -1030,7 +1030,18 @@ literal. (7) RuleEngine cooldown resets at the session boundary. Six commits, ea
 - **Structural validation of debrief `top_losses` items in `TipValidator`** — a non-string `why` is currently
   counted as 0 words; only matters on the live-LLM debrief path and lands with the `004` debrief-columns work.
 
-PR-H: todo.
+✅ **PR-H done** (`feat/phase-3-pr8`) — D9: the host-flip. Coach + LLM wired into the live host
+(`AddLlm`/`AddCoaching`, public; the Coach hosted pair slotted between recorder and ComputeService for the
+load-bearing stop order); migration `004` (reserved debrief columns); fully-async write path; `ISettingsStore`
++ `SqliteSettingsConfigurationSource` (settings re-bind before `Build()`); car-class + session-id seams;
+real per-session **and** rolling-monthly budget gates with `TipSource.TemplateBudget`. **Unified LLM gating**
+(folded in from the Strict→Defender→Judge plan review): `CoachServiceOptions.LlmLive` deleted — `CoachService`
+always calls the LLM; `Llm:Live` is the single fake-vs-real switch in `LlmRouter` (off by default →
+`fake`/`fake/local`, so replay/CI produce zero-cost `llm_usage` with no key); `LlmStartupValidator` #1 covers
+the offline pair. Tests: `SimCoach.App.Tests` host-composition smoke + `ValidateOnStart`-throws; Coach replay
+e2e in `SimCoach.Reference.Tests` (real pipeline + fake provider → `coach_tips` + attributed zero-cost
+`llm_usage`). FR-014 provisional reference reassigned Post-MVP → **Phase 6**; future-phase deferrals recorded
+in `mvp-deferrals.md`.
 
 Phase 3 ships as **8 PRs** (merge order = build order) that each merge to `main` without breaking it.
 A PR is mergeable when CI stays green (build + `dotnet format --verify` + xUnit on windows+macos, **no

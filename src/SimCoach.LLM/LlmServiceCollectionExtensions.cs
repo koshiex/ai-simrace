@@ -41,7 +41,9 @@ public static class LlmServiceCollectionExtensions
         services.AddSingleton<ICostMeter, SqliteCostMeter>();
         services.AddSingleton<ICostQueryRepository, SqliteCostQueryRepository>();
 
-        // One named HttpClient (BaseAddress + bearer auth) per real provider; the offline provider is network-free.
+        // Register the HttpClient factory unconditionally (a fake-only config has no named clients but the
+        // provider-map factory still resolves IHttpClientFactory), then one named client per real provider.
+        services.AddHttpClient();
         LlmOptions bound = configuration.GetSection("Llm").Get<LlmOptions>() ?? new LlmOptions();
         foreach ((string providerId, ProviderOptions provider) in bound.Providers)
         {
