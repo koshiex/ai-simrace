@@ -2,10 +2,15 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
-    <IsTestProject>true</IsTestProject>
     <RootNamespace>SimCoach.App.Tests</RootNamespace>
     <!-- App pins win-x64; match it so the ProjectReference resolves without a RID mismatch. -->
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+    <!-- A win-x64 test DLL can't be executed by a non-Windows testhost, so opt this project out of
+         `dotnet test` off-Windows (otherwise `dotnet test SimCoach.sln` fails on the macOS CI leg).
+         It still builds (cross-compiles) everywhere; these host composition/validation assertions run on
+         the windows-latest leg, which exercises the real shipped runtime. -->
+    <IsTestProject Condition="$([MSBuild]::IsOSPlatform('Windows'))">true</IsTestProject>
+    <IsTestProject Condition="!$([MSBuild]::IsOSPlatform('Windows'))">false</IsTestProject>
   </PropertyGroup>
 
   <ItemGroup>
