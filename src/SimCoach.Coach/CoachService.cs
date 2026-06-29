@@ -361,7 +361,7 @@ public sealed class CoachService : BackgroundService
         GoldArtifact<GoldSessionPayload> gold, string debriefJson, TipSource source, string? providerModelId, string sessionId)
     {
         var priority = new CoachPriority(CoachPhase.Exit, int.MaxValue); // debrief is the least-urgent band
-        (string? topLossesJson, string? setupHint) = ExtractDebriefColumns(debriefJson);
+        (string topPriority, string? topLossesJson, string? setupHint) = ParseDebrief(debriefJson);
         return new CoachTip(
             SessionId: sessionId,
             Cadence: CoachCadence.Session,
@@ -372,7 +372,7 @@ public sealed class CoachService : BackgroundService
             RenderedParam: null,
             Priority: priority,
             Severity: _coachOptions.SeverityFor(priority),
-            PhraseRu: ExtractTopPriority(debriefJson),
+            PhraseRu: topPriority,
             CornerName: null,
             CornerNameShort: null,
             CornerNameSpokenRu: null,
@@ -436,26 +436,23 @@ public sealed class CoachService : BackgroundService
         _ => _coachOptions.InCornerMaxWords,
     };
 
-    private static string ExtractTopPriority(string json)
-    {
-        using var doc = JsonDocument.Parse(json);
-        return doc.RootElement.TryGetProperty("top_priority", out JsonElement el) && el.ValueKind == JsonValueKind.String
-            ? el.GetString() ?? string.Empty
-            : string.Empty;
-    }
-
-    // The validated debrief is a non-reproducible LLM output, so persist its loss attribution now: the
-    // top_losses array (verbatim JSON) + setup_hint. Both are absent on the deterministic template fallback.
-    private static (string? TopLossesJson, string? SetupHint) ExtractDebriefColumns(string json)
+    // Reads the debrief payload once: top_priority -> the spoken headline; top_losses (verbatim JSON array) and
+    // setup_hint -> the structured columns persisted for the P6 debrief window. Both the validated LLM debrief
+    // and the deterministic template fallback (DebriefTemplate.BuildJson) emit all three, so every persisted
+    // debrief row is self-renderable regardless of source (coach_tips does not keep the Gold artifact).
+    private static (string TopPriority, string? TopLossesJson, string? SetupHint) ParseDebrief(string json)
     {
         using var doc = JsonDocument.Parse(json);
         JsonElement root = doc.RootElement;
+        string topPriority = root.TryGetProperty("top_priority", out JsonElement priority) && priority.ValueKind == JsonValueKind.String
+            ? priority.GetString() ?? string.Empty
+            : string.Empty;
         string? topLosses = root.TryGetProperty("top_losses", out JsonElement losses) && losses.ValueKind == JsonValueKind.Array
             ? losses.GetRawText()
             : null;
         string? setupHint = root.TryGetProperty("setup_hint", out JsonElement hint) && hint.ValueKind == JsonValueKind.String
             ? hint.GetString()
             : null;
-        return (topLosses, setupHint);
+        return (topPriority, topLosses, setupHint);
     }
 }
