@@ -163,4 +163,23 @@ public static class AccCarCatalog
     /// <summary>The coarse competition class for a car id, or <c>false</c> for cars outside the catalog.</summary>
     public static bool TryGetCarClass(string carId, out string carClass) =>
         _carClass.TryGetValue(carId, out carClass!);
+
+    /// <summary>Number of cars in the class map; must equal <see cref="KnownCarCount"/> (the two rosters
+    /// are the same set of cars). A guard test asserts parity so a car added to one map but not the other
+    /// can't silently resolve to an "unknown" class.</summary>
+    public static int KnownCarClassCount => _carClass.Count;
+
+    /// <summary>True iff every car with a steering lock also has a competition class (no one-sided drift).</summary>
+    public static bool EveryKnownCarHasAClass()
+    {
+        foreach (string carId in _steerLockDeg.Keys)
+        {
+            if (!_carClass.ContainsKey(carId))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }

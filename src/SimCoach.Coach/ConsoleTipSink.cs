@@ -50,5 +50,7 @@ public sealed class ConsoleTipSink : ICoachTipSink
         NoPbYet = tip.NoPbYet,
         ProviderModelId = tip.ProviderModelId,
         GeneratedAtUtc = tip.GeneratedAtUtc,
+        TopLossesJson = tip.TopLossesJson,
+        SetupHint = tip.SetupHint,
     };
 }

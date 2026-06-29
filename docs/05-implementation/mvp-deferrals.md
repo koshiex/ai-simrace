@@ -34,13 +34,23 @@ phase** (not as Phase-3 dirt). Consolidated here so the next phase's decompositi
 
 - **Voice / TTS sink** → **Phase 4.** Coach emits `CoachTip`s to `ICoachTipSink`; the speaking sink is P4.
 - **Avalonia overlay sink** → **Phase 5.** A second `ICoachTipSink` rendering tips on the transparent overlay.
-- **Debrief *delivery* + `StreamAsync` consumption** → **Phase 6.** The debrief artifact is produced and
-  persisted now; its post-session window + token streaming are P6 (`StreamAsync` throws until then).
+- **Debrief *delivery* + `StreamAsync` consumption** → **Phase 6.** The debrief headline tip **and** its
+  structured loss attribution (`top_losses_json`, `setup_hint`) are persisted now (migration `004`); the
+  post-session window that renders them, the remaining `004` columns (`debrief_prose`, `checklist_json`,
+  `per_sector_deltas_json`, `balance_verdict`, `audio_artifact_ref`), and token streaming are P6
+  (`StreamAsync` throws until then).
 - **`IReferenceQueryRepository` / `ISessionHistoryRepository` implementations** → **P6/P7.** Declared (with
   DTOs) in PR-H; the SQLite impls + the history/reference UI come with their screens.
 - **Provisional best-of-session reference (richer FR-014)** → **Phase 6 (Reference-layer)** — see the table above.
 - **ACC tyre-degradation source (FR-060)** → **Phase 6.** The thermal/wear summary plumbing exists; the
   degradation-rate source is P6.
+- **Live (no-restart) monthly-budget re-bind** → **Phase 5 (settings UI).** The cap is honored from the stored
+  `budget.monthly_usd` row at **startup** in P3; `ISettingsStore.SetMonthlyBudgetUsdAsync` is the P5 write side,
+  and the live re-bind (binding `RuleEngineOptions` via `IOptionsMonitor`) lands with that UI. The `Llm:Live` /
+  model / reasoning overrides already re-bind live via `IOptionsMonitor<LlmOptions>`.
+- **`RecentContact` quiet-zone gate** → **future phase (needs a contract field).** The gate exists in the
+  RuleEngine but `LiveCoachAmbientState` publishes `Contact: false` permanently: `TelemetryFrame` exposes only
+  tyre-patch geometry, no collision/impact channel. Wiring it needs a new telemetry-contract field.
 - **Strategy / pit advisor + engine-map/ABS/TC advice actions** → later race-craft phase — see the table above
   (the data is already plumbed frame→Gold; only the actions + cadence timing are deferred).
 - **Live OpenRouter call** → **not a phase, a flag.** `Llm:Live=false` ships as default; flip it (settable via

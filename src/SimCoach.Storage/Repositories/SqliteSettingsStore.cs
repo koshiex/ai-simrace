@@ -4,8 +4,10 @@ using SimCoach.Storage.Configuration;
 namespace SimCoach.Storage.Repositories;
 
 /// <summary>
-/// <see cref="ISettingsStore"/> over <see cref="SettingsRepository"/>. After any write it signals the
-/// configuration source to re-read, so a model/budget/live change re-binds the running options.
+/// <see cref="ISettingsStore"/> over <see cref="SettingsRepository"/> — the write side surfaced by the P5
+/// settings UI. After any write it signals the configuration source to re-read: model/<c>Llm:Live</c>/reasoning
+/// changes re-bind the running options live via <c>IOptionsMonitor&lt;LlmOptions&gt;</c>; the monthly budget is a
+/// config row that binds at startup (its live re-bind lands with the P5 UI that drives this store).
 /// </summary>
 public sealed class SqliteSettingsStore : ISettingsStore
 {

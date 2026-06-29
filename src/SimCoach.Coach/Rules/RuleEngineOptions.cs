@@ -4,8 +4,9 @@ namespace SimCoach.Coach.Rules;
 
 /// <summary>
 /// Quiet-zone thresholds (FR-035) — all config-driven, no magic numbers in the engine. Mirrors the other
-/// Coach options: plain class, <c>init</c> setters, an <see cref="EnsureValid"/> fail-fast. A later PR binds
-/// it to <c>IOptions</c>.
+/// Coach options: plain class, <c>init</c> setters, an <see cref="EnsureValid"/> fail-fast. Bound from
+/// <c>Coach:Rules</c> as a concrete singleton at composition; <see cref="MonthlyBudgetUsd"/> therefore takes a
+/// stored override at startup. A live, no-restart re-bind of the budget arrives with the P5 settings UI.
 /// </summary>
 public sealed class RuleEngineOptions
 {

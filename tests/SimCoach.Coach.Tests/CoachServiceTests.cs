@@ -90,7 +90,7 @@ public sealed class CoachServiceTests
     public async Task Debrief_llm_success_emits_an_llm_tip()
     {
         const string debrief =
-            """{"top_losses":[{"corner":"Т1","ms":120,"why":"поздний тормоз"}],"top_priority":"Тормози раньше в Т1","setup_hint":null}""";
+            """{"top_losses":[{"corner":"Т1","ms":120,"why":"поздний тормоз"}],"top_priority":"Тормози раньше в Т1","setup_hint":"Снизь давление в шинах"}""";
         var harness = new Harness(hasReference: true, RawSuccess(debrief));
 
         await RunToCompletionAsync(harness, DomainEvent.Session(GoldTestData.Session()));
@@ -100,6 +100,9 @@ public sealed class CoachServiceTests
         tip.Cadence.Should().Be(CoachCadence.Session);
         tip.Source.Should().Be(TipSource.Llm);
         tip.PhraseRu.Should().Be("Тормози раньше в Т1");
+        // The structured debrief payload is preserved on the tip (persisted to the reserved 004 columns).
+        tip.TopLossesJson.Should().Contain("Т1");
+        tip.SetupHint.Should().Be("Снизь давление в шинах");
         harness.Llm.Calls.Should().Be(1);
     }
 

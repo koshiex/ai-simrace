@@ -68,6 +68,15 @@ public sealed class AccCatalogTests
         carClass.Should().BeNull();
     }
 
+    [Fact]
+    public void Class_map_covers_the_same_roster_as_the_steer_lock_map()
+    {
+        // Guards one-sided drift: a car added to the steer-lock table but not the class table would silently
+        // resolve to "unknown" class in the live ambient state.
+        AccCarCatalog.EveryKnownCarHasAClass().Should().BeTrue();
+        AccCarCatalog.KnownCarClassCount.Should().Be(AccCarCatalog.KnownCarCount);
+    }
+
     [Theory]
     [InlineData("spa", 7004f)]
     [InlineData("nurburgring_24h", 25378f)] // Nordschleife 24h layout — the longest

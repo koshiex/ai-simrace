@@ -11,9 +11,12 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
-        // Content root = executable directory: appsettings load from next to the binary
-        // regardless of the launch directory, and the default source order keeps the standard
-        // precedence (json < env < command line) — re-adding appsettings here would break it.
+        // Content root = executable directory: appsettings load from next to the binary regardless of the
+        // launch directory; re-adding appsettings here would disturb the default source order.
+        // NOTE: the layers appended below (appsettings.Local.json, SIMCOACH_ env, and the inserted SQLite
+        // settings source) are added AFTER the default command-line source, so they outrank `--Foo=bar`
+        // args. That is intentional — this host's override surface is SIMCOACH_ env + stored settings (the
+        // documented replay loop), not the command line; env still wins over a stored settings row.
         HostApplicationBuilder builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
         {
             Args = args,
@@ -36,8 +39,7 @@ public static class Program
         // Insert the settings source just BELOW the SIMCOACH_ env source (the last source added) so a deliberate
         // env override still wins over a stored row — preserving the documented replay override loop.
         var settingsSource = new SqliteSettingsConfigurationSource(connectionFactory);
-        IList<IConfigurationSource> sources = ((IConfigurationBuilder)builder.Configuration).Sources;
-        sources.Insert(sources.Count - 1, settingsSource);
+        TelemetryComposition.InsertSourceBelowLast(builder.Configuration, settingsSource);
         builder.Services.AddSingleton<ISettingsReloadSignal>(settingsSource);
 
         NormalizeSerilogFilePath(builder.Configuration);

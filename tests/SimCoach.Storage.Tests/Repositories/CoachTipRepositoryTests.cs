@@ -39,6 +39,8 @@ public sealed class CoachTipRepositoryTests : RepositoryTestBase
             NoPbYet = false,
             ProviderModelId = "google/gemini-2.5-flash-lite",
             GeneratedAtUtc = new DateTimeOffset(2026, 6, 28, 12, 0, 0, TimeSpan.Zero),
+            TopLossesJson = """[{"corner":"spa_t02","ms":120,"why":"late brake"}]""",
+            SetupHint = "Снизь давление в шинах",
         };
 
         await _tips.InsertAsync(row, CancellationToken.None);
@@ -47,7 +49,7 @@ public sealed class CoachTipRepositoryTests : RepositoryTestBase
         CoachTipRow read = connection.QuerySingle<CoachTipRow>(
             "SELECT session_id, cadence, corner_id, lap_number, action_id, action_label_short, " +
             "rendered_param, priority_phase, priority_rank, severity, phrase_ru, corner_name, " +
-            "source, no_pb_yet, provider_model_id, generated_at_utc FROM coach_tips");
+            "source, no_pb_yet, provider_model_id, generated_at_utc, top_losses_json, setup_hint FROM coach_tips");
         read.Should().BeEquivalentTo(row);
     }
 

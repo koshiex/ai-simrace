@@ -74,7 +74,8 @@ public static class TelemetryComposition
             return databaseOptions;
         });
         builder.Services.AddSingleton<SqliteConnectionFactory>();
-        builder.Services.AddSingleton<DatabaseMigrator>();
+        // No DatabaseMigrator registration: Program migrates via a manually-constructed instance before
+        // Build() (the settings config source must read a migrated table at config-build time).
         builder.Services.AddSingleton<SessionRepository>();
         builder.Services.AddSingleton<LapRepository>();
         builder.Services.AddSingleton<ReferenceRepository>();
@@ -190,6 +191,19 @@ public static class TelemetryComposition
         }
 
         return useDefault ? defaults : new DatabaseOptions { DbPath = expanded };
+    }
+
+    /// <summary>
+    /// Inserts a configuration source directly BELOW the last-added source. Program adds the <c>SIMCOACH_</c>
+    /// env source last, so this slots the SQLite settings source between the JSON files and env: a stored row
+    /// overrides the JSON, but a deliberate <c>SIMCOACH_</c> override still wins. Public so the precedence is
+    /// testable without invoking <c>Program.Main</c>.
+    /// </summary>
+    public static void InsertSourceBelowLast(IConfigurationBuilder builder, IConfigurationSource source)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(source);
+        builder.Sources.Insert(builder.Sources.Count - 1, source);
     }
 
     private static RecordingOptions BuildRecordingOptions(IConfiguration configuration, ILogger logger)

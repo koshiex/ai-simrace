@@ -144,7 +144,7 @@ public sealed class LiveCoachAmbientState : BackgroundService, ICoachAmbientStat
     /// <summary>The atomically-swapped latest view; both members move together so reads stay consistent.</summary>
     private sealed record Snapshot(GoldSessionContext Metadata, GateSnapshot Gate)
     {
-        // Matches DefaultCoachAmbientState's pre-frame behavior: no live frame (gates fail open), no reference.
+        // Pre-frame sentinel: no live frame (gates fail open), no reference, until the first frame arrives.
         public static Snapshot Initial { get; } = new(
             new GoldSessionContext("unknown", "unknown", "unknown", 0, false),
             GateSnapshot.Unknown);

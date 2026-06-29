@@ -114,11 +114,13 @@ public sealed class CoachService : BackgroundService
         }
 
         _ruleEngine.ResetSession();
-        // Seed the budget: session spend starts at 0, but the rolling 30-day total carries prior sessions.
-        await RefreshBudgetAsync(identity.SessionId, stoppingToken).ConfigureAwait(false);
 
         try
         {
+            // Seed the budget: session spend starts at 0, but the rolling 30-day total carries prior sessions.
+            // Inside the try so a shutdown landing during the seed is handled like any other cancel (drain tail).
+            await RefreshBudgetAsync(identity.SessionId, stoppingToken).ConfigureAwait(false);
+
             await foreach (DomainEvent ev in _subscription.ReadAllAsync(stoppingToken).ConfigureAwait(false))
             {
                 await HandleSafelyAsync(ev, identity.SessionId, stoppingToken).ConfigureAwait(false);
@@ -359,6 +361,7 @@ public sealed class CoachService : BackgroundService
         GoldArtifact<GoldSessionPayload> gold, string debriefJson, TipSource source, string? providerModelId, string sessionId)
     {
         var priority = new CoachPriority(CoachPhase.Exit, int.MaxValue); // debrief is the least-urgent band
+        (string? topLossesJson, string? setupHint) = ExtractDebriefColumns(debriefJson);
         return new CoachTip(
             SessionId: sessionId,
             Cadence: CoachCadence.Session,
@@ -376,7 +379,9 @@ public sealed class CoachService : BackgroundService
             Source: source,
             NoPbYet: !gold.Session.HasReference,
             ProviderModelId: providerModelId,
-            GeneratedAtUtc: _clock.GetUtcNow());
+            GeneratedAtUtc: _clock.GetUtcNow(),
+            TopLossesJson: topLossesJson,
+            SetupHint: setupHint);
     }
 
     private bool TryAcceptRealtime(
@@ -437,5 +442,20 @@ public sealed class CoachService : BackgroundService
         return doc.RootElement.TryGetProperty("top_priority", out JsonElement el) && el.ValueKind == JsonValueKind.String
             ? el.GetString() ?? string.Empty
             : string.Empty;
+    }
+
+    // The validated debrief is a non-reproducible LLM output, so persist its loss attribution now: the
+    // top_losses array (verbatim JSON) + setup_hint. Both are absent on the deterministic template fallback.
+    private static (string? TopLossesJson, string? SetupHint) ExtractDebriefColumns(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        JsonElement root = doc.RootElement;
+        string? topLosses = root.TryGetProperty("top_losses", out JsonElement losses) && losses.ValueKind == JsonValueKind.Array
+            ? losses.GetRawText()
+            : null;
+        string? setupHint = root.TryGetProperty("setup_hint", out JsonElement hint) && hint.ValueKind == JsonValueKind.String
+            ? hint.GetString()
+            : null;
+        return (topLosses, setupHint);
     }
 }

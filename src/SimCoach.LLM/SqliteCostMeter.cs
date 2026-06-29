@@ -8,6 +8,9 @@ namespace SimCoach.LLM;
 /// never hard-coded) and appends an <c>llm_usage</c> row stamped with the current session id (from
 /// <see cref="ISessionIdProvider"/>). A missing rate yields a zero-cost row rather than dropping the record
 /// (rate coverage is guaranteed by ValidateOnStart #1; this is defense-in-depth so a failure row still lands).
+/// Takes <c>IOptions</c> (capture-once), not <c>IOptionsMonitor</c>, deliberately: the rate card is static
+/// appsettings (settings writes only swap a route's model / the budget / Llm:Live, never <c>Providers[].Rates</c>),
+/// and a frozen rate card mid-run is desirable — pricing must not shift under an in-flight session.
 /// </summary>
 public sealed class SqliteCostMeter : ICostMeter
 {

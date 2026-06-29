@@ -71,6 +71,12 @@ public sealed record CoachTipRow
     public bool NoPbYet { get; init; }
     public string? ProviderModelId { get; init; }
     public required DateTimeOffset GeneratedAtUtc { get; init; }
+
+    // Structured debrief payload (Session cadence only; null otherwise). The remaining 004 columns
+    // (debrief_prose, checklist_json, per_sector_deltas_json, balance_verdict, audio_artifact_ref) stay
+    // reserved for the P6 debrief-delivery path.
+    public string? TopLossesJson { get; init; }
+    public string? SetupHint { get; init; }
 }
 
 /// <summary>Row of the <c>references</c> table (one PB per <c>(track, car, weather)</c> triple).</summary>

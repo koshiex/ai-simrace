@@ -32,11 +32,11 @@ public sealed class CoachTipRepository
             INSERT INTO coach_tips
               (session_id, cadence, corner_id, lap_number, action_id, action_label_short,
                rendered_param, priority_phase, priority_rank, severity, phrase_ru, corner_name,
-               source, no_pb_yet, provider_model_id, generated_at_utc)
+               source, no_pb_yet, provider_model_id, generated_at_utc, top_losses_json, setup_hint)
             VALUES
               (@SessionId, @Cadence, @CornerId, @LapNumber, @ActionId, @ActionLabelShort,
                @RenderedParam, @PriorityPhase, @PriorityRank, @Severity, @PhraseRu, @CornerName,
-               @Source, @NoPbYet, @ProviderModelId, @GeneratedAtUtc)
+               @Source, @NoPbYet, @ProviderModelId, @GeneratedAtUtc, @TopLossesJson, @SetupHint)
             """,
             normalized,
             cancellationToken: ct)).ConfigureAwait(false);
@@ -52,7 +52,7 @@ public sealed class CoachTipRepository
             """
             SELECT session_id, cadence, corner_id, lap_number, action_id, action_label_short,
                    rendered_param, priority_phase, priority_rank, severity, phrase_ru, corner_name,
-                   source, no_pb_yet, provider_model_id, generated_at_utc
+                   source, no_pb_yet, provider_model_id, generated_at_utc, top_losses_json, setup_hint
             FROM coach_tips
             WHERE session_id = @sessionId
             ORDER BY id
