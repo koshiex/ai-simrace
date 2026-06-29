@@ -64,6 +64,9 @@ Scope deferred out of the MVP: [mvp-deferrals.md](./mvp-deferrals.md).
 
 ## Phase 4 — Voice (week 5)
 
+Carried from Phase 3 (PR-H): the **voice/TTS `ICoachTipSink`** — Coach already emits `CoachTip`s; P4 adds the
+speaking sink. See [mvp-deferrals.md](./mvp-deferrals.md) → "Carried from Phase 3 into later phases".
+
 - [ ] Bundle Silero v5 RU ONNX model in installer
 - [ ] `SileroOnnxSynthesizer` streaming PCM chunks
 - [ ] `YandexSpeechKitClient` (behind feature flag, gRPC bidi)
@@ -74,6 +77,10 @@ Scope deferred out of the MVP: [mvp-deferrals.md](./mvp-deferrals.md).
 
 ## Phase 5 — Overlay (week 6)
 
+Carried from Phase 3 (PR-H): the **overlay `ICoachTipSink`** (render tips on the transparent window) + the
+settings panel writing through `ISettingsStore` (the store + SQLite config-source re-bind already exist). See
+[mvp-deferrals.md](./mvp-deferrals.md) → "Carried from Phase 3 into later phases".
+
 - [ ] Avalonia transparent topmost window with click-through interop
 - [ ] Delta bar / sector bars / current tip / lap counter
 - [ ] Settings panel for layout + opacity + font size
@@ -82,6 +89,12 @@ Scope deferred out of the MVP: [mvp-deferrals.md](./mvp-deferrals.md).
 - [ ] Cap at 30 Hz refresh
 
 ## Phase 6 — Post-Session Debrief (week 7)
+
+Carried from Phase 3 (PR-H): **debrief *delivery* + `StreamAsync` consumption**; the **`IReferenceQueryRepository`
+/ `ISessionHistoryRepository` implementations** (declared with DTOs in PR-H); the **provisional best-of-session
+reference (richer FR-014)**, a `SimCoach.Reference` resample feature reassigned Post-MVP → Phase 6; and the
+tyre-degradation source (FR-060, below). See [mvp-deferrals.md](./mvp-deferrals.md) → "Carried from Phase 3
+into later phases".
 
 - [ ] Session-aggregate Gold artifact
 - [ ] DeepSeek V3.2 debrief prompt
