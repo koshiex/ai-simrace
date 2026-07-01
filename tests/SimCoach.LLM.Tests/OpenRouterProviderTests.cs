@@ -104,7 +104,11 @@ public sealed class OpenRouterProviderTests
 
         JsonObject body = JsonNode.Parse(handler.LastRequestBody!)!.AsObject();
         body.Should().NotContainKey("response_format");
-        body["tool_choice"]!["name"]!.GetValue<string>().Should().Be("coach_debrief");
+        // OpenAI-style forced function tool (OpenRouter compat endpoint rejects Anthropic-native tool shapes).
+        body["tool_choice"]!["type"]!.GetValue<string>().Should().Be("function");
+        body["tool_choice"]!["function"]!["name"]!.GetValue<string>().Should().Be("coach_debrief");
+        body["tools"]![0]!["type"]!.GetValue<string>().Should().Be("function");
+        body["tools"]![0]!["function"]!["name"]!.GetValue<string>().Should().Be("coach_debrief");
         LlmResult.Success success = result.Should().BeOfType<LlmResult.Success>().Subject;
         success.Json.Should().Contain("top_priority");
     }
