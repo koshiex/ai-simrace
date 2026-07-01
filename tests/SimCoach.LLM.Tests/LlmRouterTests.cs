@@ -19,6 +19,8 @@ public sealed class LlmRouterTests
         Timeout = TimeSpan.FromSeconds(2),
         Reasoning = ReasoningEffort.Off,
         Stream = false,
+        Temperature = 0,
+        TopP = 1.0,
     };
 
     // Live=true so the router resolves the route's own provider/model (these tests exercise live routing; the
@@ -61,6 +63,8 @@ public sealed class LlmRouterTests
         route.Timeout.Should().Be(TimeSpan.FromSeconds(2));
         route.Reasoning.Should().Be(ReasoningEffort.Off);
         route.Stream.Should().BeFalse();
+        route.Temperature.Should().Be(0);
+        route.TopP.Should().Be(1.0);
     }
 
     [Fact]

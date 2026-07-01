@@ -61,7 +61,7 @@
         "valid_actions": [ { "id": "lap_clean_focus", "hint_ru": "круг чистый, но медленнее эталона" } ],
         "phrase_limits": { "max_words": 25 }
       },
-      "assistant": { "action_id": "lap_clean_focus", "phrase_ru": "Чисто, но медленнее эталона — поработай над последней связкой." }
+      "assistant": { "action_id": "lap_clean_focus", "phrase_ru": "Круг чистый, но медленнее — поработай над последней связкой." }
     },
     {
       "label": "cold-start-understeer",
@@ -101,9 +101,9 @@
         "event": {
           "lap_count": 14, "pb_time_ms": 138420, "average_lap_ms": 139950,
           "aggregated_losses": [
-            { "corner": "Les Combes", "corner_name_ru": "Комб1", "total_loss_ms": 620, "avg_loss_ms": 80, "sample_count": 8, "dominant_reason": "low_min_speed" },
-            { "corner": "Bus Stop", "corner_name_ru": "Бус1", "total_loss_ms": 410, "avg_loss_ms": 60, "sample_count": 7, "dominant_reason": "early_brake" },
-            { "corner": "Campus", "corner_name_ru": "Кампус", "total_loss_ms": 500, "avg_loss_ms": 30, "sample_count": 3, "dominant_reason": "slower" }
+            { "corner": "Les Combes", "corner_name_ru": "Комб1", "total_loss_ms": 620, "avg_loss_ms": 80, "sample_count": 8, "reason": "low_min_speed" },
+            { "corner": "Bus Stop", "corner_name_ru": "Бус1", "total_loss_ms": 410, "avg_loss_ms": 60, "sample_count": 7, "reason": "early_brake" },
+            { "corner": "Campus", "corner_name_ru": "Кампус", "total_loss_ms": 500, "avg_loss_ms": 30, "sample_count": 3, "reason": "slower" }
           ],
           "understeer_trend": 0.31
         },

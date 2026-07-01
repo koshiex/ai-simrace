@@ -135,7 +135,10 @@ public sealed class GoldArtifactBuilder
             .ThenBy(l => l.CornerId, StringComparer.Ordinal)
             .Take(_options.MaxDebriefLosses)
             .Select(l => new GoldAggregatedLoss(
-                _names.ResolveName(trackId, l.CornerId), l.TotalLossMs, l.AvgLossMs, l.SampleCount, l.DominantReason)),
+                _names.ResolveName(trackId, l.CornerId), l.TotalLossMs, l.AvgLossMs, l.SampleCount, l.DominantReason)
+            {
+                CornerNameRu = _names.GetShort(trackId, l.CornerId),
+            }),
     ];
 
     private static IReadOnlyList<GoldStint> Stints(IReadOnlyList<StintSummary> stints) =>
