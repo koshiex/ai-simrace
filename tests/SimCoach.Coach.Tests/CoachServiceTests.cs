@@ -152,6 +152,44 @@ public sealed class CoachServiceTests
     }
 
     [Fact]
+    public async Task Debrief_in_the_buffered_tail_is_processed_uncancelled_when_stop_races_it()
+    {
+        // Regression: a corner + the final Session debrief are already buffered when stop fires. The channel's
+        // inner read drains both under one WaitToReadAsync pass, so the primary loop reads the debrief *after*
+        // cancellation. It must still run on an uncancelled token — else (the original bug) its llm_usage write
+        // is cancelled (TaskCanceledException) and the debrief tip is silently dropped.
+        var sink = new CancelHonoringSink();
+        var harness = new Harness(
+            hasReference: true,
+            sink,
+            new LlmResult.Failure(new LlmFailure.Timeout("slow")),   // corner → template
+            new LlmResult.Failure(new LlmFailure.Timeout("slow")));  // debrief → template
+        harness.Session.Resolve("s1", _now);
+        harness.Llm.OnCall = ordinal =>
+        {
+            if (ordinal == 1)
+            {
+                // Corner is in flight: request stop so the still-buffered Session is read under cancellation.
+                _ = harness.Service.StopAsync(CancellationToken.None);
+            }
+            else if (ordinal == 2)
+            {
+                // Debrief reached: let both loops terminate once it finishes.
+                harness.FanOut.Complete();
+            }
+        };
+
+        harness.FanOut.Publish(DomainEvent.Corner(GoldTestData.Corner()));
+        harness.FanOut.Publish(DomainEvent.Session(GoldTestData.Session()));
+        await harness.Service.StartAsync(CancellationToken.None);
+        await harness.Service.StopAsync(CancellationToken.None);
+
+        harness.Llm.Tokens.Should().HaveCount(2);
+        harness.Llm.Tokens[1].IsCancellationRequested.Should().BeFalse(); // debrief handled uncancelled
+        sink.Tips.Should().Contain(t => t.Cadence == CoachCadence.Session); // and the tip survived the emit
+    }
+
+    [Fact]
     public async Task Llm_choosing_a_non_top_action_renders_that_action()
     {
         IReadOnlyList<CoachAction> subset = LapSubset();
@@ -333,6 +371,20 @@ public sealed class CoachServiceTests
         }
     }
 
+    // Mirrors the live SQLite sink: a cancelled token fails the emit (Dapper throws TaskCanceledException), so
+    // a tip processed under a cancelled token is lost. Used to prove the debrief survives a racing stop.
+    private sealed class CancelHonoringSink : ICoachTipSink
+    {
+        public List<CoachTip> Tips { get; } = [];
+
+        public Task EmitTipAsync(CoachTip tip, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            Tips.Add(tip);
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class ThrowOnceSink : ICoachTipSink
     {
         private bool _thrown;
@@ -377,17 +429,30 @@ public sealed class CoachServiceTests
 
         public List<LlmRequest> Requests { get; } = [];
 
+        // The token each call was invoked with, in order — lets a test assert the shutdown drain never runs a
+        // handler (esp. the debrief) under an already-cancelled token.
+        public List<CancellationToken> Tokens { get; } = [];
+
+        // Fired per call after the token is captured; the arg is the 1-based call ordinal. A test uses it to
+        // race stop against a still-buffered tail.
+        public Action<int>? OnCall { get; set; }
+
         public int Calls => Requests.Count;
 
-        public Task<LlmResult> CompleteAsync(LlmRequest request, CancellationToken ct)
+        public async Task<LlmResult> CompleteAsync(LlmRequest request, CancellationToken ct)
         {
+            // Yield so StartAsync has returned (BackgroundService._executeTask assigned) before OnCall can
+            // request stop; otherwise the whole loop runs inside StartAsync and StopAsync no-ops.
+            await Task.Yield();
             Requests.Add(request);
+            Tokens.Add(ct);
+            OnCall?.Invoke(Requests.Count);
             if (_index >= _responses.Length)
             {
                 throw new InvalidOperationException("Unexpected extra LLM call.");
             }
 
-            return Task.FromResult(_responses[_index++]);
+            return _responses[_index++];
         }
 
         public IAsyncEnumerable<LlmDelta> StreamAsync(LlmRequest request, CancellationToken ct) =>

@@ -121,16 +121,22 @@ public sealed class CoachService : BackgroundService
             // Inside the try so a shutdown landing during the seed is handled like any other cancel (drain tail).
             await RefreshBudgetAsync(identity.SessionId, stoppingToken).ConfigureAwait(false);
 
+            // The read observes stoppingToken (so we stop *waiting* for new events on shutdown), but every
+            // event is PROCESSED on CancellationToken.None. This is load-bearing: a corner and the final
+            // SessionEvent debrief can already be buffered when stop fires, and the channel's inner read
+            // drains the buffered tail without re-checking the token — so a token-bound handler would run the
+            // debrief under an already-cancelled token, cancelling its llm_usage write and dropping the tip.
+            // ComputeService completes the fan-out even under cancel, so both this loop and the drain below
+            // terminate and neither can hang.
             await foreach (DomainEvent ev in _subscription.ReadAllAsync(stoppingToken).ConfigureAwait(false))
             {
-                await HandleSafelyAsync(ev, identity.SessionId, stoppingToken).ConfigureAwait(false);
+                await HandleSafelyAsync(ev, identity.SessionId, CancellationToken.None).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
-            // Graceful shutdown: drain the buffered tail (incl. the final SessionEvent debrief) to channel
-            // completion on CancellationToken.None — ComputeService completes the fan-out even under cancel,
-            // so this cannot hang, and a token-bound read would have dropped exactly that tail.
+            // Graceful shutdown: the token-bound read above threw once the buffer emptied; drain whatever the
+            // fan-out still delivers to completion, again on CancellationToken.None.
             await foreach (DomainEvent ev in _subscription.ReadAllAsync(CancellationToken.None).ConfigureAwait(false))
             {
                 await HandleSafelyAsync(ev, identity.SessionId, CancellationToken.None).ConfigureAwait(false);
@@ -143,17 +149,15 @@ public sealed class CoachService : BackgroundService
     }
 
     // Coaching is best-effort: one malformed event must not fault the BackgroundService (which, under the
-    // default StopHost behavior, would tear down the whole host) or abort the shutdown drain. A cancellation
-    // tied to the live token is rethrown so ExecuteAsync still transitions into the drain.
+    // default StopHost behavior, would tear down the whole host) or abort the shutdown drain. Events are
+    // always processed on CancellationToken.None (see ExecuteAsync) — the shutdown transition is driven by the
+    // token-bound *read*, not by a handler throwing — so any fault here is a genuine handler error, never a
+    // cancellation: log it and move on.
     private async Task HandleSafelyAsync(DomainEvent domainEvent, string sessionId, CancellationToken ct)
     {
         try
         {
             await HandleAsync(domainEvent, sessionId, ct).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
         }
         catch (Exception ex)
         {
