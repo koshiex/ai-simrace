@@ -62,10 +62,24 @@ public sealed class ActionRegistryLoadTests
     }
 
     [Fact]
-    public void Throws_when_a_when_field_is_unknown_for_the_cadence()
+    public void Throws_when_hint_ru_is_missing()
     {
         string json = Registry("""
             { "id": "x", "label_short": "x", "hint_en": "h", "cadence": "corner",
+              "priority": { "phase": "brake", "rank": 1 }, "requires_reference": false,
+              "when": [], "params": [], "phrase_template_ru": "тест" }
+            """);
+
+        Action act = () => LoadJson(json);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*hint_ru*");
+    }
+
+    [Fact]
+    public void Throws_when_a_when_field_is_unknown_for_the_cadence()
+    {
+        string json = Registry("""
+            { "id": "x", "label_short": "x", "hint_en": "h", "hint_ru": "п", "cadence": "corner",
               "priority": { "phase": "brake", "rank": 1 }, "requires_reference": false,
               "when": [ { "field": "not_a_field", "op": "lt", "value": 1 } ],
               "params": [], "phrase_template_ru": "тест" }
@@ -80,7 +94,7 @@ public sealed class ActionRegistryLoadTests
     public void Throws_when_a_param_from_field_is_unknown()
     {
         string json = Registry("""
-            { "id": "x", "label_short": "x", "hint_en": "h", "cadence": "corner",
+            { "id": "x", "label_short": "x", "hint_en": "h", "hint_ru": "п", "cadence": "corner",
               "priority": { "phase": "brake", "rank": 1 }, "requires_reference": false,
               "when": [], "params": [ { "name": "v", "from": "not_a_field" } ],
               "phrase_template_ru": "{v}" }
@@ -95,10 +109,10 @@ public sealed class ActionRegistryLoadTests
     public void Throws_on_a_duplicate_action_id()
     {
         string json = Registry("""
-            { "id": "dup", "label_short": "a", "hint_en": "h", "cadence": "corner",
+            { "id": "dup", "label_short": "a", "hint_en": "h", "hint_ru": "п", "cadence": "corner",
               "priority": { "phase": "brake", "rank": 1 }, "requires_reference": false,
               "when": [], "params": [], "phrase_template_ru": "a" },
-            { "id": "dup", "label_short": "b", "hint_en": "h", "cadence": "corner",
+            { "id": "dup", "label_short": "b", "hint_en": "h", "hint_ru": "п", "cadence": "corner",
               "priority": { "phase": "brake", "rank": 2 }, "requires_reference": false,
               "when": [], "params": [], "phrase_template_ru": "b" }
             """);
@@ -112,10 +126,10 @@ public sealed class ActionRegistryLoadTests
     public void Throws_on_a_duplicate_priority()
     {
         string json = Registry("""
-            { "id": "a", "label_short": "a", "hint_en": "h", "cadence": "corner",
+            { "id": "a", "label_short": "a", "hint_en": "h", "hint_ru": "п", "cadence": "corner",
               "priority": { "phase": "brake", "rank": 5 }, "requires_reference": false,
               "when": [], "params": [], "phrase_template_ru": "a" },
-            { "id": "b", "label_short": "b", "hint_en": "h", "cadence": "corner",
+            { "id": "b", "label_short": "b", "hint_en": "h", "hint_ru": "п", "cadence": "corner",
               "priority": { "phase": "brake", "rank": 5 }, "requires_reference": false,
               "when": [], "params": [], "phrase_template_ru": "b" }
             """);
@@ -129,7 +143,7 @@ public sealed class ActionRegistryLoadTests
     public void Throws_when_a_template_placeholder_has_no_param()
     {
         string json = Registry("""
-            { "id": "x", "label_short": "x", "hint_en": "h", "cadence": "corner",
+            { "id": "x", "label_short": "x", "hint_en": "h", "hint_ru": "п", "cadence": "corner",
               "priority": { "phase": "brake", "rank": 1 }, "requires_reference": false,
               "when": [], "params": [], "phrase_template_ru": "В {corner}." }
             """);
@@ -143,7 +157,7 @@ public sealed class ActionRegistryLoadTests
     public void Throws_on_an_unknown_clause_op()
     {
         string json = Registry("""
-            { "id": "x", "label_short": "x", "hint_en": "h", "cadence": "corner",
+            { "id": "x", "label_short": "x", "hint_en": "h", "hint_ru": "п", "cadence": "corner",
               "priority": { "phase": "brake", "rank": 1 }, "requires_reference": false,
               "when": [ { "field": "delta_ms", "op": "between", "value": 1 } ],
               "params": [], "phrase_template_ru": "тест" }

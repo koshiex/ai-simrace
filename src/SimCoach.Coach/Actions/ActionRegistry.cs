@@ -108,6 +108,7 @@ public sealed class ActionRegistry
         string id = Require(entry.Id, "id", "<unknown>");
         string labelShort = Require(entry.LabelShort, "label_short", id);
         string hintEn = Require(entry.HintEn, "hint_en", id);
+        string hintRu = Require(entry.HintRu, "hint_ru", id);
         string phraseTemplate = Require(entry.PhraseTemplateRu, "phrase_template_ru", id);
         CoachCadence cadence = MapCadence(entry.Cadence, id);
 
@@ -130,7 +131,10 @@ public sealed class ActionRegistry
         ValidatePlaceholders(phraseTemplate, @params, id);
 
         return new CoachAction(
-            id, labelShort, cadence, priority, entry.RequiresReference, when, @params, phraseTemplate, hintEn);
+            id, labelShort, cadence, priority, entry.RequiresReference, when, @params, phraseTemplate, hintEn)
+        {
+            HintRu = hintRu,
+        };
     }
 
     private static WhenClause MapClause(WhenClauseDto clause, string id, IReadOnlySet<string> validFields)

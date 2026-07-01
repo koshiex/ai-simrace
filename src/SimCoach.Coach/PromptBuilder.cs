@@ -127,7 +127,12 @@ public sealed class PromptBuilder
             var actions = new JsonArray();
             foreach (CoachAction action in validSubset)
             {
-                actions.Add(new JsonObject { ["id"] = action.Id, ["hint"] = action.HintEn });
+                actions.Add(new JsonObject
+                {
+                    ["id"] = action.Id,
+                    ["hint"] = action.HintEn,
+                    ["hint_ru"] = action.HintRu,
+                });
             }
 
             root["valid_actions"] = actions;
