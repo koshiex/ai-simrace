@@ -12,7 +12,7 @@
           "corner_name": "Eau Rouge", "corner_name_ru": "О-Руж", "min_speed_diff_kmh": -6.2,
           "understeer_score": 0.74, "brake_point_diff_m": -3.1, "off_track": false
         },
-        "valid_actions": [ { "id": "wider_entry", "hint_ru": "снос и низкая минимальная скорость — расширь вход" } ],
+        "valid_actions": [ { "id": "wider_entry", "hint": "understeer and low min speed — widen the entry", "hint_ru": "снос и низкая минимальная скорость — расширь вход" } ],
         "phrase_limits": { "max_words": 8 }
       },
       "assistant": { "action_id": "wider_entry", "phrase_ru": "Шире заходи в О-Руж." }
@@ -30,8 +30,8 @@
           "trail_brake_diff_pct": 0.19, "oversteer_score": 0.71, "min_speed_diff_kmh": -0.4, "off_track": false
         },
         "valid_actions": [
-          { "id": "less_trail_brake", "hint_ru": "перетормаживаешь у апекса, машину заносит — отпускай тормоз раньше" },
-          { "id": "earlier_throttle", "hint_ru": "поздно открываешь газ на выходе" }
+          { "id": "less_trail_brake", "hint": "trail-braking too deep at the apex, car steps out — release the brake earlier", "hint_ru": "перетормаживаешь у апекса, машину заносит — отпускай тормоз раньше" },
+          { "id": "earlier_throttle", "hint": "you get on the throttle too late on exit", "hint_ru": "поздно открываешь газ на выходе" }
         ],
         "phrase_limits": { "max_words": 8 }
       },
@@ -45,7 +45,7 @@
         "cadence": "sector",
         "session": { "track_id": "spa", "car_class": "gt3", "weather": "dry", "has_reference": true },
         "event": { "sector_idx": 1, "delta_ms": 180, "top_corner": "Les Combes" },
-        "valid_actions": [ { "id": "sector_summary_loss", "hint_ru": "теряешь время в этом секторе" } ],
+        "valid_actions": [ { "id": "sector_summary_loss", "hint": "you are losing time in this sector", "hint_ru": "теряешь время в этом секторе" } ],
         "phrase_limits": { "max_words": 25 }
       },
       "assistant": { "action_id": "sector_summary_loss", "phrase_ru": "Теряешь во втором секторе, прибавь в связке." }
@@ -58,7 +58,7 @@
         "cadence": "lap",
         "session": { "track_id": "spa", "car_class": "gt3", "weather": "dry", "has_reference": true },
         "event": { "lap_number": 7, "delta_ms": 260, "is_pb": false, "is_clean": true, "top_corner": "Bus Stop" },
-        "valid_actions": [ { "id": "lap_clean_focus", "hint_ru": "круг чистый, но медленнее эталона" } ],
+        "valid_actions": [ { "id": "lap_clean_focus", "hint": "clean lap but slower than the reference", "hint_ru": "круг чистый, но медленнее эталона" } ],
         "phrase_limits": { "max_words": 25 }
       },
       "assistant": { "action_id": "lap_clean_focus", "phrase_ru": "Круг чистый, но медленнее — поработай над последней связкой." }
@@ -72,7 +72,7 @@
         "cadence": "corner",
         "session": { "track_id": "monza", "car_class": "gt3", "weather": "dry", "has_reference": false },
         "event": { "corner_name": "Variante della Roggia (1)", "corner_name_ru": "Роджа1", "understeer_score": 0.78, "off_track": false },
-        "valid_actions": [ { "id": "ease_understeer", "hint_ru": "сильный снос — сбрось скорость и разгрузи перед" } ],
+        "valid_actions": [ { "id": "ease_understeer", "hint": "heavy understeer — scrub speed and unload the front", "hint_ru": "сильный снос — сбрось скорость и разгрузи перед" } ],
         "phrase_limits": { "max_words": 8 }
       },
       "assistant": { "action_id": "ease_understeer", "phrase_ru": "Снос в Роджа1: плавнее руль." }
@@ -86,7 +86,7 @@
         "cadence": "corner",
         "session": { "track_id": "spa", "car_class": "gt3", "weather": "dry", "has_reference": false },
         "event": { "corner_name": "Pouhon (1)", "oversteer_score": 0.69, "off_track": false },
-        "valid_actions": [ { "id": "settle_oversteer", "hint_ru": "занос на выходе — плавнее добавляй газ" } ],
+        "valid_actions": [ { "id": "settle_oversteer", "hint": "oversteer on exit — feed in the throttle more smoothly", "hint_ru": "занос на выходе — плавнее добавляй газ" } ],
         "phrase_limits": { "max_words": 8 }
       },
       "assistant": { "action_id": "settle_oversteer", "phrase_ru": "На выходе занос — плавнее газ." }
@@ -128,7 +128,7 @@
         "cadence": "corner",
         "session": { "track_id": "spa", "car_class": "gt3", "weather": "dry", "has_reference": true },
         "event": { "corner_name": "Pouhon (1)", "corner_name_ru": "Пухон1", "understeer_score": 0.72, "min_speed_diff_kmh": -4.0, "off_track": false },
-        "valid_actions": [ { "id": "wider_entry", "hint_ru": "снос и низкая минимальная скорость — расширь вход" } ],
+        "valid_actions": [ { "id": "wider_entry", "hint": "understeer and low min speed — widen the entry", "hint_ru": "снос и низкая минимальная скорость — расширь вход" } ],
         "phrase_limits": { "max_words": 8 }
       },
       "assistant": { "action_id": "wider_entry", "phrase_ru": "В Пухон1 тормози позже на 5 м." }

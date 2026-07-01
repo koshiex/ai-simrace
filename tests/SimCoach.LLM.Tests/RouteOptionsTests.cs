@@ -52,4 +52,29 @@ public sealed class RouteOptionsTests
     public void Whitespace_fallback_route_key_throws()
         => (Valid() with { FallbackRouteKey = "  " }).Invoking(o => o.EnsureValid())
             .Should().Throw<InvalidOperationException>();
+
+    [Fact]
+    public void Negative_temperature_throws()
+        => (Valid() with { Temperature = -0.1d }).Invoking(o => o.EnsureValid())
+            .Should().Throw<InvalidOperationException>();
+
+    [Fact]
+    public void Temperature_above_max_throws()
+        => (Valid() with { Temperature = 2.1d }).Invoking(o => o.EnsureValid())
+            .Should().Throw<InvalidOperationException>();
+
+    [Fact]
+    public void Negative_top_p_throws()
+        => (Valid() with { TopP = -0.1d }).Invoking(o => o.EnsureValid())
+            .Should().Throw<InvalidOperationException>();
+
+    [Fact]
+    public void Top_p_above_max_throws()
+        => (Valid() with { TopP = 1.1d }).Invoking(o => o.EnsureValid())
+            .Should().Throw<InvalidOperationException>();
+
+    [Fact]
+    public void Boundary_temperature_zero_and_top_p_one_passes()
+        => (Valid() with { Temperature = 0d, TopP = 1d }).Invoking(o => o.EnsureValid())
+            .Should().NotThrow();
 }

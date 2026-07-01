@@ -22,6 +22,17 @@ public sealed class GoldLapArtifactTests
     }
 
     [Fact]
+    public void Maps_top_losses_with_resolved_short_ru_names()
+    {
+        GoldLapEvent e = GoldTestData.Builder().BuildLap(GoldTestData.Lap(), GoldTestData.Ctx()).Event;
+
+        e.TopLosses.Should().ContainSingle();
+        e.TopLosses[0].Corner.Should().Be("Rivage");
+        // spa_t08 → GetShort short RU form; guards against a regression to the empty default or raw ResolveName.
+        e.TopLosses[0].CornerNameRu.Should().Be("Риваж");
+    }
+
+    [Fact]
     public void Rounds_thermal_temps_and_keeps_overheat_flags()
     {
         GoldThermalSummary thermal = GoldTestData.Builder().BuildLap(GoldTestData.Lap(), GoldTestData.Ctx()).Event.Thermal;
