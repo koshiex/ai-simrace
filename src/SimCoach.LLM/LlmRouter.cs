@@ -81,7 +81,9 @@ internal sealed class LlmRouter : ILlmClient
             route.MaxOutputTokens,
             route.Timeout,
             route.Reasoning,
-            route.Stream);
+            route.Stream,
+            route.Temperature,
+            route.TopP);
     }
 
     private ILlmProvider ProviderFor(ResolvedRoute route)
