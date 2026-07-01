@@ -20,7 +20,7 @@ public sealed class OpenRouterProviderTests
 
     private static readonly HashSet<string> _allowedBodyKeys = new(StringComparer.Ordinal)
     {
-        "model", "messages", "max_tokens", "stream", "reasoning", "response_format", "tools", "tool_choice",
+        "model", "messages", "max_tokens", "stream", "reasoning", "usage", "response_format", "tools", "tool_choice",
     };
 
     [Fact]
@@ -65,6 +65,7 @@ public sealed class OpenRouterProviderTests
         body["max_tokens"]!.GetValue<int>().Should().Be(96);
         body["stream"]!.GetValue<bool>().Should().BeFalse();
         body["reasoning"]!["enabled"]!.GetValue<bool>().Should().BeFalse();
+        body["usage"]!["include"]!.GetValue<bool>().Should().BeTrue(); // guarantees usage accounting on every 200
         JsonArray messages = body["messages"]!.AsArray();
         messages[0]!["role"]!.GetValue<string>().Should().Be("system");
         messages[1]!["role"]!.GetValue<string>().Should().Be("user");
