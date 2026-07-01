@@ -156,7 +156,7 @@ public sealed class SessionManager : BackgroundService
             }
         }
 
-        string? parquetPath = ConvertLapsParquet(trackId, sessionDirectory);
+        string? parquetPath = ConvertLapsParquet(trackId, sessionDirectory, [.. laps.Select(l => l.LapNumber)]);
         _sessions.Finalize(
             sessionId, _timeProvider.GetUtcNow(), weatherBucket, laps.Count, cleanCount, pbTimeMs, parquetPath);
         _logger.LogInformation(
@@ -170,7 +170,7 @@ public sealed class SessionManager : BackgroundService
     /// on success, or <c>null</c> when the track length is unknown or conversion fails (logged, never
     /// fatal — finalize must still record counts/PB).
     /// </summary>
-    private string? ConvertLapsParquet(string trackId, string sessionDirectory)
+    private string? ConvertLapsParquet(string trackId, string sessionDirectory, IReadOnlyList<int> dbLapNumbers)
     {
         if (!_trackLengths.TryGetLapLengthM(trackId, out float lapLengthM))
         {
@@ -182,12 +182,28 @@ public sealed class SessionManager : BackgroundService
         string parquetPath = Path.Combine(sessionDirectory, "laps.parquet");
         try
         {
-            int skipped = LapParquetWriter.Write(sessionDirectory, lapLengthM, parquetPath);
-            if (skipped > 0)
+            LapParquetWriteResult result = LapParquetWriter.Write(sessionDirectory, lapLengthM, parquetPath);
+            if (result.Skipped > 0)
             {
                 _logger.LogInformation(
                     "{Skipped} degenerate lap(s) skipped in laps.parquet for {SessionDirectory}",
-                    skipped, sessionDirectory);
+                    result.Skipped, sessionDirectory);
+            }
+
+            // Canary: the live compute path (→ laps rows) and the replay path (→ laps.parquet) segment
+            // two independent frame streams and renumber laps independently (ADR-0015). They agree within a
+            // stint, but a dropped frame around a pit-return reset boundary could desync the lap_number
+            // SETS — possibly with equal counts — and break the ADR-0013 lap_number → laps.is_clean join.
+            // Compare the actual lap_number sets (not just counts) so a value-level mismatch can't slip
+            // through silently (ADR-0012 warn-on-suspicious ethos).
+            (IReadOnlyList<int> onlyInDb, IReadOnlyList<int> onlyInParquet) =
+                LapParquetReconciliation.Diff(dbLapNumbers, result);
+            if (onlyInDb.Count > 0 || onlyInParquet.Count > 0)
+            {
+                _logger.LogWarning(
+                    "DB↔parquet lap_number desync for {SessionDirectory}: only in laps table [{OnlyInDb}], "
+                    + "only in laps.parquet [{OnlyInParquet}]",
+                    sessionDirectory, string.Join(",", onlyInDb), string.Join(",", onlyInParquet));
             }
 
             return parquetPath;

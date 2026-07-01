@@ -21,6 +21,16 @@ public sealed class LapSegmenter
     private TelemetryFrame? _previous;
     private bool _startedAtLine;
 
+    // Session-local monotonic lap numbering. The sim's lap counter (frame.LapNumber) resets on a
+    // pit-return out-lap (ESC → box → drive out), so it re-issues a number already completed this
+    // session — which would collide on the laps table's UNIQUE(session_id, lap_number) and crash
+    // compute. Instead of echoing it, we keep a per-stint OFFSET: within a stint the assigned label is
+    // the intrinsic counter plus a constant (so it stays tied to the per-frame value and is robust to
+    // dropped frames, exactly like the raw counter was), and the offset only re-bases when the counter
+    // fails to advance — producing a continuous sequence across pits (…2, 3, [pit] 4, 5, 6…).
+    private int _lapOffset;
+    private int? _lastAssigned;
+
     /// <summary>True when the frame just fed to <see cref="Accept"/> was a start-line crossing (whether or
     /// not it closed a bounded lap). The compute session reads this to re-arm its per-lap accumulators, so
     /// the crossing definition lives in one place instead of being duplicated and drifting.</summary>
@@ -90,7 +100,7 @@ public sealed class LapSegmenter
         && current.NormalizedCarPosition < previous.NormalizedCarPosition
         && previous.NormalizedCarPosition <= WrapHighThreshold;
 
-    private static CompletedLap Build(List<TelemetryFrame> lapFrames, DateTimeOffset crossedAt)
+    private CompletedLap Build(List<TelemetryFrame> lapFrames, DateTimeOffset crossedAt)
     {
         TelemetryFrame[] frames = [.. lapFrames];
         var start = frames[0].T.ToDateTimeOffset();
@@ -98,12 +108,34 @@ public sealed class LapSegmenter
 
         return new CompletedLap
         {
-            LapNumber = frames[0].LapNumber,
+            LapNumber = AssignLapNumber(frames[0].LapNumber),
             LapTimeMs = lapTimeMs,
             SectorTimesMs = ComputeSectorTimes(frames, start, lapTimeMs),
             IsClean = CleanLapPredicate.IsClean(frames),
             Frames = frames,
         };
+    }
+
+    /// <summary>
+    /// Maps the sim's (resettable) lap counter to a session-local monotonic label via a per-stint
+    /// offset. The first emitted lap inherits the sim's value as the base; thereafter the offset
+    /// re-bases whenever the offset-adjusted number fails to advance past the last one — i.e. when the
+    /// sim counter <b>decreases or repeats</b> (the pit-return case). The <c>&lt;=</c> test is load-bearing:
+    /// a repeated-equal counter would otherwise collide on <c>UNIQUE(session_id, lap_number)</c> just like
+    /// a decrease. On a normal session the counter is strictly increasing, so no re-base happens and the
+    /// label equals the intrinsic counter exactly (numbering is unchanged).
+    /// </summary>
+    private int AssignLapNumber(int intrinsic)
+    {
+        int natural = intrinsic + _lapOffset;
+        if (_lastAssigned is not null && natural <= _lastAssigned)
+        {
+            _lapOffset = _lastAssigned.Value + 1 - intrinsic;
+            natural = intrinsic + _lapOffset;
+        }
+
+        _lastAssigned = natural;
+        return natural;
     }
 
     /// <summary>

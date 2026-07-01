@@ -24,7 +24,7 @@ CREATE TABLE sessions (
 CREATE TABLE laps (
   id TEXT PRIMARY KEY,
   session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  lap_number INTEGER NOT NULL,
+  lap_number INTEGER NOT NULL,     -- SimCoach session-local monotonic label, NOT the sim's counter (which resets on a pit return); assigned by LapSegmenter, kept joinable to laps.parquet (ADR-0015)
   lap_time_ms INTEGER NOT NULL,
   delta_vs_reference_ms INTEGER,
   is_pb INTEGER NOT NULL DEFAULT 0,
@@ -42,7 +42,7 @@ CREATE TABLE [references] (
   car_id TEXT NOT NULL,
   weather_bucket TEXT NOT NULL,
   source_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
-  source_lap_number INTEGER,
+  source_lap_number INTEGER,       -- the session-local lap label from laps.lap_number (ADR-0015), not the sim's raw counter
   lap_time_ms INTEGER NOT NULL,
   parquet_path TEXT NOT NULL,
   pinned INTEGER NOT NULL DEFAULT 0,
