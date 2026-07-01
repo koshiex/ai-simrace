@@ -80,7 +80,28 @@ public sealed class DatabaseMigrator
             migrations.Add(new Migration(version, reader.ReadToEnd()));
         }
 
+        AssertContiguous([.. migrations.Select(m => m.Version)]);
         return [.. migrations.OrderBy(m => m.Version)];
+    }
+
+    /// <summary>
+    /// Fails fast when the embedded migration versions are not a contiguous <c>1..N</c> run (a gap, a duplicate,
+    /// or a set not starting at 1). Numbering is in merge order, and the migrator only applies versions greater
+    /// than <c>user_version</c>; an inverse/gapped set would silently shadow a migration on an upgraded DB.
+    /// </summary>
+    internal static void AssertContiguous(IReadOnlyList<int> versions)
+    {
+        List<int> sorted = [.. versions.OrderBy(v => v)];
+        for (int i = 0; i < sorted.Count; i++)
+        {
+            int expected = i + 1;
+            if (sorted[i] != expected)
+            {
+                string found = string.Join(", ", sorted.Select(v => v.ToString(CultureInfo.InvariantCulture)));
+                throw new InvalidOperationException(
+                    $"Migration versions must be contiguous starting at 1; expected {expected} but found {sorted[i]} in [{found}].");
+            }
+        }
     }
 
     private static int ParseLeadingVersion(string fileName)

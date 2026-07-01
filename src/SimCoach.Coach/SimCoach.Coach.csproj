@@ -8,6 +8,8 @@
     <ProjectReference Include="..\SimCoach.Contracts\SimCoach.Contracts.csproj" />
     <ProjectReference Include="..\SimCoach.Reference\SimCoach.Reference.csproj" />
     <ProjectReference Include="..\SimCoach.LLM\SimCoach.LLM.csproj" />
+    <!-- ConsoleTipSink persists tips via CoachTipRepository (was only visible transitively via Reference). -->
+    <ProjectReference Include="..\SimCoach.Storage\SimCoach.Storage.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -18,6 +20,35 @@
   <ItemGroup>
     <!-- First-party authored corner names for the Phase-3 prompt layer (ADR-0010/0014). -->
     <EmbeddedResource Include="Data\cornerNames.json" />
+    <!-- The bounded action registry the LLM selects from (data, not code). -->
+    <EmbeddedResource Include="Data\actionRegistry.json" />
+    <!-- First (neutral = ru-RU) resx: positional + ordinal UI strings. No designer codegen (CA1304/1305). -->
+    <EmbeddedResource Update="Resources\CoachStrings.resx" />
+    <!--
+      Versioned LLM prompt resources (model-facing payload, not localizable UI strings). Explicit
+      <LogicalName> pins the manifest name: the '.ru.' infix would otherwise be parsed by MSBuild
+      AssignCulture as a neutral culture (NeutralLanguage=ru-RU) and stripped from the manifest name.
+    -->
+    <EmbeddedResource Include="Prompts\coach.system.v1.ru.txt">
+      <WithCulture>false</WithCulture>
+      <LogicalName>SimCoach.Coach.Prompts.coach.system.v1.ru.txt</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Prompts\coach.system.debrief.v1.ru.txt">
+      <WithCulture>false</WithCulture>
+      <LogicalName>SimCoach.Coach.Prompts.coach.system.debrief.v1.ru.txt</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Prompts\coach.fewshot.v1.ru.json">
+      <WithCulture>false</WithCulture>
+      <LogicalName>SimCoach.Coach.Prompts.coach.fewshot.v1.ru.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Prompts\coach.retry.v1.ru.txt">
+      <WithCulture>false</WithCulture>
+      <LogicalName>SimCoach.Coach.Prompts.coach.retry.v1.ru.txt</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SimCoach.Coach.Tests" />
   </ItemGroup>
 
 </Project>

@@ -45,10 +45,56 @@ public sealed class DatabaseMigratorTests : IDisposable
 
         // sqlite_master stores the unquoted name 'references'.
         tables.Should().BeEquivalentTo(
-            "laps", "llm_usage", "references", "sessions", "settings");
+            "coach_tips", "laps", "llm_usage", "references", "sessions", "settings");
         indexes.Should().BeEquivalentTo(
-            "idx_laps_session", "idx_llm_usage_ts", "idx_sessions_track_car");
-        connection.ExecuteScalar<long>("PRAGMA user_version;").Should().Be(1);
+            "idx_coach_tips_session", "idx_laps_session", "idx_llm_usage_ts", "idx_sessions_track_car");
+        connection.ExecuteScalar<long>("PRAGMA user_version;").Should().Be(3);
+    }
+
+    [Fact]
+    public void Migrate_creates_coach_tips_with_tip_log_columns()
+    {
+        new DatabaseMigrator(_factory).Migrate();
+
+        using SqliteConnection connection = _factory.Create();
+        List<string> columns =
+            [.. connection.Query<string>("SELECT name FROM pragma_table_info('coach_tips')")];
+
+        columns.Should().Contain(["session_id", "rendered_param", "priority_rank", "severity", "no_pb_yet"]);
+    }
+
+    [Fact]
+    public void Migrate_adds_cost_columns_to_llm_usage_without_duplicating_model_id()
+    {
+        new DatabaseMigrator(_factory).Migrate();
+
+        using SqliteConnection connection = _factory.Create();
+        List<string> columns =
+            [.. connection.Query<string>("SELECT name FROM pragma_table_info('llm_usage')")];
+
+        columns.Should().Contain(["provider", "cached_input_tokens", "model_id"]);
+        columns.Count(c => c == "model_id").Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData(new[] { 1 })]
+    [InlineData(new[] { 1, 2 })]
+    [InlineData(new[] { 1, 2, 3 })]
+    public void AssertContiguous_accepts_contiguous_runs(int[] versions)
+    {
+        Action act = () => DatabaseMigrator.AssertContiguous(versions);
+        act.Should().NotThrow();
+    }
+
+    [Theory]
+    [InlineData(new[] { 2 })]
+    [InlineData(new[] { 1, 3 })]
+    [InlineData(new[] { 1, 1, 2 })]
+    [InlineData(new[] { 1, 2, 4 })]
+    public void AssertContiguous_rejects_gapped_or_duplicated_sets(int[] versions)
+    {
+        Action act = () => DatabaseMigrator.AssertContiguous(versions);
+        act.Should().Throw<InvalidOperationException>();
     }
 
     [Fact]
@@ -64,7 +110,7 @@ public sealed class DatabaseMigratorTests : IDisposable
         // Assert
         secondRun.Should().NotThrow();
         using SqliteConnection connection = _factory.Create();
-        connection.ExecuteScalar<long>("PRAGMA user_version;").Should().Be(1);
+        connection.ExecuteScalar<long>("PRAGMA user_version;").Should().Be(3);
     }
 
     [Fact]

@@ -35,3 +35,16 @@ public sealed record BalanceScores
     public required float UndersteerScore { get; init; }
     public required float OversteerScore { get; init; }
 }
+
+/// <summary>
+/// Tyre/brake-temp abuse summary over a lap. Peaks are the maximum across the [FL, FR, RL, RR] arrays;
+/// the overheat flags compare those peaks against the kernel's abuse bands. All zero / false when the
+/// sim provides no temperature channels (ACC live arrays are often empty).
+/// </summary>
+public sealed record ThermalResult
+{
+    public required float MaxTyreTempC { get; init; }
+    public required float MaxBrakeTempC { get; init; }
+    public required bool TyreOverheat { get; init; }
+    public required bool BrakeOverheat { get; init; }
+}

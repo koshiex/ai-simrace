@@ -1,28 +1,14 @@
 namespace SimCoach.LLM;
 
 /// <summary>
-/// Abstracts a chat-completion LLM provider behind a strict, schema-enforced contract.
-/// Implementations: OpenRouter (default), local fakes for tests.
+/// Provider-agnostic chat-completion seam. The caller passes an opaque <see cref="LlmRequest.RouteKey"/>;
+/// the router resolves it to a provider, model, and knobs. No provider- or cadence-specific type crosses
+/// this boundary, so adding a provider needs only a keyed registration plus config.
 /// </summary>
 public interface ILlmClient
 {
-    /// <summary>
-    /// Send a Gold-tier coaching artifact and return a structured response that conforms to the supplied JSON schema.
-    /// Schema violations and timeouts return <see cref="LlmResult.Failure"/>; the caller is expected to fall back to template.
-    /// </summary>
     Task<LlmResult> CompleteAsync(LlmRequest request, CancellationToken ct);
-}
 
-public sealed record LlmRequest(
-    string ModelId,
-    string SystemPrompt,
-    string UserPrompt,
-    string JsonSchema,
-    int MaxOutputTokens,
-    TimeSpan Timeout);
-
-public abstract record LlmResult
-{
-    public sealed record Success(string Json, int InputTokens, int OutputTokens, TimeSpan Latency) : LlmResult;
-    public sealed record Failure(string Reason) : LlmResult;
+    /// <summary>Declared for P6 streaming; implementations throw <see cref="NotSupportedException"/> in Phase 3.</summary>
+    IAsyncEnumerable<LlmDelta> StreamAsync(LlmRequest request, CancellationToken ct);
 }

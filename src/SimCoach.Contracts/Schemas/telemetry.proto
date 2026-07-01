@@ -70,6 +70,17 @@ message TelemetryFrame {
   int32 sector_count = 34;
   int32 tyres_out = 35;                    // off-track wheel count
   bool is_valid_lap = 36;                  // sim's own lap-validity flag
+
+  // Phase 3 strategy plumb (append-only) — frame→Gold-input only; no Strategy advice in MVP.
+  int32 engine_map = 37;                   // raw engine-map level (ACC graphics.EngineMap)
+  int32 tc = 38;                           // raw TC level (ACC graphics.Tc), distinct from tc_active
+  int32 tc_cut = 39;                       // raw TC-cut level (ACC graphics.TcCut)
+  int32 abs = 40;                          // raw ABS level (ACC graphics.Abs), distinct from abs_active
+  bool is_in_pit = 41;
+  bool is_in_pit_lane = 42;
+  // Longitudinal per-wheel slip ratio [FL, FR, RL, RR] — the drive-wheel wheelspin source,
+  // distinct from the combined-magnitude wheel_slip (field 20).
+  repeated float slip_ratio = 43;
 }
 
 // Per-corner derivation emitted by Pipeline.Compute.
@@ -86,6 +97,12 @@ message CornerEvent {
   bool off_track = 10;
   float understeer_score = 11;             // 0..1
   float oversteer_score = 12;              // 0..1
+
+  // Phase 3 tip-quality kernels (append-only, B1).
+  float wheelspin_score = 13;              // 0..1, drive-wheel slip on exit
+  float brake_overlap_steer_pct = 14;      // 0..1, fraction of window braking while steering (unwanted overlap)
+  float steering_jitter = 15;              // stddev of steer-rate over the window
+  string reason = 16;                      // dominant-loss reason (closed set; "" when no reference)
 }
 
 // Per-sector summary emitted at sector cross.
@@ -106,6 +123,16 @@ message LapEvent {
   bool is_pb = 5;
   bool is_clean = 6;                       // no off-tracks, no contact
   repeated CornerLoss top_losses = 7;      // up to 3
+
+  // Phase 3 tyre/brake-temp abuse summary at lap cadence (append-only, B1).
+  ThermalSummary thermal = 8;
+
+  message ThermalSummary {
+    float max_tyre_temp_c = 1;
+    float max_brake_temp_c = 2;
+    bool tyre_overheat = 3;
+    bool brake_overheat = 4;
+  }
 }
 
 message CornerLoss {
@@ -128,6 +155,24 @@ message SessionEvent {
   int32 average_lap_ms = 10;
   float understeer_trend = 11;             // -1..1 (negative = oversteer)
   repeated StintSummary stints = 12;
+
+  // Phase 3 debrief envelope (append-only, B2 + M3).
+  repeated AggregatedLoss aggregated_losses = 13;  // bounded top-N by total_loss_ms
+  repeated int32 sector_avg_delta_ms = 14;         // avg delta per sector idx (0 without reference)
+  float consistency_stddev_ms = 15;                // clean-lap-time stddev (0 if < 2 clean laps)
+  int32 theoretical_best_gap_ms = 16;              // best lap − Σ best clean sectors (0 if no clean lap)
+  float avg_fuel_per_lap_l = 17;                   // averaged over racing laps
+  float end_tyre_wear_pct = 18;                    // 0..1; honest-zero on ACC (no wear channel)
+}
+
+// Per-corner loss rolled up across the session (B2). corner_id only — the human corner_name is
+// resolved at the Coach layer (ADR-0010), never in compute.
+message AggregatedLoss {
+  string corner_id = 1;
+  int32 total_loss_ms = 2;
+  int32 avg_loss_ms = 3;
+  int32 sample_count = 4;
+  string dominant_reason = 5;
 }
 
 message StintSummary {

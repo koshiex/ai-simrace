@@ -63,6 +63,13 @@ public sealed class Phase2ComputeE2EGoldenTests : IDisposable
         // (e) stop-ordering invariant: SessionEvent count == session row count == persisted lap count
         var sessionEvent = (SessionEvent)r.Events.Single(e => e.Kind == DomainEventKind.Session).Payload;
         sessionEvent.LapCount.Should().Be(sessionRow.LapCount).And.Be(lapRows.Count);
+
+        // (f) Phase-3 envelope present end-to-end. aggregated_losses is EMPTY BY DESIGN here: the
+        // synthetic laps match their own reference, so per-corner DeltaMs ≈ 0 and the >0 gate excludes them.
+        sessionEvent.AggregatedLosses.Should().BeEmpty("synthetic laps match the reference → no positive corner deltas");
+        sessionEvent.AvgFuelPerLapL.Should().BeGreaterThan(0f, "synthetic frames carry a per-lap fuel estimate");
+        List<LapEvent> lapEvents = [.. r.Events.Where(e => e.Kind == DomainEventKind.Lap).Select(e => (LapEvent)e.Payload)];
+        lapEvents.Should().OnlyContain(l => l.Thermal != null && l.Thermal.MaxTyreTempC > 0f);
     }
 
     [Fact]

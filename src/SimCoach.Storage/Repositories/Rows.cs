@@ -34,6 +34,45 @@ public sealed record LapRow
     public long? RawOffsetInMcap { get; init; }
 }
 
+/// <summary>Row of the <c>llm_usage</c> cost ledger. <c>Provider</c> and <c>CachedInputTokens</c> arrive in
+/// migration 002 (PR-F); <c>SessionId</c> is nullable (NULL in PR-F — Coach supplies it in a later phase).</summary>
+public sealed record LlmUsageRow
+{
+    public string? SessionId { get; init; }
+    public required DateTimeOffset TsUtc { get; init; }
+    public required string ModelId { get; init; }
+    public string? Provider { get; init; }
+    public required string Cadence { get; init; }
+    public int InputTokens { get; init; }
+    public int OutputTokens { get; init; }
+    public int CachedInputTokens { get; init; }
+    public required double CostUsd { get; init; }
+    public int LatencyMs { get; init; }
+    public required string Status { get; init; }
+}
+
+/// <summary>Row of the <c>coach_tips</c> log (one per emitted tip, PR-G / D8). The <c>CoachTip</c> DTO's short
+/// and spoken corner-name forms are voice-layer-only and intentionally not persisted here.</summary>
+public sealed record CoachTipRow
+{
+    public required string SessionId { get; init; }
+    public required string Cadence { get; init; }
+    public string? CornerId { get; init; }
+    public int? LapNumber { get; init; }
+    public required string ActionId { get; init; }
+    public string? ActionLabelShort { get; init; }
+    public string? RenderedParam { get; init; }
+    public required string PriorityPhase { get; init; }
+    public required int PriorityRank { get; init; }
+    public required string Severity { get; init; }
+    public required string PhraseRu { get; init; }
+    public string? CornerName { get; init; }
+    public required string Source { get; init; }
+    public bool NoPbYet { get; init; }
+    public string? ProviderModelId { get; init; }
+    public required DateTimeOffset GeneratedAtUtc { get; init; }
+}
+
 /// <summary>Row of the <c>references</c> table (one PB per <c>(track, car, weather)</c> triple).</summary>
 public sealed record ReferenceRow
 {

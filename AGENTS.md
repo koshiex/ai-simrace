@@ -59,6 +59,11 @@ Read first: `docs/01-product/PRD.md`, `docs/02-architecture/architecture.md`, `d
 - One logical change per commit.
 - Reference FR-### IDs in commit messages where applicable.
 - Do not add Co-Authored-By trailers; user disabled attribution globally.
+- Every PR description must list test cases: for each, the **expected result**, **where to look**
+  (test name/file, log line, or UI element), and **how to reproduce** — running the unit tests, and
+  on a Windows device (live ACC in-game, or the built `SimCoach.App.exe` / a replay session) when the
+  change is runtime-observable. If the change is **not** runtime-observable (e.g. a contract-only /
+  dead-until-wired PR), say so explicitly and give the build + unit-test reproduction instead.
 
 ## Run-Throughs
 

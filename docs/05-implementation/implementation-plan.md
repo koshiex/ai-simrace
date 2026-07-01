@@ -40,6 +40,13 @@ Done: **PR-A** (#8) + **PR-B** (#9) + **PR-D** + **PR-E**. Phase 2 complete.
 
 ## Phase 3 — Coach Engine + LLM (week 4)
 
+Per-PR status lives in [phase-3-detailed-plan.md](./phase-3-detailed-plan.md) (8 PRs, A–H).
+UI contracts this phase must expose: [ui-client-requirements.md](../03-functional/ui-client-requirements.md).
+Scope deferred out of the MVP: [mvp-deferrals.md](./mvp-deferrals.md).
+
+Done: **PR-A** — provider-agnostic `ILlmClient` seam (Ring-0 contract + records, `LlmOptions`/route/
+provider config, internal `LlmRouter`/`FakeProvider`, `CoachCadence`; dead-until-wired, FakeProvider default).
+
 - [ ] `GoldArtifactBuilder` per cadence
 - [ ] `ActionRegistry` with ~20 actions + RU templates
 - [ ] `PromptBuilder` system + few-shot
@@ -79,6 +86,21 @@ Done: **PR-A** (#8) + **PR-B** (#9) + **PR-D** + **PR-E**. Phase 2 complete.
 - [ ] DeepSeek V3.2 debrief prompt
 - [ ] Debrief window: sector chart, trace overlay, TTS playback
 - [ ] PDF/MD export
+- [ ] **Real ACC tyre-degradation source for the debrief tyre summary (FR-060).** ACC exposes no
+      tyre-wear channel — `physics.TyreWear` is "Not used" (always 0 live), so Phase 3 plumbs
+      `end_tyre_wear_pct` as an honest-zero (deferred from PR-B, see `phase-3-detailed-plan.md` risks #2).
+      Phase 6 owns the real source because the debrief is first *delivered* to the user here, so the zero
+      would otherwise become visible. Two candidate approaches (decided when live ACC stint captures exist
+      to validate against — neither is implementable/validatable before Phase 6):
+  - **Approach B — pace-fall-off proxy (primary candidate).** A new compute kernel: tyre degradation =
+        the trend of clean-lap times across a stint (lap-time fall-off), written to
+        `StintSummary.tyre_degradation_pct` (the proto field reserved for this, `[]` in MVP). ~1 day, but
+        **unvalidated until real-data calibration**, and it overlaps the race-craft `stints` work (Phase 10).
+  - **Approach C — plumb indirect ACC channels.** Surface what ACC *does* give beyond `TyreWear`
+        (tyre temps / pressures drift over a stint) as raw frame→Gold input feeding the estimator. Only
+        worth doing once a consumer (the Approach-B estimator) exists — plumbing it earlier is dead code
+        under `TreatWarningsAsErrors`, so it lands together with B, not before.
+  - Until either ships, the debrief copy states the ACC limitation rather than rendering a fake `0%`.
 
 ## Phase 7 — Beta polish (week 8)
 

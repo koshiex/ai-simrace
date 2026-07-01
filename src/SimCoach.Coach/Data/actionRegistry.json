@@ -1,0 +1,388 @@
+{
+  "schema_version": "actions/1",
+  "actions": [
+    {
+      "id": "brake_later_by_meters",
+      "label_short": "brake_later",
+      "hint_en": "braked too early",
+      "cadence": "corner",
+      "priority": { "phase": "brake", "rank": 10 },
+      "requires_reference": true,
+      "when": [
+        { "field": "brake_point_diff_m", "op": "lt", "value": -2.0 },
+        { "field": "off_track", "op": "eq", "value": false }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" },
+        { "name": "meters", "from": "brake_point_diff_m", "transform": "abs_round0", "unit": "м" }
+      ],
+      "phrase_template_ru": "В {corner} тормози позже на {meters}."
+    },
+    {
+      "id": "more_trail_brake",
+      "label_short": "more_trail",
+      "hint_en": "too little trail braking",
+      "cadence": "corner",
+      "priority": { "phase": "brake", "rank": 11 },
+      "requires_reference": true,
+      "when": [
+        { "field": "trail_brake_diff_pct", "op": "lt", "value": -0.1 }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Дольше держи тормоз к апексу в {corner}."
+    },
+    {
+      "id": "less_trail_brake",
+      "label_short": "less_trail",
+      "hint_en": "too much trail braking + oversteer",
+      "cadence": "corner",
+      "priority": { "phase": "brake", "rank": 12 },
+      "requires_reference": true,
+      "when": [
+        { "field": "trail_brake_diff_pct", "op": "gt", "value": 0.1 },
+        { "field": "oversteer_score", "op": "gt", "value": 0.6 }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Меньше тормоза в {corner}, отпускай раньше."
+    },
+    {
+      "id": "straighter_braking",
+      "label_short": "straighter",
+      "hint_en": "braking while steering",
+      "cadence": "corner",
+      "priority": { "phase": "brake", "rank": 13 },
+      "requires_reference": false,
+      "when": [
+        { "field": "brake_overlap_steer_pct", "op": "gt", "value": 0.3 }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Не тормози в {corner}, выпрямляй руль."
+    },
+    {
+      "id": "overdrove_entry",
+      "label_short": "overdrove",
+      "hint_en": "overdrove entry, low min speed",
+      "cadence": "corner",
+      "priority": { "phase": "entry", "rank": 20 },
+      "requires_reference": true,
+      "when": [
+        { "field": "brake_point_diff_m", "op": "gt", "value": 2.0 },
+        { "field": "min_speed_diff_kmh", "op": "lt", "value": -3.0 },
+        { "field": "off_track", "op": "eq", "value": false }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Перебираешь на входе в {corner}, тормози раньше."
+    },
+    {
+      "id": "wider_entry",
+      "label_short": "wider_entry",
+      "hint_en": "understeer + low min speed",
+      "cadence": "corner",
+      "priority": { "phase": "entry", "rank": 21 },
+      "requires_reference": true,
+      "when": [
+        { "field": "understeer_score", "op": "gt", "value": 0.6 },
+        { "field": "min_speed_diff_kmh", "op": "lt", "value": -3.0 }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Шире вход в {corner}, неси скорость."
+    },
+    {
+      "id": "lift_partial_throttle",
+      "label_short": "lift",
+      "hint_en": "carrying too much entry speed",
+      "cadence": "corner",
+      "priority": { "phase": "entry", "rank": 22 },
+      "requires_reference": true,
+      "when": [
+        { "field": "min_speed_diff_kmh", "op": "gt", "value": 4.0 }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Чуть сбрось газ на входе в {corner}."
+    },
+    {
+      "id": "smoother_steering",
+      "label_short": "smoother",
+      "hint_en": "jerky steering input",
+      "cadence": "corner",
+      "priority": { "phase": "entry", "rank": 23 },
+      "requires_reference": false,
+      "when": [
+        { "field": "steering_jitter", "op": "gt", "value": 0.15 }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Плавнее руль в {corner}."
+    },
+    {
+      "id": "ease_understeer",
+      "label_short": "ease_understeer",
+      "hint_en": "strong understeer (no reference)",
+      "cadence": "corner",
+      "priority": { "phase": "apex", "rank": 30 },
+      "requires_reference": false,
+      "when": [
+        { "field": "understeer_score", "op": "gt", "value": 0.7 }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Снос в {corner}: плавнее руль, меньше скорости на входе."
+    },
+    {
+      "id": "higher_min_speed",
+      "label_short": "higher_min_speed",
+      "hint_en": "low minimum speed",
+      "cadence": "corner",
+      "priority": { "phase": "apex", "rank": 31 },
+      "requires_reference": true,
+      "when": [
+        { "field": "min_speed_diff_kmh", "op": "lt", "value": -3.0 },
+        { "field": "off_track", "op": "eq", "value": false }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Быстрее по минимуму в {corner}, не лифти."
+    },
+    {
+      "id": "tighten_apex",
+      "label_short": "tighten_apex",
+      "hint_en": "wide of the apex line",
+      "cadence": "corner",
+      "priority": { "phase": "apex", "rank": 32 },
+      "requires_reference": true,
+      "when": [
+        { "field": "racing_line_deviation_m", "op": "gt", "value": 0.5 },
+        { "field": "min_speed_diff_kmh", "op": "lt", "value": 0.0 }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Ближе к апексу в {corner}."
+    },
+    {
+      "id": "settle_oversteer",
+      "label_short": "settle_oversteer",
+      "hint_en": "oversteer on exit (no reference)",
+      "cadence": "corner",
+      "priority": { "phase": "exit", "rank": 40 },
+      "requires_reference": false,
+      "when": [
+        { "field": "oversteer_score", "op": "gt", "value": 0.6 }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Занос в {corner}: мягче газ, успокой машину."
+    },
+    {
+      "id": "wheelspin_on_exit",
+      "label_short": "wheelspin",
+      "hint_en": "wheelspin on exit",
+      "cadence": "corner",
+      "priority": { "phase": "exit", "rank": 41 },
+      "requires_reference": false,
+      "when": [
+        { "field": "wheelspin_score", "op": "gt", "value": 0.3 }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Меньше газа на выходе из {corner}, ловишь пробуксовку."
+    },
+    {
+      "id": "earlier_throttle",
+      "label_short": "earlier_throttle",
+      "hint_en": "late to throttle on exit",
+      "cadence": "corner",
+      "priority": { "phase": "exit", "rank": 42 },
+      "requires_reference": true,
+      "when": [
+        { "field": "throttle_resume_diff_m", "op": "lt", "value": -3.0 }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Раньше газ на выходе из {corner}."
+    },
+    {
+      "id": "corner_catch_all",
+      "label_short": "corner_loss",
+      "hint_en": "notable corner time loss",
+      "cadence": "corner",
+      "priority": { "phase": "exit", "rank": 900 },
+      "requires_reference": true,
+      "when": [
+        { "field": "delta_ms", "op": "abs_gt", "value": 150.0 }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" },
+        { "name": "loss", "from": "delta_ms", "transform": "abs_round0", "unit": "мс" }
+      ],
+      "phrase_template_ru": "В {corner} отклонение около {loss}."
+    },
+    {
+      "id": "sector_summary_loss",
+      "label_short": "sector_loss",
+      "hint_en": "losing time in this sector",
+      "cadence": "sector",
+      "priority": { "phase": "exit", "rank": 300 },
+      "requires_reference": true,
+      "when": [
+        { "field": "delta_ms", "op": "gt", "value": 100.0 }
+      ],
+      "params": [
+        { "name": "loss", "from": "delta_ms", "transform": "abs_round0", "unit": "мс" },
+        { "name": "top", "from": "top_corner" }
+      ],
+      "phrase_template_ru": "Теряешь {loss}, главное — {top}."
+    },
+    {
+      "id": "sector_summary_gain",
+      "label_short": "sector_gain",
+      "hint_en": "gaining time in this sector",
+      "cadence": "sector",
+      "priority": { "phase": "exit", "rank": 301 },
+      "requires_reference": true,
+      "when": [
+        { "field": "delta_ms", "op": "lt", "value": -50.0 }
+      ],
+      "params": [
+        { "name": "gain", "from": "delta_ms", "transform": "abs_round0", "unit": "мс" }
+      ],
+      "phrase_template_ru": "Выиграл {gain}, держи такой ритм."
+    },
+    {
+      "id": "sector_keep_pushing",
+      "label_short": "sector_ok",
+      "hint_en": "sector on pace",
+      "cadence": "sector",
+      "priority": { "phase": "exit", "rank": 302 },
+      "requires_reference": true,
+      "when": [
+        { "field": "delta_ms", "op": "abs_lt", "value": 50.0 }
+      ],
+      "params": [],
+      "phrase_template_ru": "Сектор в норме, продолжай."
+    },
+    {
+      "id": "sector_catch_all",
+      "label_short": "sector_summary",
+      "hint_en": "large sector deviation",
+      "cadence": "sector",
+      "priority": { "phase": "exit", "rank": 910 },
+      "requires_reference": true,
+      "when": [
+        { "field": "delta_ms", "op": "abs_gt", "value": 200.0 }
+      ],
+      "params": [
+        { "name": "loss", "from": "delta_ms", "transform": "abs_round0", "unit": "мс" }
+      ],
+      "phrase_template_ru": "В секторе отклонение около {loss}."
+    },
+    {
+      "id": "lap_pb",
+      "label_short": "lap_pb",
+      "hint_en": "personal best lap",
+      "cadence": "lap",
+      "priority": { "phase": "exit", "rank": 200 },
+      "requires_reference": false,
+      "when": [
+        { "field": "is_pb", "op": "eq", "value": true }
+      ],
+      "params": [
+        { "name": "top", "from": "top_corner" }
+      ],
+      "phrase_template_ru": "Личный рекорд! Главная зона — {top}."
+    },
+    {
+      "id": "lap_clean_focus",
+      "label_short": "lap_focus",
+      "hint_en": "clean but slower than reference",
+      "cadence": "lap",
+      "priority": { "phase": "exit", "rank": 201 },
+      "requires_reference": true,
+      "when": [
+        { "field": "is_clean", "op": "eq", "value": true },
+        { "field": "delta_ms", "op": "gt", "value": 200.0 }
+      ],
+      "params": [
+        { "name": "loss", "from": "delta_ms", "transform": "abs_round0", "unit": "мс" },
+        { "name": "top", "from": "top_corner" }
+      ],
+      "phrase_template_ru": "Чисто, но на {loss} медленнее. Поработай над {top}."
+    },
+    {
+      "id": "lap_dirty",
+      "label_short": "lap_dirty",
+      "hint_en": "invalid / dirty lap",
+      "cadence": "lap",
+      "priority": { "phase": "exit", "rank": 202 },
+      "requires_reference": false,
+      "when": [
+        { "field": "is_clean", "op": "eq", "value": false }
+      ],
+      "params": [],
+      "phrase_template_ru": "Круг грязный. Не торопись, попробуй ещё раз."
+    },
+    {
+      "id": "tyre_overheat",
+      "label_short": "tyre_temp",
+      "hint_en": "tyres overheating",
+      "cadence": "lap",
+      "priority": { "phase": "exit", "rank": 203 },
+      "requires_reference": false,
+      "when": [
+        { "field": "tyre_overheat", "op": "eq", "value": true }
+      ],
+      "params": [
+        { "name": "temp", "from": "max_tyre_temp_c", "transform": "abs_round0", "unit": "°C" }
+      ],
+      "phrase_template_ru": "Перегрев резины, {temp}. Береги покрышки."
+    },
+    {
+      "id": "brake_overheat",
+      "label_short": "brake_temp",
+      "hint_en": "brakes overheating",
+      "cadence": "lap",
+      "priority": { "phase": "exit", "rank": 204 },
+      "requires_reference": false,
+      "when": [
+        { "field": "brake_overheat", "op": "eq", "value": true }
+      ],
+      "params": [
+        { "name": "temp", "from": "max_brake_temp_c", "transform": "abs_round0", "unit": "°C" }
+      ],
+      "phrase_template_ru": "Перегрев тормозов, {temp}. Дай им остыть."
+    },
+    {
+      "id": "lap_catch_all",
+      "label_short": "lap_summary",
+      "hint_en": "large lap deviation",
+      "cadence": "lap",
+      "priority": { "phase": "exit", "rank": 905 },
+      "requires_reference": true,
+      "when": [
+        { "field": "delta_ms", "op": "abs_gt", "value": 250.0 }
+      ],
+      "params": [
+        { "name": "loss", "from": "delta_ms", "transform": "abs_round0", "unit": "мс" }
+      ],
+      "phrase_template_ru": "За круг отклонение около {loss}."
+    }
+  ]
+}

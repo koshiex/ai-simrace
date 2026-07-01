@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using SimCoach.Contracts.V1;
 using SimCoach.Pipeline;
+using SimCoach.Pipeline.Kernels;
 using SimCoach.Pipeline.Segmentation;
 using SimCoach.Storage;
 using SimCoach.Storage.Repositories;
@@ -29,6 +30,9 @@ internal sealed class ComputeSession
     private readonly LapSegmenter _lapSegmenter = new();
     private readonly SectorSegmenter _sectorSegmenter = new();
     private readonly List<CornerContribution> _lapLosses = [];
+    private readonly SessionLossAccumulator _sessionLosses = new();
+    private readonly Dictionary<int, int> _bestSectorMs = [];                    // clean-lap per-sector minima
+    private readonly Dictionary<int, (long Sum, int Count)> _sectorDeltaAccum = []; // per-sector delta avg input
     private List<CornerTracker> _cornerTrackers = [];
 
     private bool _started;
@@ -46,6 +50,10 @@ internal sealed class ComputeSession
     private int _lapCount;
     private int _cleanLapCount;
     private long _cleanLapSumMs;
+    private double _cleanLapSumSqMs;
+    private double _fuelPerLapAccum;
+    private int _racingLapCount;
+    private float _endTyreWearPct;
     private int? _pbTimeMs;
     private double _understeerAccum;
     private double _oversteerAccum;
@@ -139,8 +147,14 @@ internal sealed class ComputeSession
                 PbTimeMs = _pbTimeMs ?? 0,
                 AverageLapMs = averageLapMs,
                 UndersteerTrend = understeerTrend,
+                ConsistencyStddevMs = ConsistencyStddevMs(),
+                TheoreticalBestGapMs = TheoreticalBestGapMs(),
+                AvgFuelPerLapL = _racingLapCount > 0 ? (float)(_fuelPerLapAccum / _racingLapCount) : 0f,
+                EndTyreWearPct = _endTyreWearPct,
             };
             // Stints are descoped for Phase 2 — the empty repeated field is proto3-valid.
+            session.AggregatedLosses.AddRange(_sessionLosses.Build(_options.AggregatedLossesCap));
+            session.SectorAvgDeltaMs.AddRange(SectorAvgDeltas());
             _domain.Publish(DomainEvent.Session(session));
         }
 
@@ -184,6 +198,7 @@ internal sealed class ComputeSession
             corner, window, _reference, _lapLengthM, _reference?.GridLength ?? 0);
         _domain.Publish(DomainEvent.Corner(ev));
         _lapLosses.Add(contribution);
+        _sessionLosses.Accept(contribution);
         _understeerAccum += contribution.UndersteerScore;
         _oversteerAccum += contribution.OversteerScore;
         _balanceCornerCount++;
@@ -202,6 +217,9 @@ internal sealed class ComputeSession
             deltaMs = split.SectorTimeMs - refSectorMs;
         }
 
+        (long sum, int count) = _sectorDeltaAccum.GetValueOrDefault(split.SectorIndex);
+        _sectorDeltaAccum[split.SectorIndex] = (sum + deltaMs, count + 1);
+
         var ev = new SectorEvent
         {
             T = frame.T,
@@ -219,11 +237,23 @@ internal sealed class ComputeSession
     private void HandleLap(CompletedLap completed, TelemetryFrame frame)
     {
         _lapCount++;
+        // Fuel summary averages over racing laps only — an in/out/pit lap's per-lap estimate is skewed.
+        // The completing `frame` is the next lap's start-line crossing, so read fuel from the completed
+        // lap's own last frame, not from `frame`.
+        if (completed.Frames.Count > 0 && !completed.Frames.Any(f => f.IsInPitLane))
+        {
+            _fuelPerLapAccum += completed.Frames[^1].FuelPerLapL;
+            _racingLapCount++;
+        }
+
         bool clean = completed.IsClean;
         if (clean)
         {
             _cleanLapCount++;
             _cleanLapSumMs += completed.LapTimeMs;
+            _cleanLapSumSqMs += (double)completed.LapTimeMs * completed.LapTimeMs;
+            AccumulateBestSectors(completed);
+            _endTyreWearPct = MaxTyreWear(completed.Frames);
         }
 
         ResampledLap? self = ResampleSelf(completed);
@@ -241,6 +271,7 @@ internal sealed class ComputeSession
             _pbTimeMs = completed.LapTimeMs;
         }
 
+        ThermalResult thermal = ThermalKernels.Analyze(completed.Frames);
         var lapEvent = new LapEvent
         {
             T = frame.T,
@@ -249,6 +280,13 @@ internal sealed class ComputeSession
             DeltaMs = deltaMs ?? 0,
             IsPb = isPb,
             IsClean = clean,
+            Thermal = new LapEvent.Types.ThermalSummary
+            {
+                MaxTyreTempC = thermal.MaxTyreTempC,
+                MaxBrakeTempC = thermal.MaxBrakeTempC,
+                TyreOverheat = thermal.TyreOverheat,
+                BrakeOverheat = thermal.BrakeOverheat,
+            },
         };
         lapEvent.TopLosses.AddRange(TopLosses(_lapLosses));
         _domain.Publish(DomainEvent.Lap(lapEvent));
@@ -314,6 +352,66 @@ internal sealed class ComputeSession
             .Take(_options.TopLossesCount)
             .Select(c => new CornerLoss { CornerId = c.CornerId, DeltaMs = c.DeltaMs, Reason = c.Reason })
             .ToList();
+
+    private void AccumulateBestSectors(CompletedLap completed)
+    {
+        for (int i = 0; i < completed.SectorTimesMs.Count; i++)
+        {
+            int sectorMs = completed.SectorTimesMs[i];
+            if (!_bestSectorMs.TryGetValue(i, out int best) || sectorMs < best)
+            {
+                _bestSectorMs[i] = sectorMs;
+            }
+        }
+    }
+
+    private static float MaxTyreWear(IReadOnlyList<TelemetryFrame> frames)
+    {
+        float max = 0f;
+        foreach (TelemetryFrame frame in frames)
+        {
+            foreach (float wear in frame.TyreWearPct)
+            {
+                if (wear > max)
+                {
+                    max = wear;
+                }
+            }
+        }
+
+        return max;
+    }
+
+    // Population stddev of clean lap times; undefined for < 2 clean laps → 0 sentinel.
+    private float ConsistencyStddevMs()
+    {
+        if (_cleanLapCount < 2)
+        {
+            return 0f;
+        }
+
+        double mean = (double)_cleanLapSumMs / _cleanLapCount;
+        double variance = (_cleanLapSumSqMs / _cleanLapCount) - (mean * mean);
+        return variance > 0 ? (float)Math.Sqrt(variance) : 0f;
+    }
+
+    // Best clean lap minus the sum of best clean per-sector times; 0 sentinel without a clean PB.
+    // Clamped non-negative against partial sector coverage across laps.
+    private int TheoreticalBestGapMs()
+    {
+        if (_cleanLapCount == 0 || _runningBestMs == int.MaxValue || _bestSectorMs.Count == 0)
+        {
+            return 0;
+        }
+
+        int bestSectorsSum = _bestSectorMs.Values.Sum();
+        return Math.Max(0, _runningBestMs - bestSectorsSum);
+    }
+
+    private IEnumerable<int> SectorAvgDeltas() =>
+        _sectorDeltaAccum
+            .OrderBy(pair => pair.Key)
+            .Select(pair => (int)(pair.Value.Sum / pair.Value.Count));
 
     private void RebuildCornerTrackers() =>
         _cornerTrackers = _trackModel.Corners
