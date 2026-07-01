@@ -89,11 +89,34 @@ public sealed class ComputeService : BackgroundService
         var session = new ComputeSession(
             _domainFanOut, _trackModels, _lookup, _referenceStore, _laps, _lengths, _options, _logger, identity);
 
+        // Backstop: a per-frame compute fault must never bubble out of ExecuteAsync, because the host's
+        // default BackgroundServiceExceptionBehavior is StopHost — one bad frame would stop the recorder
+        // too. The known crash (a pit-return duplicate lap_number) is already prevented upstream
+        // (monotonic renumbering) and caught at the lap write; this catch only fires on something
+        // unforeseen. It is rate-limited (first at Error, then a single aggregate count) so a persistent
+        // fault at ~400 Hz cannot flood the log, and it may run on partially-mutated session state.
+        // OperationCanceledException from the enumerator is NOT caught here — it flows to the outer
+        // handler for graceful shutdown.
+        int acceptFailures = 0;
         try
         {
             await foreach (TelemetryFrame frame in _subscription.ReadAllAsync(stoppingToken).ConfigureAwait(false))
             {
-                session.Accept(frame);
+                try
+                {
+                    session.Accept(frame);
+                }
+                catch (Exception ex)
+                {
+                    if (acceptFailures == 0)
+                    {
+                        _logger.LogError(
+                            ex, "Compute frame failed for session {Session}; isolating and continuing",
+                            identity.SessionId);
+                    }
+
+                    acceptFailures++;
+                }
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -102,6 +125,13 @@ public sealed class ComputeService : BackgroundService
         }
         finally
         {
+            if (acceptFailures > 0)
+            {
+                _logger.LogWarning(
+                    "{Count} compute frame(s) failed and were skipped for session {Session}",
+                    acceptFailures, identity.SessionId);
+            }
+
             session.Complete();
             _logger.LogInformation("Compute stopped for session {Session}", identity.SessionId);
         }

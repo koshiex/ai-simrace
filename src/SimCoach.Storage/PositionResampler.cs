@@ -20,8 +20,12 @@ public static class PositionResampler
     // strict mode the reference candidate (ResampleSelf) uses. true: the backstep is clamped to the
     // running max so a crash/spin lap still resamples into laps.parquet for review; it is is_clean=0
     // and never becomes a reference. See ADR-0013.
+    // lapNumber is supplied explicitly (the session-local monotonic label from LapSegmenter) rather
+    // than read from lapFrames[0].LapNumber: the raw frame counter repeats across a pit return, so a
+    // frame-derived label would desync laps.parquet from the laps table's renumbered rows and break
+    // the ADR-0013 lap_number → laps.is_clean join.
     public static ResampledLap Resample(
-        IReadOnlyList<TelemetryFrame> lapFrames, float lapLengthM, bool clampNonMonotonic = false)
+        IReadOnlyList<TelemetryFrame> lapFrames, float lapLengthM, int lapNumber, bool clampNonMonotonic = false)
     {
         ArgumentNullException.ThrowIfNull(lapFrames);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(lapLengthM);
@@ -67,7 +71,7 @@ public static class PositionResampler
             grid.Fill(k, target, tMs[j], tMs[j + 1], lapFrames[j], lapFrames[j + 1], frac);
         }
 
-        return grid.ToResampledLap(lapFrames[0].LapNumber, gridLength);
+        return grid.ToResampledLap(lapNumber, gridLength);
     }
 
     private static float Lerp(float a, float b, float frac) => a + ((b - a) * frac);

@@ -297,20 +297,34 @@ internal sealed class ComputeSession
             _reference = self;
         }
 
-        _laps.Insert(new LapRow
+        // Persisting one lap must never take down the host. LapSegmenter renumbers laps to a
+        // session-local monotonic sequence so a pit-return duplicate can't violate
+        // UNIQUE(session_id, lap_number), but a bad row (or any future storage fault) is still caught
+        // here and logged rather than thrown out of the compute loop. Losing one lap row is acceptable;
+        // losing the session and the recording is not. Lap cadence means this can never log-flood.
+        try
         {
-            Id = Guid.NewGuid().ToString("N"),
-            SessionId = _identity.SessionId,
-            LapNumber = completed.LapNumber,
-            LapTimeMs = completed.LapTimeMs,
-            DeltaVsReferenceMs = deltaMs,
-            IsPb = isPb,
-            IsClean = clean,
-            S1Ms = SectorTime(completed, 0),
-            S2Ms = SectorTime(completed, 1),
-            S3Ms = SectorTime(completed, 2),
-            RawOffsetInMcap = null,
-        });
+            _laps.Insert(new LapRow
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                SessionId = _identity.SessionId,
+                LapNumber = completed.LapNumber,
+                LapTimeMs = completed.LapTimeMs,
+                DeltaVsReferenceMs = deltaMs,
+                IsPb = isPb,
+                IsClean = clean,
+                S1Ms = SectorTime(completed, 0),
+                S2Ms = SectorTime(completed, 1),
+                S3Ms = SectorTime(completed, 2),
+                RawOffsetInMcap = null,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex, "Lap row insert failed for session {Session} lap {Lap}; continuing",
+                _identity.SessionId, completed.LapNumber);
+        }
     }
 
     private ResampledLap? ResampleSelf(CompletedLap completed)
@@ -322,7 +336,7 @@ internal sealed class ComputeSession
 
         try
         {
-            return PositionResampler.Resample(completed.Frames, _lapLengthM);
+            return PositionResampler.Resample(completed.Frames, _lapLengthM, completed.LapNumber);
         }
         catch (ArgumentException ex)
         {

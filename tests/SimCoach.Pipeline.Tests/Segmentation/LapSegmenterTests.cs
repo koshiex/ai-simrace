@@ -128,6 +128,77 @@ public sealed class LapSegmenterTests
         segmenter.SuspiciousResetsIgnored.Should().Be(1);
     }
 
+    [Fact]
+    public void Pit_return_counter_reset_renumbers_laps_into_a_continuous_sequence()
+    {
+        // The sim's lap counter resets on a pit-return out-lap (…1, 2, [box] 1, 2…), re-issuing a number
+        // already completed this session — which would collide on UNIQUE(session_id, lap_number).
+        // The segmenter must relabel them into a continuous, strictly-increasing sequence (1, 2, 3, 4).
+        LapSegmenter segmenter = new();
+        TelemetryFrame[] frames =
+        [
+            Frame(lapNumber: 1, pos: 0.95f, ms: 0),
+            Frame(lapNumber: 1, pos: 0.02f, ms: 10),   // crossing #1 — start observed, discarded
+            Frame(lapNumber: 1, pos: 0.95f, ms: 20),
+            Frame(lapNumber: 2, pos: 0.02f, ms: 30),   // crossing #2 — closes intrinsic lap 1
+            Frame(lapNumber: 2, pos: 0.95f, ms: 40),
+            Frame(lapNumber: 1, pos: 0.02f, ms: 50),   // crossing #3 — closes intrinsic lap 2; PIT: counter resets to 1
+            Frame(lapNumber: 1, pos: 0.95f, ms: 60),
+            Frame(lapNumber: 2, pos: 0.02f, ms: 70),   // crossing #4 — closes the reused intrinsic lap 1
+            Frame(lapNumber: 2, pos: 0.95f, ms: 80),
+            Frame(lapNumber: 2, pos: 0.02f, ms: 90),   // crossing #5 — closes the reused intrinsic lap 2
+            Frame(lapNumber: 2, pos: 0.50f, ms: 100),  // trailing partial — discarded
+        ];
+
+        List<CompletedLap> completed = [.. frames.Select(segmenter.Accept).Where(l => l is not null).Select(l => l!)];
+
+        completed.Select(l => l.LapNumber).Should().Equal(1, 2, 3, 4);
+    }
+
+    [Fact]
+    public void Repeated_equal_counter_value_is_still_renumbered_forward()
+    {
+        // A counter that repeats the SAME value (not just decreases) would also collide; the rebase must
+        // trigger on `natural <= last` so a repeated-equal lap advances to the next number (3 → 4).
+        LapSegmenter segmenter = new();
+        TelemetryFrame[] frames =
+        [
+            Frame(lapNumber: 3, pos: 0.95f, ms: 0),
+            Frame(lapNumber: 3, pos: 0.02f, ms: 10),   // crossing #1 — start observed, discarded
+            Frame(lapNumber: 3, pos: 0.95f, ms: 20),
+            Frame(lapNumber: 3, pos: 0.02f, ms: 30),   // crossing #2 — closes intrinsic lap 3 → assigned 3
+            Frame(lapNumber: 3, pos: 0.95f, ms: 40),
+            Frame(lapNumber: 3, pos: 0.02f, ms: 50),   // crossing #3 — closes repeated intrinsic lap 3 → assigned 4
+            Frame(lapNumber: 3, pos: 0.50f, ms: 60),   // trailing partial — discarded
+        ];
+
+        List<CompletedLap> completed = [.. frames.Select(segmenter.Accept).Where(l => l is not null).Select(l => l!)];
+
+        completed.Select(l => l.LapNumber).Should().Equal(3, 4);
+    }
+
+    [Fact]
+    public void Strictly_increasing_counter_is_numbered_unchanged()
+    {
+        // Regression guard: on a normal session the sim counter never resets, so the relabel is a no-op
+        // and the assigned number equals the intrinsic counter exactly (here, base 5 → 5, 6).
+        LapSegmenter segmenter = new();
+        TelemetryFrame[] frames =
+        [
+            Frame(lapNumber: 5, pos: 0.95f, ms: 0),
+            Frame(lapNumber: 5, pos: 0.02f, ms: 10),   // crossing #1 — start observed, discarded
+            Frame(lapNumber: 5, pos: 0.95f, ms: 20),
+            Frame(lapNumber: 6, pos: 0.02f, ms: 30),   // crossing #2 — closes intrinsic lap 5 → assigned 5
+            Frame(lapNumber: 6, pos: 0.95f, ms: 40),
+            Frame(lapNumber: 7, pos: 0.02f, ms: 50),   // crossing #3 — closes intrinsic lap 6 → assigned 6
+            Frame(lapNumber: 7, pos: 0.50f, ms: 60),   // trailing partial — discarded
+        ];
+
+        List<CompletedLap> completed = [.. frames.Select(segmenter.Accept).Where(l => l is not null).Select(l => l!)];
+
+        completed.Select(l => l.LapNumber).Should().Equal(5, 6);
+    }
+
     private static IReadOnlyList<CompletedLap> Segment(IReadOnlyList<TelemetryFrame> frames)
     {
         LapSegmenter segmenter = new();
