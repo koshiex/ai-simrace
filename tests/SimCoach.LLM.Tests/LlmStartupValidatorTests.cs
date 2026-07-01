@@ -37,6 +37,18 @@ public sealed class LlmStartupValidatorTests
     }
 
     [Fact]
+    public void Missing_offline_pair_rate_fails_rate_coverage()
+    {
+        // The offline pair points at a provider with no rate for its model → caught (else Live=false drops rows).
+        LlmOptions options = Valid() with { OfflineModelId = "fake/missing" };
+
+        ValidateOptionsResult result = _validator.Validate(null, options);
+
+        result.Failed.Should().BeTrue();
+        result.Failures.Should().Contain(f => f.Contains("Offline pair", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Fallback_cycle_fails_acyclicity()
     {
         LlmOptions options = Valid() with
@@ -90,6 +102,8 @@ public sealed class LlmStartupValidatorTests
             {
                 ["openrouter-google"] = Provider("google/gemini-2.5-flash-lite"),
                 ["openrouter-anthropic"] = Provider("anthropic/claude-sonnet-4.6"),
+                // The default offline pair (fake/fake/local) must have a rate too (Live=false resolves to it).
+                ["fake"] = Provider("fake/local"),
             },
         };
 

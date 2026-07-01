@@ -10,6 +10,8 @@
     <ProjectReference Include="..\..\src\SimCoach.Reference\SimCoach.Reference.csproj" />
     <ProjectReference Include="..\..\src\SimCoach.Storage\SimCoach.Storage.csproj" />
     <ProjectReference Include="..\..\src\SimCoach.Pipeline\SimCoach.Pipeline.csproj" />
+    <!-- The Coach replay e2e drives CoachService + the LLM ring (fake provider) through the real pipeline. -->
+    <ProjectReference Include="..\..\src\SimCoach.Coach\SimCoach.Coach.csproj" />
     <ProjectReference Include="..\SimCoach.TestKit\SimCoach.TestKit.csproj" />
   </ItemGroup>
 
@@ -19,6 +21,10 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="FluentAssertions" />
     <PackageReference Include="coverlet.collector" />
+    <!-- Build the LLM ring via AddLlm into a mini-container (DI + in-memory config). -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Dapper" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
   </ItemGroup>
 
 </Project>

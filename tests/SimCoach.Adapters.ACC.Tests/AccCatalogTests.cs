@@ -44,6 +44,40 @@ public sealed class AccCatalogTests
     }
 
     [Theory]
+    [InlineData("ferrari_296_gt3", "gt3")]
+    [InlineData("porsche_991ii_gt3_cup", "gtc")]  // contains "gt3" but is a Cup car
+    [InlineData("chevrolet_camaro_gt4r", "gt4")]   // irregular suffix (no underscore)
+    [InlineData("jaguar_g3", "gt3")]               // encodes no class in the id
+    [InlineData("porsche_935", "gt2")]
+    [InlineData("bmw_m2_cs_racing", "tcx")]
+    [InlineData("audi_r8_lms_gt2", "gt2")]
+    public void Known_cars_resolve_their_competition_class(string carId, string expectedClass)
+    {
+        bool known = AccCarCatalog.TryGetCarClass(carId, out string carClass);
+
+        known.Should().BeTrue();
+        carClass.Should().Be(expectedClass);
+    }
+
+    [Fact]
+    public void Unknown_car_has_no_class()
+    {
+        bool known = AccCarCatalog.TryGetCarClass("spaceship_gt1", out string carClass);
+
+        known.Should().BeFalse();
+        carClass.Should().BeNull();
+    }
+
+    [Fact]
+    public void Class_map_covers_the_same_roster_as_the_steer_lock_map()
+    {
+        // Guards one-sided drift: a car added to the steer-lock table but not the class table would silently
+        // resolve to "unknown" class in the live ambient state.
+        AccCarCatalog.EveryKnownCarHasAClass().Should().BeTrue();
+        AccCarCatalog.KnownCarClassCount.Should().Be(AccCarCatalog.KnownCarCount);
+    }
+
+    [Theory]
     [InlineData("spa", 7004f)]
     [InlineData("nurburgring_24h", 25378f)] // Nordschleife 24h layout — the longest
     [InlineData("paul_ricard", 5770f)]      // shared memory says "Paul_Ricard"; keys are normalized

@@ -44,24 +44,28 @@ Per-PR status lives in [phase-3-detailed-plan.md](./phase-3-detailed-plan.md) (8
 UI contracts this phase must expose: [ui-client-requirements.md](../03-functional/ui-client-requirements.md).
 Scope deferred out of the MVP: [mvp-deferrals.md](./mvp-deferrals.md).
 
-Done: **PR-A** — provider-agnostic `ILlmClient` seam (Ring-0 contract + records, `LlmOptions`/route/
-provider config, internal `LlmRouter`/`FakeProvider`, `CoachCadence`; dead-until-wired, FakeProvider default).
+**Phase 3 complete** (PR-A–H merged; PR-H = the host-flip, wired + persisted + e2e). Per-PR status in
+[phase-3-detailed-plan.md](./phase-3-detailed-plan.md). Carried into later phases:
+[mvp-deferrals.md](./mvp-deferrals.md) → "Carried from Phase 3 into later phases (PR-H closeout)".
 
-- [ ] `GoldArtifactBuilder` per cadence
-- [ ] `ActionRegistry` with ~20 actions + RU templates
-- [ ] `PromptBuilder` system + few-shot
+- [x] `GoldArtifactBuilder` per cadence — PR-D
+- [x] `ActionRegistry` with ~20 actions + RU templates — PR-C
+- [x] `PromptBuilder` system + few-shot — PR-D
   - Inject a `corner_id → human name` map (from the vendored CrewChief landmark file) so the LLM
     says "Eau Rouge", not "turn 5". Naming lives here, NOT in compute — compute emits only the
     stable `corner_id` token. Fallback/derived tracks have no names → positional phrasing. See
     ADR-0010.
-- [ ] `OpenRouterClient` with HTTP/2 streaming + structured output
-- [ ] `CostMeter` to SQLite
-- [ ] `CircuitBreaker` per-provider
-- [ ] `RuleEngine` quiet zones
-- [ ] Fallback template path
-- [ ] Tests: mock OpenRouter, golden fixtures
+- [x] `OpenRouterClient` structured output — PR-F (buffered; HTTP/2 **streaming deferred to Phase 6**, `StreamAsync` declared)
+- [x] `CostMeter` to SQLite — PR-F (wired + session-attributed in PR-H)
+- [x] `CircuitBreaker` per-provider — PR-F
+- [x] `RuleEngine` quiet zones — PR-G (per-session + rolling-monthly budget gates wired in PR-H)
+- [x] Fallback template path — PR-G
+- [x] Tests: mock OpenRouter, golden fixtures, host-composition smoke + Coach replay e2e — PR-F/H
 
 ## Phase 4 — Voice (week 5)
+
+Carried from Phase 3 (PR-H): the **voice/TTS `ICoachTipSink`** — Coach already emits `CoachTip`s; P4 adds the
+speaking sink. See [mvp-deferrals.md](./mvp-deferrals.md) → "Carried from Phase 3 into later phases".
 
 - [ ] Bundle Silero v5 RU ONNX model in installer
 - [ ] `SileroOnnxSynthesizer` streaming PCM chunks
@@ -73,6 +77,10 @@ provider config, internal `LlmRouter`/`FakeProvider`, `CoachCadence`; dead-until
 
 ## Phase 5 — Overlay (week 6)
 
+Carried from Phase 3 (PR-H): the **overlay `ICoachTipSink`** (render tips on the transparent window) + the
+settings panel writing through `ISettingsStore` (the store + SQLite config-source re-bind already exist). See
+[mvp-deferrals.md](./mvp-deferrals.md) → "Carried from Phase 3 into later phases".
+
 - [ ] Avalonia transparent topmost window with click-through interop
 - [ ] Delta bar / sector bars / current tip / lap counter
 - [ ] Settings panel for layout + opacity + font size
@@ -81,6 +89,12 @@ provider config, internal `LlmRouter`/`FakeProvider`, `CoachCadence`; dead-until
 - [ ] Cap at 30 Hz refresh
 
 ## Phase 6 — Post-Session Debrief (week 7)
+
+Carried from Phase 3 (PR-H): **debrief *delivery* + `StreamAsync` consumption**; the **`IReferenceQueryRepository`
+/ `ISessionHistoryRepository` implementations** (declared with DTOs in PR-H); the **provisional best-of-session
+reference (richer FR-014)**, a `SimCoach.Reference` resample feature reassigned Post-MVP → Phase 6; and the
+tyre-degradation source (FR-060, below). See [mvp-deferrals.md](./mvp-deferrals.md) → "Carried from Phase 3
+into later phases".
 
 - [ ] Session-aggregate Gold artifact
 - [ ] DeepSeek V3.2 debrief prompt

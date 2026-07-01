@@ -11,28 +11,24 @@ public sealed class SettingsRepositoryTests : RepositoryTestBase
     public SettingsRepositoryTests() => _settings = new SettingsRepository(Factory);
 
     [Fact]
-    public void Set_then_get_round_trips()
+    public async Task Set_then_get_round_trips()
     {
-        // Act
-        _settings.Set("theme", "dark", Now);
+        await _settings.SetAsync("theme", "dark", Now, CancellationToken.None);
 
-        // Assert
-        _settings.Get("theme").Should().Be("dark");
+        (await _settings.GetAsync("theme", CancellationToken.None)).Should().Be("dark");
     }
 
     [Fact]
-    public void Set_twice_overwrites_value()
+    public async Task Set_twice_overwrites_value()
     {
-        // Arrange
-        _settings.Set("theme", "dark", Now);
+        await _settings.SetAsync("theme", "dark", Now, CancellationToken.None);
 
-        // Act
-        _settings.Set("theme", "light", Now.AddMinutes(5));
+        await _settings.SetAsync("theme", "light", Now.AddMinutes(5), CancellationToken.None);
 
-        // Assert
-        _settings.Get("theme").Should().Be("light");
+        (await _settings.GetAsync("theme", CancellationToken.None)).Should().Be("light");
     }
 
     [Fact]
-    public void Get_returns_null_when_absent() => _settings.Get("missing").Should().BeNull();
+    public async Task Get_returns_null_when_absent() =>
+        (await _settings.GetAsync("missing", CancellationToken.None)).Should().BeNull();
 }

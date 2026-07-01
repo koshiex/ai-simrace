@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using SimCoach.LLM;
 using SimCoach.LLM.Providers;
@@ -92,12 +93,15 @@ public sealed class LlmRouterChainTests
         }
     }
 
-    private static LlmOptions OptionsWith(params (string Key, RouteOptions Route)[] routes)
-        => new()
+    // Live=true so each route resolves its own provider (these tests exercise the decorator chain + fallback,
+    // not the offline redirect).
+    private static IOptionsMonitor<LlmOptions> OptionsWith(params (string Key, RouteOptions Route)[] routes)
+        => new StaticOptionsMonitor<LlmOptions>(new LlmOptions
         {
+            Live = true,
             Routes = routes.ToDictionary(r => r.Key, r => r.Route, StringComparer.Ordinal),
             Providers = new Dictionary<string, ProviderOptions>(),
-        };
+        });
 
     private static RouteOptions Route(string providerId, string modelId, string? fallback)
         => new()

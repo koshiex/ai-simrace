@@ -109,11 +109,15 @@ public sealed class SchemaTranslatorTests
         SchemaDirective directive = new AnthropicToolSchemaTranslator().Translate(DebriefSchema, "coach_debrief");
 
         directive.ResponseFormat.Should().BeNull();
+        // OpenAI-style function tool — the shape OpenRouter's compat endpoint accepts for anthropic/* (a native
+        // {name, input_schema} / tool_choice{type:tool} body is rejected with HTTP 400).
         JsonObject tool = directive.Tools!.Single()!.AsObject();
-        tool["name"]!.GetValue<string>().Should().Be("coach_debrief");
-        tool["input_schema"]!["properties"]!.AsObject().Should().ContainKey("top_losses");
-        directive.ToolChoice!["type"]!.GetValue<string>().Should().Be("tool");
-        directive.ToolChoice!["name"]!.GetValue<string>().Should().Be("coach_debrief");
+        tool["type"]!.GetValue<string>().Should().Be("function");
+        JsonObject fn = tool["function"]!.AsObject();
+        fn["name"]!.GetValue<string>().Should().Be("coach_debrief");
+        fn["parameters"]!["properties"]!.AsObject().Should().ContainKey("top_losses");
+        directive.ToolChoice!["type"]!.GetValue<string>().Should().Be("function");
+        directive.ToolChoice!["function"]!["name"]!.GetValue<string>().Should().Be("coach_debrief");
     }
 
     [Fact]

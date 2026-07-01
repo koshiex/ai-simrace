@@ -7,6 +7,7 @@ using SimCoach.Contracts.V1;
 using SimCoach.LLM;
 using SimCoach.Pipeline;
 using SimCoach.Reference;
+using SimCoach.Storage.Repositories;
 using Xunit;
 
 namespace SimCoach.Coach.Tests;
@@ -20,7 +21,7 @@ public sealed class CoachServiceTests
     {
         IReadOnlyList<CoachAction> subset = CornerSubset(hasReference: true);
         string chosen = subset[0].Id;
-        var harness = new Harness(llmLive: true, hasReference: true, Realtime(chosen, "Тормози позже немного."));
+        var harness = new Harness(hasReference: true, Realtime(chosen, "Тормози позже немного."));
 
         await RunToCompletionAsync(harness, DomainEvent.Corner(GoldTestData.Corner()));
 
@@ -42,7 +43,7 @@ public sealed class CoachServiceTests
     {
         IReadOnlyList<CoachAction> subset = CornerSubset(hasReference: true);
         var harness = new Harness(
-            llmLive: true, hasReference: true, RawSuccess("""{"action_id":"totally_invalid","phrase_ru":"x"}"""));
+            hasReference: true, RawSuccess("""{"action_id":"totally_invalid","phrase_ru":"x"}"""));
 
         await RunToCompletionAsync(harness, DomainEvent.Corner(GoldTestData.Corner()));
 
@@ -59,7 +60,6 @@ public sealed class CoachServiceTests
         IReadOnlyList<CoachAction> subset = LapSubset();
         string chosen = subset[0].Id;
         var harness = new Harness(
-            llmLive: true,
             hasReference: true,
             RawSuccess("""{"action_id":"totally_invalid","phrase_ru":"x"}"""),
             Realtime(chosen, "Береги резину этот круг."));
@@ -77,7 +77,7 @@ public sealed class CoachServiceTests
     [Fact]
     public async Task Timeout_falls_back_to_template_without_retry()
     {
-        var harness = new Harness(llmLive: true, hasReference: true, new LlmResult.Failure(new LlmFailure.Timeout("slow")));
+        var harness = new Harness(hasReference: true, new LlmResult.Failure(new LlmFailure.Timeout("slow")));
 
         await RunToCompletionAsync(harness, DomainEvent.Lap(GoldTestData.Lap()));
 
@@ -87,24 +87,29 @@ public sealed class CoachServiceTests
     }
 
     [Fact]
-    public async Task Debrief_uses_template_when_llm_is_disabled()
+    public async Task Debrief_llm_success_emits_an_llm_tip()
     {
-        var harness = new Harness(llmLive: false, hasReference: true);
+        const string debrief =
+            """{"top_losses":[{"corner":"Т1","ms":120,"why":"поздний тормоз"}],"top_priority":"Тормози раньше в Т1","setup_hint":"Снизь давление в шинах"}""";
+        var harness = new Harness(hasReference: true, RawSuccess(debrief));
 
         await RunToCompletionAsync(harness, DomainEvent.Session(GoldTestData.Session()));
 
         harness.Sink.Tips.Should().ContainSingle();
         CoachTip tip = harness.Sink.Tips[0];
         tip.Cadence.Should().Be(CoachCadence.Session);
-        tip.Source.Should().Be(TipSource.Template);
-        tip.PhraseRu.Should().NotBeNullOrWhiteSpace();
-        harness.Llm.Calls.Should().Be(0);
+        tip.Source.Should().Be(TipSource.Llm);
+        tip.PhraseRu.Should().Be("Тормози раньше в Т1");
+        // The structured debrief payload is preserved on the tip (persisted to the reserved 004 columns).
+        tip.TopLossesJson.Should().Contain("Т1");
+        tip.SetupHint.Should().Be("Снизь давление в шинах");
+        harness.Llm.Calls.Should().Be(1);
     }
 
     [Fact]
     public async Task Debrief_llm_failure_falls_back_to_deterministic_template()
     {
-        var harness = new Harness(llmLive: true, hasReference: true, new LlmResult.Failure(new LlmFailure.Timeout("slow")));
+        var harness = new Harness(hasReference: true, new LlmResult.Failure(new LlmFailure.Timeout("slow")));
 
         await RunToCompletionAsync(harness, DomainEvent.Session(GoldTestData.Session()));
 
@@ -116,7 +121,9 @@ public sealed class CoachServiceTests
     [Fact]
     public async Task No_pb_yet_is_set_when_reference_is_absent()
     {
-        var harness = new Harness(llmLive: false, hasReference: false);
+        // No reference → only reference-free actions survive; the LLM call fails so the tip is a template,
+        // still flagged no-PB-yet.
+        var harness = new Harness(hasReference: false, new LlmResult.Failure(new LlmFailure.Timeout("slow")));
 
         await RunToCompletionAsync(harness, DomainEvent.Corner(GoldTestData.Corner()));
 
@@ -128,7 +135,10 @@ public sealed class CoachServiceTests
     [Fact]
     public async Task Cancellation_drains_the_final_session_tip()
     {
-        var harness = new Harness(llmLive: false, hasReference: true);
+        var harness = new Harness(
+            hasReference: true,
+            new LlmResult.Failure(new LlmFailure.Timeout("slow")),   // corner → template
+            new LlmResult.Failure(new LlmFailure.Timeout("slow")));  // debrief → template
         harness.Session.Resolve("s1", _now);
 
         await harness.Service.StartAsync(CancellationToken.None); // loop parks at the empty channel
@@ -142,12 +152,50 @@ public sealed class CoachServiceTests
     }
 
     [Fact]
+    public async Task Debrief_in_the_buffered_tail_is_processed_uncancelled_when_stop_races_it()
+    {
+        // Regression: a corner + the final Session debrief are already buffered when stop fires. The channel's
+        // inner read drains both under one WaitToReadAsync pass, so the primary loop reads the debrief *after*
+        // cancellation. It must still run on an uncancelled token — else (the original bug) its llm_usage write
+        // is cancelled (TaskCanceledException) and the debrief tip is silently dropped.
+        var sink = new CancelHonoringSink();
+        var harness = new Harness(
+            hasReference: true,
+            sink,
+            new LlmResult.Failure(new LlmFailure.Timeout("slow")),   // corner → template
+            new LlmResult.Failure(new LlmFailure.Timeout("slow")));  // debrief → template
+        harness.Session.Resolve("s1", _now);
+        harness.Llm.OnCall = ordinal =>
+        {
+            if (ordinal == 1)
+            {
+                // Corner is in flight: request stop so the still-buffered Session is read under cancellation.
+                _ = harness.Service.StopAsync(CancellationToken.None);
+            }
+            else if (ordinal == 2)
+            {
+                // Debrief reached: let both loops terminate once it finishes.
+                harness.FanOut.Complete();
+            }
+        };
+
+        harness.FanOut.Publish(DomainEvent.Corner(GoldTestData.Corner()));
+        harness.FanOut.Publish(DomainEvent.Session(GoldTestData.Session()));
+        await harness.Service.StartAsync(CancellationToken.None);
+        await harness.Service.StopAsync(CancellationToken.None);
+
+        harness.Llm.Tokens.Should().HaveCount(2);
+        harness.Llm.Tokens[1].IsCancellationRequested.Should().BeFalse(); // debrief handled uncancelled
+        sink.Tips.Should().Contain(t => t.Cadence == CoachCadence.Session); // and the tip survived the emit
+    }
+
+    [Fact]
     public async Task Llm_choosing_a_non_top_action_renders_that_action()
     {
         IReadOnlyList<CoachAction> subset = LapSubset();
         subset.Count.Should().BeGreaterThan(1); // need a non-top choice to exist
         CoachAction nonTop = subset[^1];
-        var harness = new Harness(llmLive: true, hasReference: true, Realtime(nonTop.Id, "Чуть аккуратнее в этом круге."));
+        var harness = new Harness(hasReference: true, Realtime(nonTop.Id, "Чуть аккуратнее в этом круге."));
 
         await RunToCompletionAsync(harness, DomainEvent.Lap(GoldTestData.Lap()));
 
@@ -161,20 +209,26 @@ public sealed class CoachServiceTests
     [Fact]
     public async Task Second_corner_within_cooldown_is_suppressed()
     {
-        var harness = new Harness(llmLive: false, hasReference: true);
+        // First corner speaks (LLM fails → template), arming the cooldown; the second is suppressed (no LLM call).
+        var harness = new Harness(hasReference: true, new LlmResult.Failure(new LlmFailure.Timeout("slow")));
 
         // Two corners in one run land microseconds apart — well inside the 4 s corner cooldown.
         await RunToCompletionAsync(
             harness, DomainEvent.Corner(GoldTestData.Corner()), DomainEvent.Corner(GoldTestData.Corner()));
 
         harness.Sink.Tips.Should().ContainSingle();
+        harness.Llm.Calls.Should().Be(1);
     }
 
     [Fact]
     public async Task A_faulting_sink_is_isolated_and_the_drain_continues()
     {
         var sink = new ThrowOnceSink();
-        var harness = new Harness(llmLive: false, hasReference: true, sink);
+        var harness = new Harness(
+            hasReference: true,
+            sink,
+            new LlmResult.Failure(new LlmFailure.Timeout("slow")),   // corner → template (emit throws)
+            new LlmResult.Failure(new LlmFailure.Timeout("slow")));  // debrief → template (emit ok)
 
         // The corner tip's emit throws (isolated + logged); the session debrief must still be emitted.
         Func<Task> run = () => RunToCompletionAsync(
@@ -182,6 +236,19 @@ public sealed class CoachServiceTests
 
         await run.Should().NotThrowAsync();
         sink.Tips.Should().Contain(t => t.Cadence == CoachCadence.Session);
+    }
+
+    [Fact]
+    public async Task Over_budget_emits_a_template_budget_tip_without_calling_the_llm()
+    {
+        // Session cost already over the 0.50 default cap → the gate downgrades before any LLM call.
+        var harness = new Harness(hasReference: true, sink: null, cost: new StubCost(sessionCostUsd: 1.00m));
+
+        await RunToCompletionAsync(harness, DomainEvent.Corner(GoldTestData.Corner()));
+
+        harness.Sink.Tips.Should().ContainSingle();
+        harness.Sink.Tips[0].Source.Should().Be(TipSource.TemplateBudget);
+        harness.Llm.Calls.Should().Be(0);
     }
 
     private static async Task RunToCompletionAsync(Harness harness, params DomainEvent[] events)
@@ -228,15 +295,21 @@ public sealed class CoachServiceTests
 
     private sealed class Harness
     {
-        public Harness(bool llmLive, bool hasReference, params LlmResult[] responses)
-            : this(llmLive, hasReference, null, responses)
+        public Harness(bool hasReference, params LlmResult[] responses)
+            : this(hasReference, null, null, responses)
         {
         }
 
-        public Harness(bool llmLive, bool hasReference, ICoachTipSink? sink, params LlmResult[] responses)
+        public Harness(bool hasReference, ICoachTipSink? sink, params LlmResult[] responses)
+            : this(hasReference, sink, null, responses)
+        {
+        }
+
+        public Harness(bool hasReference, ICoachTipSink? sink, ICostQueryRepository? cost, params LlmResult[] responses)
         {
             Llm = new ScriptedLlm(responses);
             ICoachTipSink effectiveSink = sink ?? Sink;
+            Cost = cost ?? new StubCost();
             var coachOptions = new CoachOptions();
             var names = CornerNameMap.Load();
             var ambient = new StubAmbient(
@@ -252,7 +325,7 @@ public sealed class CoachServiceTests
                 ambient,
                 names,
                 coachOptions,
-                new CoachServiceOptions { LlmLive = llmLive },
+                Cost,
                 Session,
                 TimeProvider.System,
                 NullLogger<CoachService>.Instance);
@@ -264,9 +337,27 @@ public sealed class CoachServiceTests
 
         public ScriptedLlm Llm { get; }
 
+        public ICostQueryRepository Cost { get; }
+
         public SessionContext Session { get; } = new();
 
         public CoachService Service { get; }
+    }
+
+    // Zero cost by default (budget never trips); a non-zero session cost exercises the budget downgrade.
+    private sealed class StubCost(decimal sessionCostUsd = 0m) : ICostQueryRepository
+    {
+        public Task<CostSummary> GetSessionCostAsync(string sessionId, CancellationToken ct) =>
+            Task.FromResult(new CostSummary(0, (double)sessionCostUsd, 0, 0, 0));
+
+        public Task<RollingCost> GetRolling30DayCostAsync(CancellationToken ct) =>
+            Task.FromResult(new RollingCost(0, 0d));
+
+        public Task<IReadOnlyList<CostByDay>> GetCostByDayAsync(int days, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<CostByDay>>([]);
+
+        public Task<IReadOnlyList<CostByRoute>> GetCostByRouteAsync(DateTimeOffset fromUtc, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<CostByRoute>>([]);
     }
 
     private sealed class CapturingSink : ICoachTipSink
@@ -275,6 +366,20 @@ public sealed class CoachServiceTests
 
         public Task EmitTipAsync(CoachTip tip, CancellationToken ct)
         {
+            Tips.Add(tip);
+            return Task.CompletedTask;
+        }
+    }
+
+    // Mirrors the live SQLite sink: a cancelled token fails the emit (Dapper throws TaskCanceledException), so
+    // a tip processed under a cancelled token is lost. Used to prove the debrief survives a racing stop.
+    private sealed class CancelHonoringSink : ICoachTipSink
+    {
+        public List<CoachTip> Tips { get; } = [];
+
+        public Task EmitTipAsync(CoachTip tip, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
             Tips.Add(tip);
             return Task.CompletedTask;
         }
@@ -324,17 +429,30 @@ public sealed class CoachServiceTests
 
         public List<LlmRequest> Requests { get; } = [];
 
+        // The token each call was invoked with, in order — lets a test assert the shutdown drain never runs a
+        // handler (esp. the debrief) under an already-cancelled token.
+        public List<CancellationToken> Tokens { get; } = [];
+
+        // Fired per call after the token is captured; the arg is the 1-based call ordinal. A test uses it to
+        // race stop against a still-buffered tail.
+        public Action<int>? OnCall { get; set; }
+
         public int Calls => Requests.Count;
 
-        public Task<LlmResult> CompleteAsync(LlmRequest request, CancellationToken ct)
+        public async Task<LlmResult> CompleteAsync(LlmRequest request, CancellationToken ct)
         {
+            // Yield so StartAsync has returned (BackgroundService._executeTask assigned) before OnCall can
+            // request stop; otherwise the whole loop runs inside StartAsync and StopAsync no-ops.
+            await Task.Yield();
             Requests.Add(request);
+            Tokens.Add(ct);
+            OnCall?.Invoke(Requests.Count);
             if (_index >= _responses.Length)
             {
                 throw new InvalidOperationException("Unexpected extra LLM call.");
             }
 
-            return Task.FromResult(_responses[_index++]);
+            return _responses[_index++];
         }
 
         public IAsyncEnumerable<LlmDelta> StreamAsync(LlmRequest request, CancellationToken ct) =>

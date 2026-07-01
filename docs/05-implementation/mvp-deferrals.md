@@ -19,14 +19,43 @@ Convert relative dates to absolute; this file is the source of truth for "поч
 | **Pit advisor** ("пора на пит") | Later strategy phase | `CoachCadence.Strategy` seam + a strategy quiet-zone declared in Phase 3; fuel/tyre/wear/pit-state fields plumbed frame→Gold. **Template-first, LLM-optional.** | MVP focus, not cost (cost is negligible). Needs its own cadence + timing + gate. | phase-3-detailed-plan.md |
 | → pit-advisor **timing** (design note, not deferred) | — | Deliver on the **main straight / pit-window approach with lead time** (~1 lap before optimal), event-driven on fuel/tyre/mandatory-pit-window thresholds, gated so it never collides with a corner tip. **Not** on corner exit. | — | — |
 | **Race-craft actions** (`defend_inside_at_corner`, `lift_coast_for_fuel`, `manage_brake_temp`, `gap_to_p2_holding`) | Phase 9+ | — | Requires opponents/strategy context beyond MVP. | action-registry.md |
-| **Provisional best-of-session reference** (richer FR-014) | Post-MVP | Phase 3 ships the `NoPbYet` label + ≥2 reference-free corner actions so a first-ever session still coaches. | A provisional reference needs more compute; the no-PB path is covered minimally for MVP. | FR-014; phase-3-detailed-plan.md |
+| **Provisional best-of-session reference** (richer FR-014) | **Phase 6 (Reference-layer)** | Phase 3 ships the `NoPbYet` label + ≥2 reference-free corner actions so a first-ever session still coaches. | It's a `SimCoach.Reference` feature (resample the in-progress fastest clean lap onto the 1 m grid as a provisional reference), not Coach; needs more compute. The no-PB path covers MVP. | FR-014; phase-3-detailed-plan.md |
 | **LLM token streaming** | Phase 6 (debrief delivery) | The `StreamAsync` seam is declared in the provider-agnostic contract in Phase 3 (throws `NotSupported` until P6). | Real-time tips are buffered (whole JSON needed before acting); streaming only helps long-form debrief. | phase-3-detailed-plan.md (reasoning/streaming decision) |
 | **Prompt caching enablement** | Post-MVP tuning | Plumbing exists (`cached_input_tokens`, migration `002`); not enabled in Phase 3. | Cost is already under budget; enabling later only lowers it. | phase-3-detailed-plan.md |
 | **Premium real-time models** (`claude-haiku-4.5` for corner/sector/lap) | Opt-in, post-MVP default | Model id is config per cadence; swap is config-only. (Debrief default **is** premium — Sonnet 4.6 — because it's one cheap call/session.) | Cheap Gemini/DeepSeek is good enough real-time; premium is a paid-tier toggle. | ADR-0004; phase-3-detailed-plan.md (M1) |
 | **Gemini 3.x real-time** (3.5 Flash / 3 Flash) | Watch / not adopted | Default stays `gemini-2.5-flash-lite` (thinking fully off, TTFT ~0.26s, cheapest). **`gemini-3.1-flash-lite` is a named eval-gated UPGRADE** (~$0.014/session), not a hard deferral. | 3.x cannot fully disable thinking (`minimal` still reasons) → non-deterministic latency vs the hard 2000 ms buffered corner budget; task is reasoning-insensitive so the quality gain is marginal. 3.5 Flash overkill for an ≤8-word phrase. | phase-3-detailed-plan.md (m1) |
-| **Apex-window / on-a-straight / user quiet-zone gates** (if `normalizedCarPosition` not added) | Conditional | Either add `normalizedCarPosition` (+ corner-phase) to the gate snapshot in Phase 3, or these three gates ship deferred (and must not silently no-op). | Needs track-position in the gate snapshot; decided in the rework. | phase-3-detailed-plan.md (M7) |
 | **Yandex SpeechKit TTS** | Phase 4, behind a feature flag | — | Silero v5 RU ONNX is the in-proc default; Yandex is a fallback. | ADR-0005; implementation-plan.md (Phase 4) |
 | **iRacing / LMU / F1 25 adapters** | Phases 8–10 | Sim-agnostic `TelemetryFrame` + provider seams already isolate this. | MVP is ACC-only. | implementation-plan.md |
+
+## Carried from Phase 3 into later phases (PR-H closeout)
+
+Phase 3 closed at PR-H with no follow-up PR in the phase, so anything not finished lands in a real **future
+phase** (not as Phase-3 dirt). Consolidated here so the next phase's decomposition can't lose them:
+
+- **Voice / TTS sink** → **Phase 4.** Coach emits `CoachTip`s to `ICoachTipSink`; the speaking sink is P4.
+- **Avalonia overlay sink** → **Phase 5.** A second `ICoachTipSink` rendering tips on the transparent overlay.
+- **Debrief *delivery* + `StreamAsync` consumption** → **Phase 6.** The debrief headline tip **and** its
+  structured loss attribution (`top_losses_json`, `setup_hint`) are persisted now (migration `004`); the
+  post-session window that renders them, the remaining `004` columns (`debrief_prose`, `checklist_json`,
+  `per_sector_deltas_json`, `balance_verdict`, `audio_artifact_ref`), and token streaming are P6
+  (`StreamAsync` throws until then).
+- **`IReferenceQueryRepository` / `ISessionHistoryRepository` implementations** → **P6/P7.** Declared (with
+  DTOs) in PR-H; the SQLite impls + the history/reference UI come with their screens.
+- **Provisional best-of-session reference (richer FR-014)** → **Phase 6 (Reference-layer)** — see the table above.
+- **ACC tyre-degradation source (FR-060)** → **Phase 6.** The thermal/wear summary plumbing exists; the
+  degradation-rate source is P6.
+- **Live (no-restart) monthly-budget re-bind** → **Phase 5 (settings UI).** The cap is honored from the stored
+  `budget.monthly_usd` row at **startup** in P3; `ISettingsStore.SetMonthlyBudgetUsdAsync` is the P5 write side,
+  and the live re-bind (binding `RuleEngineOptions` via `IOptionsMonitor`) lands with that UI. The `Llm:Live` /
+  model / reasoning overrides already re-bind live via `IOptionsMonitor<LlmOptions>`.
+- **`RecentContact` quiet-zone gate** → **future phase (needs a contract field).** The gate exists in the
+  RuleEngine but `LiveCoachAmbientState` publishes `Contact: false` permanently: `TelemetryFrame` exposes only
+  tyre-patch geometry, no collision/impact channel. Wiring it needs a new telemetry-contract field.
+- **Strategy / pit advisor + engine-map/ABS/TC advice actions** → later race-craft phase — see the table above
+  (the data is already plumbed frame→Gold; only the actions + cadence timing are deferred).
+- **Live OpenRouter call** → **not a phase, a flag.** `Llm:Live=false` ships as default; flip it (settable via
+  the settings store, no recompile) after the RU-eval + schema-acceptance pass. Until then every route resolves
+  to the network-free fake provider, so the host is fully exercised offline.
 
 ## UI surfaces (roadmapped, not "cut" — listed so scope is explicit)
 

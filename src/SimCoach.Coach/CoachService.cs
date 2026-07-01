@@ -8,6 +8,7 @@ using SimCoach.Contracts.V1;
 using SimCoach.LLM;
 using SimCoach.Pipeline;
 using SimCoach.Reference;
+using SimCoach.Storage.Repositories;
 
 namespace SimCoach.Coach;
 
@@ -17,8 +18,10 @@ namespace SimCoach.Coach;
 /// per domain event, runs GoldArtifactBuilder → valid-subset → <see cref="RuleEngine"/> → (LLM | template)
 /// → cadence-aware validation/retry → <see cref="ICoachTipSink"/>. On shutdown it drains the buffered tail
 /// to channel completion (not on the cancelled token) so the final <c>SessionEvent</c> debrief survives stop.
-/// The live LLM call is gated by <see cref="CoachServiceOptions.LlmLive"/> (off through Phase 3 → FakeProvider
-/// / template only). Not host-registered in PR-G — exercised by its own tests until the composition lands.
+/// It always calls <c>ILlmClient</c>; the fake-vs-real provider choice lives in the router behind the single
+/// <c>Llm:Live</c> flag (off by default → FakeProvider, so replay/CI need no API key). The per-session and
+/// rolling-monthly budget caps downgrade to a template (<see cref="TipSource.TemplateBudget"/>) before any LLM
+/// call; the budget is read from <c>ICostQueryRepository</c>, cached and refreshed after each handled event.
 /// </summary>
 public sealed class CoachService : BackgroundService
 {
@@ -34,13 +37,14 @@ public sealed class CoachService : BackgroundService
     private readonly ICoachAmbientState _ambient;
     private readonly CornerNameMap _names;
     private readonly CoachOptions _coachOptions;
-    private readonly CoachServiceOptions _serviceOptions;
+    private readonly ICostQueryRepository _cost;
     private readonly SessionContext _sessionContext;
     private readonly TimeProvider _clock;
     private readonly ILogger<CoachService> _logger;
     private readonly string _retryReminder;
 
     private int _currentLap = 1;
+    private BudgetState _budget = BudgetState.Zero;
 
     public CoachService(
         DomainEventFanOut fanOut,
@@ -53,7 +57,7 @@ public sealed class CoachService : BackgroundService
         ICoachAmbientState ambient,
         CornerNameMap names,
         CoachOptions coachOptions,
-        CoachServiceOptions serviceOptions,
+        ICostQueryRepository cost,
         SessionContext sessionContext,
         TimeProvider clock,
         ILogger<CoachService> logger)
@@ -68,7 +72,7 @@ public sealed class CoachService : BackgroundService
         ArgumentNullException.ThrowIfNull(ambient);
         ArgumentNullException.ThrowIfNull(names);
         ArgumentNullException.ThrowIfNull(coachOptions);
-        ArgumentNullException.ThrowIfNull(serviceOptions);
+        ArgumentNullException.ThrowIfNull(cost);
         ArgumentNullException.ThrowIfNull(sessionContext);
         ArgumentNullException.ThrowIfNull(clock);
         ArgumentNullException.ThrowIfNull(logger);
@@ -83,7 +87,7 @@ public sealed class CoachService : BackgroundService
         _ambient = ambient;
         _names = names;
         _coachOptions = coachOptions;
-        _serviceOptions = serviceOptions;
+        _cost = cost;
         _sessionContext = sessionContext;
         _clock = clock;
         _logger = logger;
@@ -113,16 +117,26 @@ public sealed class CoachService : BackgroundService
 
         try
         {
+            // Seed the budget: session spend starts at 0, but the rolling 30-day total carries prior sessions.
+            // Inside the try so a shutdown landing during the seed is handled like any other cancel (drain tail).
+            await RefreshBudgetAsync(identity.SessionId, stoppingToken).ConfigureAwait(false);
+
+            // The read observes stoppingToken (so we stop *waiting* for new events on shutdown), but every
+            // event is PROCESSED on CancellationToken.None. This is load-bearing: a corner and the final
+            // SessionEvent debrief can already be buffered when stop fires, and the channel's inner read
+            // drains the buffered tail without re-checking the token — so a token-bound handler would run the
+            // debrief under an already-cancelled token, cancelling its llm_usage write and dropping the tip.
+            // ComputeService completes the fan-out even under cancel, so both this loop and the drain below
+            // terminate and neither can hang.
             await foreach (DomainEvent ev in _subscription.ReadAllAsync(stoppingToken).ConfigureAwait(false))
             {
-                await HandleSafelyAsync(ev, identity.SessionId, stoppingToken).ConfigureAwait(false);
+                await HandleSafelyAsync(ev, identity.SessionId, CancellationToken.None).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
-            // Graceful shutdown: drain the buffered tail (incl. the final SessionEvent debrief) to channel
-            // completion on CancellationToken.None — ComputeService completes the fan-out even under cancel,
-            // so this cannot hang, and a token-bound read would have dropped exactly that tail.
+            // Graceful shutdown: the token-bound read above threw once the buffer emptied; drain whatever the
+            // fan-out still delivers to completion, again on CancellationToken.None.
             await foreach (DomainEvent ev in _subscription.ReadAllAsync(CancellationToken.None).ConfigureAwait(false))
             {
                 await HandleSafelyAsync(ev, identity.SessionId, CancellationToken.None).ConfigureAwait(false);
@@ -135,17 +149,15 @@ public sealed class CoachService : BackgroundService
     }
 
     // Coaching is best-effort: one malformed event must not fault the BackgroundService (which, under the
-    // default StopHost behavior, would tear down the whole host) or abort the shutdown drain. A cancellation
-    // tied to the live token is rethrown so ExecuteAsync still transitions into the drain.
+    // default StopHost behavior, would tear down the whole host) or abort the shutdown drain. Events are
+    // always processed on CancellationToken.None (see ExecuteAsync) — the shutdown transition is driven by the
+    // token-bound *read*, not by a handler throwing — so any fault here is a genuine handler error, never a
+    // cancellation: log it and move on.
     private async Task HandleSafelyAsync(DomainEvent domainEvent, string sessionId, CancellationToken ct)
     {
         try
         {
             await HandleAsync(domainEvent, sessionId, ct).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
         }
         catch (Exception ex)
         {
@@ -190,7 +202,7 @@ public sealed class CoachService : BackgroundService
     {
         IGoldView view = GoldView.For(gold);
         IReadOnlyList<CoachAction> subset = _registry.ValidSubset(view, _coachOptions);
-        RuleDecision decision = _ruleEngine.ShouldSpeak(subset, cadence, _ambient.LatestGate(), sessionCostUsd: 0m);
+        RuleDecision decision = _ruleEngine.ShouldSpeak(subset, cadence, _ambient.LatestGate(), _budget);
 
         if (decision.Outcome == RuleOutcome.Silent)
         {
@@ -202,12 +214,24 @@ public sealed class CoachService : BackgroundService
         RenderedAction topRendered = PhraseRenderer.Render(top, view);
         bool noPb = !gold.Session.HasReference;
 
-        CoachTip tip = decision.Outcome == RuleOutcome.TemplateOnly || !_serviceOptions.LlmLive
-            ? ComposeRealtimeTip(cadence, gold, top, topRendered, topRendered.PhraseRu, TipSource.Template, null, noPb, sessionId)
+        // TemplateOnly means the budget cap was hit (the only TemplateOnly outcome) — no LLM call, and the row
+        // is tagged TemplateBudget so it is distinguishable from an ordinary quality fallback.
+        bool overBudget = decision.Outcome == RuleOutcome.TemplateOnly;
+        CoachTip tip = overBudget
+            ? ComposeRealtimeTip(cadence, gold, top, topRendered, topRendered.PhraseRu, TipSource.TemplateBudget, null, noPb, sessionId)
             : await CompleteRealtimeAsync(cadence, gold, view, subset, top, topRendered, noPb, sessionId, ct).ConfigureAwait(false);
 
         await _sink.EmitTipAsync(tip, ct).ConfigureAwait(false);
         _ruleEngine.NoteTip(cadence, _clock.GetUtcNow());
+
+        if (overBudget)
+        {
+            _logger.LogInformation("Coach budget cap hit for {Cadence} — emitted a template tip", cadence);
+        }
+        else
+        {
+            await RefreshBudgetAsync(sessionId, ct).ConfigureAwait(false);
+        }
     }
 
     private async Task<CoachTip> CompleteRealtimeAsync<TEvent>(
@@ -288,14 +312,30 @@ public sealed class CoachService : BackgroundService
 
     private async Task ProcessDebriefAsync(GoldArtifact<GoldSessionPayload> gold, string sessionId, CancellationToken ct)
     {
-        // The debrief always yields a real artifact (never an empty one): live LLM behind the flag, otherwise the
-        // deterministic template. No subset/quiet-zone gating — it is the end-of-session summary.
-        CoachTip tip = _serviceOptions.LlmLive
-            ? await CompleteDebriefAsync(gold, sessionId, ct).ConfigureAwait(false)
-            : ComposeDebriefTip(gold, DebriefTemplate.BuildJson(gold, _coachOptions.MaxDebriefLosses), TipSource.Template, null, sessionId);
+        // The debrief always yields a real artifact (never an empty one): the LLM (offline → FakeProvider via
+        // the router's Llm:Live switch), with a deterministic template fallback. No subset/quiet-zone gating —
+        // it is the end-of-session summary.
+        CoachTip tip = await CompleteDebriefAsync(gold, sessionId, ct).ConfigureAwait(false);
 
         await _sink.EmitTipAsync(tip, ct).ConfigureAwait(false);
+        await RefreshBudgetAsync(sessionId, ct).ConfigureAwait(false);
         // The debrief is intentionally un-gated (terminal once-per-session summary), so it is not cooldown-tracked.
+    }
+
+    // Reads the current session + rolling-30-day spend into the cached budget the next ShouldSpeak checks.
+    // Called after each LLM-bearing event (sparse), never per frame. A read failure keeps the prior snapshot.
+    private async Task RefreshBudgetAsync(string sessionId, CancellationToken ct)
+    {
+        try
+        {
+            CostSummary session = await _cost.GetSessionCostAsync(sessionId, ct).ConfigureAwait(false);
+            RollingCost rolling = await _cost.GetRolling30DayCostAsync(ct).ConfigureAwait(false);
+            _budget = new BudgetState((decimal)session.CostUsd, (decimal)rolling.CostUsd);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Coach budget refresh failed; keeping the previous budget snapshot");
+        }
     }
 
     private async Task<CoachTip> CompleteDebriefAsync(GoldArtifact<GoldSessionPayload> gold, string sessionId, CancellationToken ct)
@@ -325,6 +365,7 @@ public sealed class CoachService : BackgroundService
         GoldArtifact<GoldSessionPayload> gold, string debriefJson, TipSource source, string? providerModelId, string sessionId)
     {
         var priority = new CoachPriority(CoachPhase.Exit, int.MaxValue); // debrief is the least-urgent band
+        (string topPriority, string? topLossesJson, string? setupHint) = ParseDebrief(debriefJson);
         return new CoachTip(
             SessionId: sessionId,
             Cadence: CoachCadence.Session,
@@ -335,14 +376,16 @@ public sealed class CoachService : BackgroundService
             RenderedParam: null,
             Priority: priority,
             Severity: _coachOptions.SeverityFor(priority),
-            PhraseRu: ExtractTopPriority(debriefJson),
+            PhraseRu: topPriority,
             CornerName: null,
             CornerNameShort: null,
             CornerNameSpokenRu: null,
             Source: source,
             NoPbYet: !gold.Session.HasReference,
             ProviderModelId: providerModelId,
-            GeneratedAtUtc: _clock.GetUtcNow());
+            GeneratedAtUtc: _clock.GetUtcNow(),
+            TopLossesJson: topLossesJson,
+            SetupHint: setupHint);
     }
 
     private bool TryAcceptRealtime(
@@ -397,11 +440,23 @@ public sealed class CoachService : BackgroundService
         _ => _coachOptions.InCornerMaxWords,
     };
 
-    private static string ExtractTopPriority(string json)
+    // Reads the debrief payload once: top_priority -> the spoken headline; top_losses (verbatim JSON array) and
+    // setup_hint -> the structured columns persisted for the P6 debrief window. Both the validated LLM debrief
+    // and the deterministic template fallback (DebriefTemplate.BuildJson) emit all three, so every persisted
+    // debrief row is self-renderable regardless of source (coach_tips does not keep the Gold artifact).
+    private static (string TopPriority, string? TopLossesJson, string? SetupHint) ParseDebrief(string json)
     {
         using var doc = JsonDocument.Parse(json);
-        return doc.RootElement.TryGetProperty("top_priority", out JsonElement el) && el.ValueKind == JsonValueKind.String
-            ? el.GetString() ?? string.Empty
+        JsonElement root = doc.RootElement;
+        string topPriority = root.TryGetProperty("top_priority", out JsonElement priority) && priority.ValueKind == JsonValueKind.String
+            ? priority.GetString() ?? string.Empty
             : string.Empty;
+        string? topLosses = root.TryGetProperty("top_losses", out JsonElement losses) && losses.ValueKind == JsonValueKind.Array
+            ? losses.GetRawText()
+            : null;
+        string? setupHint = root.TryGetProperty("setup_hint", out JsonElement hint) && hint.ValueKind == JsonValueKind.String
+            ? hint.GetString()
+            : null;
+        return (topPriority, topLosses, setupHint);
     }
 }

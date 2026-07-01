@@ -13,15 +13,16 @@ using SimCoach.Storage.Repositories;
 namespace SimCoach.App;
 
 /// <summary>
-/// Wires the telemetry pipeline: source (live ACC shared memory or MCAP replay, selected by
-/// <c>Telemetry:Source</c>) → <see cref="IngestService"/> → <see cref="TelemetryFanOut"/> →
-/// {<see cref="SessionManager"/>, <see cref="McapRecorderService"/>}. Session identity is owned by
-/// the producer and shared via <see cref="SessionContext"/> (ADR-0011).
+/// Wires the full host: the telemetry pipeline (source → <see cref="IngestService"/> → <see cref="TelemetryFanOut"/>
+/// → {<see cref="SessionManager"/>, <see cref="McapRecorderService"/>, <see cref="ComputeService"/>}) plus the
+/// Coach + LLM stack (<c>AddCoachStack</c>, slotted into the hosted-service order). Session identity is owned by
+/// the producer and shared via <see cref="SessionContext"/> (ADR-0011). Public so App.Tests can build the same host.
 /// </summary>
-internal static class TelemetryComposition
+public static class TelemetryComposition
 {
     public static HostApplicationBuilder AddTelemetryPipeline(this HostApplicationBuilder builder)
     {
+        ArgumentNullException.ThrowIfNull(builder);
         builder.Services.AddSingleton(TimeProvider.System);
 
         IngestOptions ingestOptions =
@@ -52,6 +53,12 @@ internal static class TelemetryComposition
         // frames of a session always reach them; IngestService (the producer) is registered last.
         builder.Services.AddHostedService<SessionManager>();
         builder.Services.AddHostedService<McapRecorderService>();
+
+        // Coach + LLM stack: its two hosted services (CoachService, then LiveCoachAmbientState) slot HERE so
+        // they stop after ComputeService completes the domain-event fan-out — CoachService drains it to
+        // completion to emit the final debrief — and before SessionManager finalizes the session row.
+        builder.AddCoachStack();
+
         builder.Services.AddHostedService<ComputeService>();
         builder.Services.AddHostedService<IngestService>();
         return builder;
@@ -61,13 +68,14 @@ internal static class TelemetryComposition
     {
         builder.Services.AddSingleton(provider =>
         {
-            DatabaseOptions databaseOptions = BuildDatabaseOptions(
+            DatabaseOptions databaseOptions = ResolveDatabaseOptions(
                 builder.Configuration, provider.GetRequiredService<ILogger<DatabaseMigrator>>());
             databaseOptions.EnsureValid();
             return databaseOptions;
         });
         builder.Services.AddSingleton<SqliteConnectionFactory>();
-        builder.Services.AddSingleton<DatabaseMigrator>();
+        // No DatabaseMigrator registration: Program migrates via a manually-constructed instance before
+        // Build() (the settings config source must read a migrated table at config-build time).
         builder.Services.AddSingleton<SessionRepository>();
         builder.Services.AddSingleton<LapRepository>();
         builder.Services.AddSingleton<ReferenceRepository>();
@@ -160,8 +168,15 @@ internal static class TelemetryComposition
             provider.GetRequiredService<ILogger<AccSharedMemoryReader>>()));
     }
 
-    private static DatabaseOptions BuildDatabaseOptions(IConfiguration configuration, ILogger logger)
+    /// <summary>
+    /// The single resolver for <c>Database:DbPath</c> (with <c>%VAR%</c> expansion, falling back to the default
+    /// on an unexpandable token). Public so <c>Program</c> can build the same <see cref="DatabaseOptions"/> to
+    /// migrate + open the settings configuration source <em>before</em> <c>Build()</c>, while the DI factory uses
+    /// it again with a real logger — so every path resolves to one database.
+    /// </summary>
+    public static DatabaseOptions ResolveDatabaseOptions(IConfiguration configuration, ILogger? logger = null)
     {
+        ArgumentNullException.ThrowIfNull(configuration);
         DatabaseOptions defaults = new();
         string configured = configuration["Database:DbPath"] ?? string.Empty;
         string expanded = Environment.ExpandEnvironmentVariables(configured);
@@ -169,13 +184,26 @@ internal static class TelemetryComposition
         bool useDefault = string.IsNullOrWhiteSpace(expanded) || expanded.Contains('%');
         if (useDefault && !string.IsNullOrWhiteSpace(configured))
         {
-            logger.LogWarning(
+            logger?.LogWarning(
                 "Database:DbPath '{Configured}' contains an unexpandable token; using {Fallback}",
                 configured,
                 defaults.DbPath);
         }
 
         return useDefault ? defaults : new DatabaseOptions { DbPath = expanded };
+    }
+
+    /// <summary>
+    /// Inserts a configuration source directly BELOW the last-added source. Program adds the <c>SIMCOACH_</c>
+    /// env source last, so this slots the SQLite settings source between the JSON files and env: a stored row
+    /// overrides the JSON, but a deliberate <c>SIMCOACH_</c> override still wins. Public so the precedence is
+    /// testable without invoking <c>Program.Main</c>.
+    /// </summary>
+    public static void InsertSourceBelowLast(IConfigurationBuilder builder, IConfigurationSource source)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(source);
+        builder.Sources.Insert(builder.Sources.Count - 1, source);
     }
 
     private static RecordingOptions BuildRecordingOptions(IConfiguration configuration, ILogger logger)

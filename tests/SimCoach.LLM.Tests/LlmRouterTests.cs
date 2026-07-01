@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.Options;
 using SimCoach.LLM;
 using SimCoach.LLM.Providers;
 using Xunit;
@@ -20,11 +21,15 @@ public sealed class LlmRouterTests
         Stream = false,
     };
 
-    private static LlmOptions OptionsWith(RouteOptions route) => new()
-    {
-        Routes = new Dictionary<string, RouteOptions> { ["corner"] = route },
-        Providers = new Dictionary<string, ProviderOptions>(),
-    };
+    // Live=true so the router resolves the route's own provider/model (these tests exercise live routing; the
+    // Live=false offline redirect is covered separately).
+    private static IOptionsMonitor<LlmOptions> OptionsWith(RouteOptions route) =>
+        new StaticOptionsMonitor<LlmOptions>(new LlmOptions
+        {
+            Live = true,
+            Routes = new Dictionary<string, RouteOptions> { ["corner"] = route },
+            Providers = new Dictionary<string, ProviderOptions>(),
+        });
 
     [Fact]
     public async Task Resolves_route_and_delegates_to_provider()
@@ -78,6 +83,30 @@ public sealed class LlmRouterTests
         Func<Task> act = () => router.CompleteAsync(_cornerRequest, CancellationToken.None);
 
         await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task Offline_resolves_to_the_offline_pair_keeping_route_knobs()
+    {
+        // Live=false → provider+model swap to the offline pair, but the route's timeout/tokens/reasoning stay.
+        var options = new StaticOptionsMonitor<LlmOptions>(new LlmOptions
+        {
+            Live = false,
+            OfflineProviderId = "fake",
+            OfflineModelId = "fake/local",
+            Routes = new Dictionary<string, RouteOptions> { ["corner"] = CornerRoute() },
+            Providers = new Dictionary<string, ProviderOptions>(),
+        });
+        var capture = new CaptureProvider();
+        var router = new LlmRouter(options, new Dictionary<string, ILlmProvider> { ["fake"] = capture });
+
+        await router.CompleteAsync(_cornerRequest, CancellationToken.None);
+
+        ResolvedRoute route = capture.LastRoute!.Value;
+        route.ProviderId.Should().Be("fake");
+        route.ModelId.Should().Be("fake/local");
+        route.MaxOutputTokens.Should().Be(96);             // route knob preserved
+        route.Timeout.Should().Be(TimeSpan.FromSeconds(2)); // route knob preserved
     }
 
     [Fact]

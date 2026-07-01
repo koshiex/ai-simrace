@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using SimCoach.LLM.Providers;
 
 namespace SimCoach.LLM;
@@ -9,14 +10,23 @@ namespace SimCoach.LLM;
 /// when the chosen provider's breaker is open and the route declares a <see cref="RouteOptions.FallbackRouteKey"/>,
 /// downgrades to the fallback route once. A missing route or unregistered provider is a misconfiguration and
 /// throws synchronously (ValidateOnStart makes it unreachable in a composed host).
+/// <para>
+/// Options are read from <see cref="IOptionsMonitor{T}.CurrentValue"/> per resolve so a settings write
+/// (model swap, <c>Llm:Live</c> flip, see <c>SqliteSettingsConfigurationSource</c>) takes effect on the next
+/// call without a restart. While <see cref="LlmOptions.Live"/> is false every route resolves to the configured
+/// offline provider/model pair, keeping the route's timeout/tokens/reasoning — so replay/CI produce real
+/// (zero-cost) <c>llm_usage</c> rows with no API key.
+/// </para>
 /// </summary>
 internal sealed class LlmRouter : ILlmClient
 {
-    private readonly LlmOptions _options;
+    private readonly IOptionsMonitor<LlmOptions> _options;
     private readonly IReadOnlyDictionary<string, ILlmProvider> _providers;
 
-    public LlmRouter(LlmOptions options, IReadOnlyDictionary<string, ILlmProvider> providers)
+    public LlmRouter(IOptionsMonitor<LlmOptions> options, IReadOnlyDictionary<string, ILlmProvider> providers)
     {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(providers);
         _options = options;
         _providers = providers;
     }
@@ -40,7 +50,7 @@ internal sealed class LlmRouter : ILlmClient
         LlmResult result = await provider.CompleteAsync(request, route, ct);
 
         if (result is LlmResult.Failure { Error: LlmFailure.CircuitOpen }
-            && _options.Routes.TryGetValue(request.RouteKey, out RouteOptions? primary)
+            && _options.CurrentValue.Routes.TryGetValue(request.RouteKey, out RouteOptions? primary)
             && primary.FallbackRouteKey is string fallbackKey)
         {
             ResolvedRoute fallbackRoute = Resolve(fallbackKey);
@@ -53,14 +63,21 @@ internal sealed class LlmRouter : ILlmClient
 
     private ResolvedRoute Resolve(string routeKey)
     {
-        if (!_options.Routes.TryGetValue(routeKey, out RouteOptions? route))
+        LlmOptions options = _options.CurrentValue;
+        if (!options.Routes.TryGetValue(routeKey, out RouteOptions? route))
         {
             throw new InvalidOperationException($"No route configured for RouteKey '{routeKey}'.");
         }
 
+        // Offline: keep the route's call knobs but swap provider+model to the network-free pair. Live: the
+        // route's own provider/model. The fake-vs-real decision lives here, not in any caller.
+        (string providerId, string modelId) = options.Live
+            ? (route.ProviderId, route.ModelId)
+            : (options.OfflineProviderId, options.OfflineModelId);
+
         return new ResolvedRoute(
-            route.ProviderId,
-            route.ModelId,
+            providerId,
+            modelId,
             route.MaxOutputTokens,
             route.Timeout,
             route.Reasoning,

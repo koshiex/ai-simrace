@@ -23,6 +23,8 @@ public sealed class LlmStartupValidator : IValidateOptions<LlmOptions>
     }
 
     // #1 — every route's (providerId, modelId) has a configured rate (input + output + cached are all on ModelRate).
+    // The offline (OfflineProviderId, OfflineModelId) pair is checked too: while Live=false every route resolves
+    // to it, so a missing offline rate would otherwise be a runtime rate-miss the cost meter swallows (dropped row).
     private static void ValidateRateCoverage(LlmOptions options, List<string> failures)
     {
         foreach ((string key, RouteOptions route) in options.Routes)
@@ -38,6 +40,18 @@ public sealed class LlmStartupValidator : IValidateOptions<LlmOptions>
                 failures.Add(
                     $"Route '{key}' has no rate for model '{route.ModelId}' under provider '{route.ProviderId}'.");
             }
+        }
+
+        if (!options.Providers.TryGetValue(options.OfflineProviderId, out ProviderOptions? offline))
+        {
+            failures.Add(
+                $"Offline provider '{options.OfflineProviderId}' is not configured (needed while Llm:Live is false).");
+        }
+        else if (!offline.Rates.ContainsKey(options.OfflineModelId))
+        {
+            failures.Add(
+                $"Offline pair has no rate for model '{options.OfflineModelId}' under provider "
+                + $"'{options.OfflineProviderId}' (needed while Llm:Live is false).");
         }
     }
 

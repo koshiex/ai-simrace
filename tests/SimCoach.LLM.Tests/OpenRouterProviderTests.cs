@@ -20,7 +20,7 @@ public sealed class OpenRouterProviderTests
 
     private static readonly HashSet<string> _allowedBodyKeys = new(StringComparer.Ordinal)
     {
-        "model", "messages", "max_tokens", "stream", "reasoning", "response_format", "tools", "tool_choice",
+        "model", "messages", "max_tokens", "stream", "reasoning", "usage", "response_format", "tools", "tool_choice",
     };
 
     [Fact]
@@ -65,6 +65,7 @@ public sealed class OpenRouterProviderTests
         body["max_tokens"]!.GetValue<int>().Should().Be(96);
         body["stream"]!.GetValue<bool>().Should().BeFalse();
         body["reasoning"]!["enabled"]!.GetValue<bool>().Should().BeFalse();
+        body["usage"]!["include"]!.GetValue<bool>().Should().BeTrue(); // guarantees usage accounting on every 200
         JsonArray messages = body["messages"]!.AsArray();
         messages[0]!["role"]!.GetValue<string>().Should().Be("system");
         messages[1]!["role"]!.GetValue<string>().Should().Be("user");
@@ -103,7 +104,11 @@ public sealed class OpenRouterProviderTests
 
         JsonObject body = JsonNode.Parse(handler.LastRequestBody!)!.AsObject();
         body.Should().NotContainKey("response_format");
-        body["tool_choice"]!["name"]!.GetValue<string>().Should().Be("coach_debrief");
+        // OpenAI-style forced function tool (OpenRouter compat endpoint rejects Anthropic-native tool shapes).
+        body["tool_choice"]!["type"]!.GetValue<string>().Should().Be("function");
+        body["tool_choice"]!["function"]!["name"]!.GetValue<string>().Should().Be("coach_debrief");
+        body["tools"]![0]!["type"]!.GetValue<string>().Should().Be("function");
+        body["tools"]![0]!["function"]!["name"]!.GetValue<string>().Should().Be("coach_debrief");
         LlmResult.Success success = result.Should().BeOfType<LlmResult.Success>().Subject;
         success.Json.Should().Contain("top_priority");
     }

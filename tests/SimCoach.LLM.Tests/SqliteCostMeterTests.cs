@@ -20,6 +20,17 @@ public sealed class SqliteCostMeterTests : IDisposable
     {
         _factory = new SqliteConnectionFactory(new DatabaseOptions { DbPath = _dbPath });
         new DatabaseMigrator(_factory).Migrate();
+        // llm_usage.session_id is an FK to sessions(id); the cost meter now stamps it, so seed the session.
+        new SessionRepository(_factory).Insert(new SessionRow
+        {
+            Id = "sess-1",
+            StartedAtUtc = new DateTimeOffset(2026, 6, 28, 12, 0, 0, TimeSpan.Zero),
+            Sim = "acc",
+            TrackId = "spa",
+            CarId = "ferrari_296_gt3",
+            WeatherBucket = "dry-warm",
+            McapPath = "/recordings/sess-1",
+        });
     }
 
     [Fact]
@@ -38,6 +49,7 @@ public sealed class SqliteCostMeterTests : IDisposable
             CancellationToken.None);
 
         using SqliteConnection connection = _factory.Create();
+        connection.QuerySingle<string>("SELECT session_id FROM llm_usage").Should().Be("sess-1");
         connection.QuerySingle<string>("SELECT provider FROM llm_usage").Should().Be("openrouter-google");
         connection.QuerySingle<int>("SELECT cached_input_tokens FROM llm_usage").Should().Be(200);
         connection.QuerySingle<string>("SELECT cadence FROM llm_usage").Should().Be("corner");
@@ -100,7 +112,13 @@ public sealed class SqliteCostMeterTests : IDisposable
             },
         });
 
-        return new SqliteCostMeter(new LlmUsageRepository(_factory), options, TimeProvider.System);
+        return new SqliteCostMeter(
+            new LlmUsageRepository(_factory), options, new StubSessionIds("sess-1"), TimeProvider.System);
+    }
+
+    private sealed class StubSessionIds(string? id) : ISessionIdProvider
+    {
+        public string? CurrentSessionId { get; } = id;
     }
 
     public void Dispose()

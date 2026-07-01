@@ -91,6 +91,11 @@ internal sealed class OpenRouterProvider : ILlmProvider
             ["max_tokens"] = route.MaxOutputTokens,
             ["stream"] = false,
             ["reasoning"] = BuildReasoning(route.Reasoning),
+            // Force OpenRouter to always return a usage block (some upstreams omit it on a 200, which then
+            // priced the call at zero tokens). include:true guarantees prompt/completion counts so the rate
+            // card meters every success accurately; it also surfaces OpenRouter's own usage.cost (unused here —
+            // the rate card stays authoritative — but available for reconciliation).
+            ["usage"] = new JsonObject { ["include"] = true },
         };
 
         if (directive.ResponseFormat is not null)

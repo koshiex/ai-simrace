@@ -9,6 +9,10 @@ namespace SimCoach.Coach;
 /// <see cref="Priority"/> is the total-order sort key; <see cref="Severity"/> is its deterministic display
 /// band. The full / short / spoken corner-name forms serve the debrief/log, the slim overlay, and the voice
 /// path respectively. <see cref="NoPbYet"/> flags a tip generated with no reference (FR-014).
+/// <see cref="TopLossesJson"/> / <see cref="SetupHint"/> carry the structured debrief payload (Session cadence
+/// only; null on real-time tips) so the loss attribution is persisted now — emitted on both the validated LLM
+/// debrief and the deterministic template fallback, so every debrief row is self-renderable. The post-session
+/// window that renders it (plus the prose/checklist/balance/audio columns) lands in P6.
 /// </summary>
 public sealed record CoachTip(
     string SessionId,
@@ -27,4 +31,6 @@ public sealed record CoachTip(
     TipSource Source,
     bool NoPbYet,
     string? ProviderModelId,
-    DateTimeOffset GeneratedAtUtc);
+    DateTimeOffset GeneratedAtUtc,
+    string? TopLossesJson = null,
+    string? SetupHint = null);
