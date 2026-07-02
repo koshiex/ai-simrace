@@ -375,6 +375,62 @@ public sealed class ComputeSessionTests
             "the pre-overwrite lap-deficit budget still admits the loss — the capture is taken before MaybeUpdate");
     }
 
+    [Fact]
+    public async Task Sector_avg_delta_is_the_median_of_coachable_flying_laps_independent_of_best_sector()
+    {
+        // M25 end-to-end pin (SectorAvgDeltas → SectorDeltaAggregator.Median, ComputeSession :500). A slow-
+        // S1 reference is seeded so every flying lap posts a NEGATIVE (gain) S1 delta; the flying laps are
+        // slower overall (S3 stretch) so none overwrites that reference. The session S1 aggregate must be
+        // the MEDIAN of the emitted coachable per-crossing deltas (a negative gain), the vector must stay a
+        // 3-element positional per-sector list (ascending sector index), and the best-sector channel
+        // (TheoreticalBestGapMs, driven by _bestSectorMs = min of absolute sector times) must stay a
+        // non-negative gap — a separate computation from the signed median loss channel. Guards are made
+        // permissive so this isolates the median estimator, not the M3 plausibility filter (tested above).
+        const float s1End = 1f / 3f;   // sector 0 spans [0, 1/3)
+        const float s3Start = 2f / 3f; // sector 2 spans [2/3, 1)
+
+        // Seed a reference that is deliberately slow through S1 on every bounded lap, so the first clean
+        // lap seeds this slow-S1 reference and no later seed lap (all identical) overwrites it.
+        IReadOnlyList<TelemetryFrame> seed = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 5);
+        foreach (int lap in new[] { 2, 3, 4 })
+        {
+            seed = StretchBand(seed, lapNumber: lap, from: 0f, to: s1End, extraMs: 6000);
+        }
+
+        using var harness = new ComputeTestHarness();
+        harness.SeedReference(seed, "20260601-110000-000");
+
+        // Flying laps: slower overall (S3 stretch keeps them behind the seeded reference so it survives),
+        // with a distinct, still-negative S1 delta per lap (S1 stretched less than the reference's 6000 ms).
+        IReadOnlyList<TelemetryFrame> eval = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 5);
+        foreach (int lap in new[] { 2, 3, 4 })
+        {
+            eval = StretchBand(eval, lapNumber: lap, from: s3Start, to: 1f, extraMs: 8000);
+        }
+
+        eval = StretchBand(eval, lapNumber: 3, from: 0f, to: s1End, extraMs: 900);
+        eval = StretchBand(eval, lapNumber: 4, from: 0f, to: s1End, extraMs: 1800);
+
+        IReadOnlyList<DomainEvent> events = await harness.RunAsync(eval, SessionId, Permissive());
+
+        List<int> s1Deltas =
+            [.. events.OfType<SectorEvent>(DomainEventKind.Sector).Where(s => s.SectorIdx == 0).Select(s => s.DeltaMs)];
+        s1Deltas.Should().HaveCountGreaterThanOrEqualTo(2, "at least two coachable flying laps cross S1");
+        s1Deltas.Should().OnlyContain(d => d < 0, "every flying lap gains time in S1 against the slow reference");
+
+        SessionEvent session = events.OfType<SessionEvent>(DomainEventKind.Session).Single();
+        session.SectorAvgDeltaMs.Should().HaveCount(3, "the aggregate stays a positional per-sector vector");
+
+        int expectedMedian = SectorDeltaAggregator.Median(s1Deltas);
+        session.SectorAvgDeltaMs[0].Should().Be(
+            expectedMedian, "the S1 session aggregate is the median of the coachable crossing deltas");
+        session.SectorAvgDeltaMs[0].Should().BeNegative("the median of the S1 gains is itself a gain, not a mean-poisoned loss");
+
+        // Best-sector channel is independent of the signed median loss channel: it is a non-negative gap
+        // built from _bestSectorMs (min of absolute clean-lap sector times), never the median delta.
+        session.TheoreticalBestGapMs.Should().BeGreaterThanOrEqualTo(0);
+    }
+
     // All-guards-off options: every plausibility ceiling/budget is effectively infinite, so the same
     // injected artefacts flow through untouched. Used only to prove (by differential) that the on-by-default
     // guard is what neutralises them — never as a production configuration.

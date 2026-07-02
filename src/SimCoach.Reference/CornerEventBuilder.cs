@@ -35,7 +35,13 @@ internal static class CornerEventBuilder
         // M2: every self-derived kernel and the self duration are measured over the geometric
         // [StartPosition, EndPosition] sub-window — the same span the reference grid slice covers —
         // never over the raw tracker buffer (which M16 later extends upstream of the start).
-        IReadOnlyList<TelemetryFrame> selfSpan = SelectSpan(selfFrames, corner.StartPosition, corner.EndPosition);
+        List<TelemetryFrame> selfInSpan = FramesInSpan(selfFrames, corner.StartPosition, corner.EndPosition);
+        // A degenerate window (no buffered frame landed inside [Start,End]) falls back to the raw buffer
+        // ONLY for the always-populated balance/off-track/speed kernels, which need a non-empty input.
+        // selfDurationMs/deltaMs must NEVER ride that widened buffer — the self-side degenerate guard
+        // below takes a self-only return (deltaMs=0) instead of measuring the upstream travel time.
+        bool selfSpanDegenerate = selfInSpan.Count == 0;
+        IReadOnlyList<TelemetryFrame> selfSpan = selfSpanDegenerate ? selfFrames : selfInSpan;
 
         BrakeProfile brakeSelf = BrakeKernels.Analyze(selfSpan);
         CornerMetrics speedSelf = ThrottleSpeedKernels.Analyze(selfSpan);
@@ -69,9 +75,11 @@ internal static class CornerEventBuilder
         int k0 = GridMetrics.Index(corner.StartPosition, gridLength);
         int k1 = GridMetrics.Index(corner.EndPosition, gridLength);
         IReadOnlyList<TelemetryFrame> refFrames = GridMetrics.SliceToFrames(refLap, k0, k1);
-        if (refFrames.Count == 0 || k1 <= k0)
+        if (refFrames.Count == 0 || k1 <= k0 || selfSpanDegenerate)
         {
-            // Degenerate mapping — fall back to self-only.
+            // Degenerate mapping OR an empty self in-span window — fall back to self-only (deltaMs=0). This
+            // is the mirror of the reference degenerate branch: measuring the self duration over the
+            // M16-widened buffer would inflate delta by the upstream travel time (an M2 span mismatch).
             string selfReason = offTrack ? "off_track" : string.Empty;
             ev.Reason = selfReason;
             return (ev, new CornerContribution(
@@ -91,8 +99,11 @@ internal static class CornerEventBuilder
         // symmetric extension cannot bias the diff. Everything else above stays on the [Start,End]
         // sub-window (M2's contract); the widened slices are local to BrakeOnPosition and go nowhere else.
         float upstreamNormalized = brakeWindowUpstreamM / lapLengthM;
-        IReadOnlyList<TelemetryFrame> selfBrakeScan =
-            SelectSpan(selfFrames, corner.StartPosition - upstreamNormalized, corner.EndPosition);
+        // Brake-onset scan reads the upstream-widened slice; here the raw-buffer fallback is safe because
+        // this feeds only BrakeOnPosition, never the [Start,End]-bound delta/min-speed kernels.
+        List<TelemetryFrame> selfBrakeInSpan =
+            FramesInSpan(selfFrames, corner.StartPosition - upstreamNormalized, corner.EndPosition);
+        IReadOnlyList<TelemetryFrame> selfBrakeScan = selfBrakeInSpan.Count > 0 ? selfBrakeInSpan : selfFrames;
         int upstreamGrid = (int)MathF.Round(upstreamNormalized * gridLength);
         int k0Brake = Math.Max(0, k0 - upstreamGrid);
         IReadOnlyList<TelemetryFrame> refBrakeScan = GridMetrics.SliceToFrames(refLap, k0Brake, k1);
@@ -128,12 +139,14 @@ internal static class CornerEventBuilder
     }
 
     /// <summary>
-    /// The single lap-crossing sub-window whose frames fall inside <c>[start, end]</c>. Frames the
+    /// The frames of the single lap-crossing window that fall inside <c>[start, end]</c>. Frames the
     /// tracker buffered upstream of the start (M16) or the one frame past the end are excluded so every
-    /// self kernel sees exactly the reference span. Falls back to the raw buffer only if the filter is
-    /// empty (a degenerate window), which keeps the kernels' non-empty precondition.
+    /// self kernel can see exactly the reference span. Returns the raw filter result (possibly empty);
+    /// the caller decides whether a degenerate empty window falls back to the raw buffer (kernels needing
+    /// a non-empty input) or takes a self-only return (the duration/delta path, which must never ride the
+    /// widened buffer).
     /// </summary>
-    private static IReadOnlyList<TelemetryFrame> SelectSpan(
+    private static List<TelemetryFrame> FramesInSpan(
         IReadOnlyList<TelemetryFrame> frames, float start, float end)
     {
         List<TelemetryFrame> span = [];
@@ -146,7 +159,7 @@ internal static class CornerEventBuilder
             }
         }
 
-        return span.Count > 0 ? span : frames;
+        return span;
     }
 
     private static bool OffTrack(IReadOnlyList<TelemetryFrame> frames)

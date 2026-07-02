@@ -24,6 +24,8 @@ if (!Directory.Exists(sessionDir) && !File.Exists(sessionDir))
     return 2;
 }
 
+const float MetresPerSecondToKmh = 3.6f;
+
 static string F(float v) => v.ToString("R", CultureInfo.InvariantCulture);
 
 using var writer = new StreamWriter(outputPath, append: false, Encoding.ASCII);
@@ -48,7 +50,7 @@ foreach (TelemetryFrame frame in McapSegmentEnumerator.Read(sessionDir))
     writer.Write(',');
     writer.Write(F(frame.NormalizedCarPosition));
     writer.Write(',');
-    writer.Write(F(frame.SpeedMps * 3.6f));
+    writer.Write(F(frame.SpeedMps * MetresPerSecondToKmh));
     writer.Write(',');
     writer.Write(F(frame.BrakePct));
     writer.Write(',');

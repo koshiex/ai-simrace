@@ -120,6 +120,29 @@ public sealed class CornerEventBuilderTests
         widened.MinSpeedDiffKmh.Should().BeNegative("self's in-span apex is slower than the reference apex");
     }
 
+    [Fact]
+    public void An_empty_in_span_self_window_yields_zero_delta_not_an_upstream_inflated_value()
+    {
+        // M2/M16 interaction guard: if no buffered self frame lands inside [Start,End] (a degenerate
+        // window — here only upstream pre-roll frames survive), the self duration must NOT be measured
+        // over the M16-widened buffer, which would inflate delta by the upstream travel time. The
+        // self-side degenerate guard mirrors the reference branch and takes a self-only return (deltaMs=0).
+        List<TelemetryFrame> upstreamOnly = [];
+        for (int k = 0; k < 10; k++)
+        {
+            // 0.10..0.19 — all strictly upstream of the 0.30 corner start; none falls inside [Start,End].
+            float pos = 0.10f + (0.01f * k);
+            upstreamOnly.Add(Frame(pos, speed: 50f, brake: 0f, throttle: 0f, tMs: 50 * k, worldX: pos * LapLengthM));
+        }
+
+        (CornerEvent ev, CornerContribution contribution) =
+            CornerEventBuilder.Build(_corner, upstreamOnly, ReferenceGrid(), LapLengthM, GridLength, BrakeWindowUpstreamM);
+
+        ev.DeltaMs.Should().Be(
+            0, "no self frame lands inside [Start,End] → self-only fallback, never an upstream-inflated delta");
+        contribution.DeltaMs.Should().Be(0, "the degenerate window contributes nothing to top-losses");
+    }
+
     // Self corner [0.30..0.50]: brakes earlier (0.31), slower apex (30 m/s), later throttle (0.48),
     // and longer in time (15 ms/frame vs the reference's 10 ms grid) — every diff sign is exercised.
     private static IReadOnlyList<TelemetryFrame> SlowerSelfCorner()
