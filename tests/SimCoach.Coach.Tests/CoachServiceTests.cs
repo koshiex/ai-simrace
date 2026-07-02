@@ -281,6 +281,44 @@ public sealed class CoachServiceTests
         TipOutcomeLine(harness).Should().Contain("rejection=Timeout");
     }
 
+    [Fact]
+    public async Task Weak_catch_all_none_abstains_without_emitting_or_arming_cooldown()
+    {
+        // Precondition: a corner where only the weak corner_catch_all fired (large delta, no specific trigger).
+        IReadOnlyList<CoachAction> subset = CatchAllSubset();
+        subset[0].Id.Should().Be("corner_catch_all");
+        var harness = new Harness(
+            hasReference: true,
+            Realtime("none", "В повороте отклонение около 200."),   // first corner → abstain
+            Realtime("none", "В повороте отклонение около 200."));  // second corner → abstain again
+
+        // Two catch-all corners microseconds apart. If abstain armed the 4 s corner cooldown, the second would be
+        // suppressed pre-LLM (1 call). It is not armed, so both reach the LLM (2 calls) and neither emits a tip.
+        await RunToCompletionAsync(
+            harness, DomainEvent.Corner(CatchAllCorner()), DomainEvent.Corner(CatchAllCorner()));
+
+        harness.Sink.Tips.Should().BeEmpty();
+        harness.Llm.Calls.Should().Be(2);
+        harness.Logger.Snapshot().Should().Contain(e =>
+            e.Level == LogLevel.Information && e.Message.StartsWith("Coach abstain", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Leaked_none_when_abstain_not_offered_falls_back_to_template_not_silence()
+    {
+        // A specific action leads (abstain not offered), yet the model returns "none" → not in subset → template.
+        IReadOnlyList<CoachAction> subset = CornerSubset(hasReference: true);
+        subset[0].Id.Should().NotBe("corner_catch_all");
+        var harness = new Harness(hasReference: true, Realtime("none", "тишина"));
+
+        await RunToCompletionAsync(harness, DomainEvent.Corner(GoldTestData.Corner()));
+
+        harness.Sink.Tips.Should().ContainSingle();
+        harness.Sink.Tips[0].Source.Should().Be(TipSource.Template);
+        harness.Sink.Tips[0].ActionId.Should().Be(subset[0].Id);
+        harness.Llm.Calls.Should().Be(1); // corner never retries; a leaked none is a plain rejection
+    }
+
     private static string TipOutcomeLine(Harness harness) =>
         harness.Logger.Snapshot()
             .Single(e => e.Level == LogLevel.Information && e.Message.StartsWith("Coach tip", StringComparison.Ordinal))
@@ -307,6 +345,24 @@ public sealed class CoachServiceTests
             builder.BuildCorner(GoldTestData.Corner(), new GoldSessionContext("spa", "gt3", "dry-cool", 1, hasReference));
         IGoldView view = GoldView.For(gold);
         return ActionRegistry.Load().ValidSubset(view, options);
+    }
+
+    // A corner where the large delta trips only corner_catch_all (no specific-action clause holds) → the weak
+    // catch-all leads the subset and abstain is offered.
+    private static CornerEvent CatchAllCorner()
+    {
+        CornerEvent ev = GoldTestData.CornerNeutral();
+        ev.DeltaMs = 200;
+        return ev;
+    }
+
+    private static IReadOnlyList<CoachAction> CatchAllSubset()
+    {
+        var options = new CoachOptions();
+        var builder = new GoldArtifactBuilder(CornerNameMap.Load(), options);
+        GoldArtifact<GoldCornerEvent> gold =
+            builder.BuildCorner(CatchAllCorner(), new GoldSessionContext("spa", "gt3", "dry-cool", 1, true));
+        return ActionRegistry.Load().ValidSubset(GoldView.For(gold), options);
     }
 
     private static IReadOnlyList<CoachAction> LapSubset()

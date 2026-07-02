@@ -11,11 +11,18 @@ namespace SimCoach.Coach;
 /// </summary>
 public static class TipValidator
 {
-    /// <summary>Validates a real-time tip (corner/sector/lap): <c>action_id ∈ subset</c>, non-empty phrase ≤ words.</summary>
-    public static bool TryValidateRealtime(
+    /// <summary>
+    /// Validates a real-time tip (corner/sector/lap): <c>action_id ∈ subset</c>, non-empty phrase ≤ words.
+    /// Three-way (M7): a sanctioned <see cref="OutputSchema.AbstainActionId"/> — <c>action_id="none"</c> when
+    /// <paramref name="allowAbstain"/> is set — reports <see cref="RealtimeTipVerdict.Abstain"/> (silence) and
+    /// the phrase is ignored even when non-empty. When abstain was not offered, <c>"none"</c> is not in the
+    /// subset and falls through to an ordinary <see cref="RealtimeTipVerdict.Reject"/> (→ template).
+    /// </summary>
+    public static RealtimeTipVerdict TryValidateRealtime(
         string json,
         IReadOnlyCollection<string> subsetIds,
         int maxWords,
+        bool allowAbstain,
         out string actionId,
         out string phraseRu,
         out string failure)
@@ -28,7 +35,7 @@ public static class TipValidator
 
         if (!TryParse(json, out JsonDocument? doc, out failure))
         {
-            return false;
+            return RealtimeTipVerdict.Reject;
         }
 
         using (doc)
@@ -39,30 +46,35 @@ public static class TipValidator
                 || !TryGetString(root, "phrase_ru", out string phrase))
             {
                 failure = "missing action_id/phrase_ru";
-                return false;
+                return RealtimeTipVerdict.Reject;
+            }
+
+            if (allowAbstain && string.Equals(id, OutputSchema.AbstainActionId, StringComparison.Ordinal))
+            {
+                return RealtimeTipVerdict.Abstain;
             }
 
             if (!subsetIds.Contains(id))
             {
                 failure = $"action_id '{id}' not in subset";
-                return false;
+                return RealtimeTipVerdict.Reject;
             }
 
             if (string.IsNullOrWhiteSpace(phrase))
             {
                 failure = "empty phrase_ru";
-                return false;
+                return RealtimeTipVerdict.Reject;
             }
 
             if (PhraseWordCount.Count(phrase) > maxWords)
             {
                 failure = $"phrase_ru exceeds {maxWords} words";
-                return false;
+                return RealtimeTipVerdict.Reject;
             }
 
             actionId = id;
             phraseRu = phrase;
-            return true;
+            return RealtimeTipVerdict.Accept;
         }
     }
 
