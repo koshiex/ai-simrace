@@ -22,8 +22,9 @@ public static class ScoreAggregator
 
     /// <summary>
     /// Averages the samples' dimensions, computes the composite from the averaged groundedness/etc., and
-    /// evaluates both gate legs against <see cref="RuEvalOptions.PassBar"/> and
-    /// <see cref="RuEvalOptions.GroundednessFloor"/>.
+    /// evaluates all three gate legs against <see cref="RuEvalOptions.PassBar"/>,
+    /// <see cref="RuEvalOptions.GroundednessFloor"/>, and the per-dimension
+    /// <see cref="RuEvalOptions.MinDimensionScore"/> floor (applied to every averaged dimension).
     /// </summary>
     public static EvalOutcome Evaluate(IReadOnlyList<JudgeVerdict> samples, RuEvalOptions options)
     {
@@ -37,8 +38,16 @@ public static class ScoreAggregator
         double avgGroundedness = samples.Average(v => (double)v.Groundedness);
         double composite = samples.Average(v => Composite(v, options.Weights));
 
+        double floor = options.MinDimensionScore;
+        bool dimensionFloorsCleared =
+            avgGroundedness >= floor
+            && samples.Average(v => (double)v.Brevity) >= floor
+            && samples.Average(v => (double)v.NaturalRussian) >= floor
+            && samples.Average(v => (double)v.Actionability) >= floor
+            && samples.Average(v => (double)v.Tone) >= floor;
+
         bool barCleared = composite >= options.PassBar;
         bool floorCleared = avgGroundedness >= options.GroundednessFloor;
-        return new EvalOutcome(composite, avgGroundedness, barCleared, floorCleared);
+        return new EvalOutcome(composite, avgGroundedness, barCleared, floorCleared, dimensionFloorsCleared);
     }
 }

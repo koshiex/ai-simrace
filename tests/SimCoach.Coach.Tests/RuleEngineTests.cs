@@ -223,41 +223,91 @@ public sealed class RuleEngineTests
     }
 
     [Fact]
+    public void High_severity_bypasses_the_materiality_floor()
+    {
+        // The same below-floor loss that silences an ordinary tip must speak when High — this pins the floor's
+        // !highSeverity conjunct (deleting it would silence this High tip and fail the test).
+        RuleDecision decision = Engine().ShouldSpeak(
+            _oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero, timeLossMs: 50.0, highSeverity: true);
+        decision.Should().Be(RuleDecision.Speak);
+    }
+
+    [Fact]
+    public void Zero_time_loss_fails_the_floor_open()
+    {
+        // 0 = "no measured loss" (e.g. a no-PB corner with no delta_ms), the fail-open sentinel — absolute
+        // feedback is never muted for lack of a reference, so an ordinary tip still speaks.
+        RuleDecision decision = Engine().ShouldSpeak(
+            _oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero, timeLossMs: 0.0, highSeverity: false);
+        decision.Should().Be(RuleDecision.Speak);
+    }
+
+    [Fact]
     public void Global_cooldown_silences_across_cadences_and_clears_after()
     {
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero));
         var engine = new RuleEngine(new RuleEngineOptions(), clock); // GlobalCooldown = 3 s
 
-        engine.NoteTip(CoachCadence.Corner, clock.GetUtcNow());
+        // A *sector* tip arms the global cooldown even though sector itself is exempt from being silenced by it.
+        engine.NoteTip(CoachCadence.Sector, clock.GetUtcNow());
 
-        // A *different* cadence within the global window is muted even though its own cooldown is unarmed.
+        // A governed corner tip within the global window is muted even though its own per-cadence cooldown is unarmed.
         clock.Advance(TimeSpan.FromSeconds(1));
-        engine.ShouldSpeak(_oneAction, CoachCadence.Sector, Frame(), BudgetState.Zero, MaterialLossMs, highSeverity: false)
+        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero, MaterialLossMs, highSeverity: false)
             .Should().Be(RuleDecision.Silent(QuietReason.GlobalCooldown));
 
         clock.Advance(TimeSpan.FromSeconds(2.5)); // total 3.5 s > 3 s global
-        engine.ShouldSpeak(_oneAction, CoachCadence.Sector, Frame(), BudgetState.Zero, MaterialLossMs, highSeverity: false)
+        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero, MaterialLossMs, highSeverity: false)
             .Should().Be(RuleDecision.Speak);
     }
 
     [Fact]
     public void Per_lap_cap_silences_once_the_budget_is_spent_and_reset_lap_reopens()
     {
-        // Disable the global cooldown so the per-lap cap is the gate under test (not the timestamp).
+        // Disable the global cooldown so the per-lap cap is the gate under test (not the timestamp); advance the
+        // clock past the 4 s corner per-cadence cooldown so it is not the confound either.
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero));
         var options = new RuleEngineOptions { Cadence = new CadenceOptions { GlobalCooldown = TimeSpan.Zero } };
-        var engine = new RuleEngine(options, TimeProvider.System);
-        for (int i = 0; i < options.Cadence.MaxTipsPerLap; i++) // spend the whole per-lap budget
+        var engine = new RuleEngine(options, clock);
+        for (int i = 0; i < options.Cadence.MaxTipsPerLap; i++) // spend the whole per-lap budget on corner tips
         {
-            engine.NoteTip(CoachCadence.Corner, DateTimeOffset.UtcNow);
+            engine.NoteTip(CoachCadence.Corner, clock.GetUtcNow());
         }
 
-        engine.ShouldSpeak(_oneAction, CoachCadence.Sector, Frame(), BudgetState.Zero, MaterialLossMs, highSeverity: false)
+        clock.Advance(TimeSpan.FromSeconds(5)); // clear the 4 s corner per-cadence cooldown
+        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero, MaterialLossMs, highSeverity: false)
             .Should().Be(RuleDecision.Silent(QuietReason.LapTipBudget));
 
         engine.ResetLap();
 
-        engine.ShouldSpeak(_oneAction, CoachCadence.Sector, Frame(), BudgetState.Zero, MaterialLossMs, highSeverity: false)
+        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero, MaterialLossMs, highSeverity: false)
             .Should().Be(RuleDecision.Speak);
+    }
+
+    [Fact]
+    public void Sector_and_lap_summaries_bypass_the_cap_and_global_cooldown_while_a_corner_is_silenced()
+    {
+        // Owner ruling: the per-lap cap and the global cooldown govern Corner only. On a fresh engine with a
+        // spent per-lap budget AND an active global cooldown, a sector and a lap summary each still speak, while
+        // a corner tip in the same state is silenced.
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero));
+        var engine = new RuleEngine(new RuleEngineOptions(), clock);
+        for (int i = 0; i < 5; i++) // spend the per-lap budget (MaxTipsPerLap = 5) and arm the 3 s global cooldown
+        {
+            engine.NoteTip(CoachCadence.Corner, clock.GetUtcNow());
+        }
+
+        clock.Advance(TimeSpan.FromSeconds(1)); // still inside the global window, budget spent
+        IReadOnlyList<CoachAction> sector = [Action(CoachCadence.Sector, new CoachPriority(CoachPhase.Brake, 100))];
+        IReadOnlyList<CoachAction> lap = [Action(CoachCadence.Lap, new CoachPriority(CoachPhase.Brake, 100))];
+
+        engine.ShouldSpeak(sector, CoachCadence.Sector, Frame(), BudgetState.Zero, MaterialLossMs, highSeverity: false)
+            .Should().Be(RuleDecision.Speak, "a sector summary is exempt from the cap and the global cooldown");
+        engine.ShouldSpeak(lap, CoachCadence.Lap, Frame(), BudgetState.Zero, MaterialLossMs, highSeverity: false)
+            .Should().Be(RuleDecision.Speak, "a lap summary is exempt from the cap and the global cooldown");
+
+        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero, MaterialLossMs, highSeverity: false)
+            .Outcome.Should().Be(RuleOutcome.Silent, "a corner tip in the same state is governed and silenced");
     }
 
     [Fact]
@@ -267,20 +317,20 @@ public sealed class RuleEngineTests
         // cooldown, AND the per-lap cap would each independently silence an ordinary tip.
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero));
         var engine = new RuleEngine(new RuleEngineOptions(), clock);
-        for (int i = 0; i < 5; i++) // fill the per-lap budget (MaxTipsPerLap = 5) and arm the global cooldown
-        {
-            engine.NoteTip(CoachCadence.Corner, clock.GetUtcNow());
+        for (int i = 0; i < 5; i++) // fill the per-lap budget (MaxTipsPerLap = 5) and arm the global cooldown via
+        {                            // sector tips, leaving the corner per-cadence cooldown unarmed as the vehicle
+            engine.NoteTip(CoachCadence.Sector, clock.GetUtcNow());
         }
 
-        // Still inside the 3 s global window, over the per-lap cap, and below the 100 ms floor. A *Sector* tip
-        // (its own cooldown unarmed) is the vehicle so the per-cadence corner cooldown is not the confound.
+        // A governed corner tip: inside the 3 s global window, over the per-lap cap, and below the 100 ms floor
+        // (50 ms > 0, so the floor genuinely bites) — each would independently silence it.
         GateSnapshot frame = Frame();
         clock.Advance(TimeSpan.FromSeconds(1));
 
-        engine.ShouldSpeak(_oneAction, CoachCadence.Sector, frame, BudgetState.Zero, timeLossMs: 0.0, highSeverity: false)
+        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, frame, BudgetState.Zero, timeLossMs: 50.0, highSeverity: false)
             .Outcome.Should().Be(RuleOutcome.Silent, "an ordinary tip is silenced by the cadence governor here");
 
-        engine.ShouldSpeak(_oneAction, CoachCadence.Sector, frame, BudgetState.Zero, timeLossMs: 0.0, highSeverity: true)
+        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, frame, BudgetState.Zero, timeLossMs: 50.0, highSeverity: true)
             .Should().Be(RuleDecision.Speak);
     }
 

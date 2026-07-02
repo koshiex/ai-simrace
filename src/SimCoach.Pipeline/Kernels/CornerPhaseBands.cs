@@ -4,8 +4,13 @@ namespace SimCoach.Pipeline.Kernels;
 /// Pure phase-band geometry for a baked corner window (Start → Apex → End). The apex-band arithmetic
 /// lives here ONCE so the live corner-phase gate (<c>SimCoach.Coach</c>'s <c>CornerPhaseResolver</c>) and
 /// the brake-overlap metric (<c>SimCoach.Reference</c>'s <c>CornerEventBuilder</c>) share a single
-/// definition of "apex" and cannot drift in code. Floats, not the <c>Corner</c> record (which lives in
-/// Reference). Wrap-around is folded with <see cref="Mod1"/>, matching the resolver's original fold.
+/// definition of "apex". For a corner that does NOT straddle the start/finish line the two consume that
+/// definition identically. For an S/F-straddling corner they diverge: the live resolver folds positions with
+/// <see cref="Mod1"/>, whereas <see cref="TurnInToApexBand"/> returns raw non-wrapping endpoints to match the
+/// metric's raw <c>[start, end]</c> frame-slicing — so the metric window and the live gate can disagree there.
+/// This is a documented low-impact limitation: on ACC the S/F line sits on a straight, so no real corner wraps.
+/// Floats, not the <c>Corner</c> record (which lives in Reference). Wrap-around is folded with <see cref="Mod1"/>,
+/// matching the resolver's original fold.
 /// </summary>
 public static class CornerPhaseBands
 {

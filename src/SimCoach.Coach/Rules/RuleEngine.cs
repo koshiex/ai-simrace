@@ -12,7 +12,9 @@ namespace SimCoach.Coach.Rules;
 /// updated via <see cref="NoteTip"/>, zeroed per lap via <see cref="ResetLap"/>, and cleared at the session
 /// boundary via <see cref="ResetSession"/>. Frame-dependent gates fail OPEN when the snapshot carries no
 /// live frame (<see cref="GateSnapshot.HasFrame"/> is false); a High-severity lead bypasses all three
-/// cadence-governor gates (the never-silent guarantee).
+/// cadence-governor gates (the never-silent guarantee). The global cooldown and the per-lap cap only silence
+/// the cadences in <see cref="CadenceOptions.GovernedCadences"/> (Corner by default) — sector/lap summaries
+/// are exempt and stay subject only to the materiality floor; the floor applies to every cadence.
 /// </summary>
 public sealed class RuleEngine
 {
@@ -94,7 +96,10 @@ public sealed class RuleEngine
 
         // Cadence-governor (M10). A High-severity lead bypasses all three — the never-silent guarantee, the
         // same policy as M7's abstain guard, enforced here with an explicit !highSeverity conjunct so a future
-        // high-priority catch-all can never be silenced by cadence governance.
+        // high-priority catch-all can never be silenced by cadence governance. The global cooldown and per-lap
+        // cap additionally gate only the governed cadences (Corner by default) — a sector/lap summary is exempt
+        // (owner ruling: a silenced summary is more jarring than a dropped corner tip), leaving the materiality
+        // floor as their sole cadence-governor gate.
         // timeLossMs == 0 means "no measured loss" (e.g. a no-PB corner with no delta_ms) — the floor fails OPEN
         // there, exactly like the frame gates, so absolute feedback is never muted for lack of a reference.
         if (!highSeverity && timeLossMs > 0 && timeLossMs < _options.Cadence.MinTimeLossMs)
@@ -102,12 +107,12 @@ public sealed class RuleEngine
             return RuleDecision.Silent(QuietReason.BelowTimeLossFloor);
         }
 
-        if (!highSeverity && InGlobalCooldown())
+        if (!highSeverity && IsGoverned(cadence) && InGlobalCooldown())
         {
             return RuleDecision.Silent(QuietReason.GlobalCooldown);
         }
 
-        if (!highSeverity && _tipsThisLap >= _options.Cadence.MaxTipsPerLap)
+        if (!highSeverity && IsGoverned(cadence) && _tipsThisLap >= _options.Cadence.MaxTipsPerLap)
         {
             return RuleDecision.Silent(QuietReason.LapTipBudget);
         }
@@ -156,6 +161,10 @@ public sealed class RuleEngine
 
     private static bool IsRealtimeGated(CoachCadence cadence) =>
         cadence is CoachCadence.Corner or CoachCadence.Sector;
+
+    // Whether the per-lap cap and the global cooldown may silence this cadence (default: Corner only). A
+    // sector/lap summary is exempt — dropping it is more jarring than dropping a corner tip.
+    private bool IsGoverned(CoachCadence cadence) => _options.Cadence.GovernedCadences.Contains(cadence);
 
     private bool IsOnStraight(in GateSnapshot frame) =>
         Math.Abs(frame.Steer) < _options.StraightMaxSteer && frame.SpeedKmh > _options.StraightMinSpeedKmh;

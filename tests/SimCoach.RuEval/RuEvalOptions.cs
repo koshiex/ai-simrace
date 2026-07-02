@@ -25,6 +25,17 @@ public sealed record RuEvalOptions
     /// </summary>
     public double GroundednessFloor { get; init; } = 3.0d;
 
+    /// <summary>
+    /// The per-dimension severe-violation floor: a phrase whose averaged score on ANY rubric dimension is below
+    /// this can never pass, whatever its composite. This is what makes the known-bad anchors deterministically
+    /// fail: an anchor bad in only ONE dimension (a transliteration → natural-Russian; a raw-number → tone) has a
+    /// weighted composite of <c>MaxDimensionScore * (1 - dimWeight)</c> that can still clear <see cref="PassBar"/>
+    /// (5 * (1 - 0.15) = 4.25 &gt; 3.5), so the composite alone cannot catch it — a single severe violation must.
+    /// Kept below <see cref="GroundednessFloor"/> so the groundedness floor stays the stricter, dedicated leg.
+    /// Valid range: [0, <see cref="MaxDimensionScore"/>].
+    /// </summary>
+    public double MinDimensionScore { get; init; } = 2.0d;
+
     /// <summary>The route key the judge call resolves through (added to the eval's appsettings only).</summary>
     public string JudgeRouteKey { get; init; } = "ru_judge";
 
@@ -57,6 +68,12 @@ public sealed record RuEvalOptions
         {
             throw new InvalidOperationException(
                 $"RuEvalOptions.GroundednessFloor must be within [0, {MaxDimensionScore}] (was {GroundednessFloor}).");
+        }
+
+        if (MinDimensionScore is < 0d || MinDimensionScore > MaxDimensionScore)
+        {
+            throw new InvalidOperationException(
+                $"RuEvalOptions.MinDimensionScore must be within [0, {MaxDimensionScore}] (was {MinDimensionScore}).");
         }
 
         if (string.IsNullOrWhiteSpace(JudgeRouteKey))

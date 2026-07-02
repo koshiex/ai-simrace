@@ -134,7 +134,7 @@ public sealed class ActionRegistryFilterTests
     }
 
     [Fact]
-    public void Straighter_braking_fires_at_or_above_the_recalibrated_threshold()
+    public void Straighter_braking_fires_only_strictly_above_the_recalibrated_threshold()
     {
         // A genuine sustained brake-into-apex resolves to a high phase-scoped overlap (0.6 > 0.5) and
         // survives the filter — the recalibrated boundary is pinned here.
@@ -142,6 +142,27 @@ public sealed class ActionRegistryFilterTests
 
         subset.Select(a => a.Id).Should().Contain(
             "straighter_braking", "a genuine over-brake above the recalibrated threshold still fires");
+    }
+
+    [Fact]
+    public void Straighter_braking_does_not_fire_exactly_at_the_recalibrated_threshold()
+    {
+        // The registry clause is strict `gt 0.5`, so an overlap of exactly 0.5 does NOT fire — pinning the
+        // boundary against a `>=` regression.
+        IReadOnlyList<CoachAction> subset = _registry.ValidSubset(OverlapOnlyGold(0.5), new CoachOptions());
+
+        subset.Select(a => a.Id).Should().NotContain(
+            "straighter_braking", "overlap exactly at the threshold is not strictly greater, so it stays silent");
+    }
+
+    [Fact]
+    public void Straighter_braking_fires_just_above_the_recalibrated_threshold()
+    {
+        // The smallest discriminating step above 0.5 fires — the other half of the strict-greater boundary.
+        IReadOnlyList<CoachAction> subset = _registry.ValidSubset(OverlapOnlyGold(0.5001), new CoachOptions());
+
+        subset.Select(a => a.Id).Should().Contain(
+            "straighter_braking", "an overlap strictly above the threshold fires");
     }
 
     [Fact]

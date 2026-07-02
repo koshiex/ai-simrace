@@ -59,11 +59,30 @@ public sealed class RuEvalHermeticTests
     }
 
     [Fact]
+    public void Per_dimension_floor_fails_a_single_severe_violation_that_still_clears_the_composite()
+    {
+        // The always-hard known-bad contract, pinned offline: an anchor bad in exactly ONE dimension (here
+        // tone 0 — a raw-number-read-aloud) has composite 5*(1-0.15)=4.25, which clears PassBar 3.5 AND clears
+        // the groundedness floor. Without the per-dimension floor it would "pass" and the network known-bad
+        // assertion would fail on the first real run. The per-dimension floor must fail it.
+        var options = new RuEvalOptions();
+        EvalOutcome outcome = ScoreAggregator.Evaluate([new JudgeVerdict(5, 5, 5, 5, 0, "числа вслух")], options);
+
+        outcome.Composite.Should().BeApproximately(4.25d, 1e-9);
+        outcome.BarCleared.Should().BeTrue("a single-dimension failure still clears the weighted composite");
+        outcome.FloorCleared.Should().BeTrue("groundedness is high, so the dedicated groundedness floor clears");
+        outcome.DimensionFloorsCleared.Should().BeFalse("tone 0 is below the per-dimension severe-violation floor");
+        outcome.Passed.Should().BeFalse("a single severe violation fails the fixture whatever the composite");
+    }
+
+    [Fact]
     public void EnsureValid_rejects_out_of_range_config()
     {
         FluentActions.Invoking(() => new RuEvalOptions { PassBar = 99d }.EnsureValid())
             .Should().Throw<InvalidOperationException>();
         FluentActions.Invoking(() => new RuEvalOptions { SampleCount = 0 }.EnsureValid())
+            .Should().Throw<InvalidOperationException>();
+        FluentActions.Invoking(() => new RuEvalOptions { MinDimensionScore = 99d }.EnsureValid())
             .Should().Throw<InvalidOperationException>();
         FluentActions.Invoking(() => new RuEvalOptions { Weights = new RubricWeights { Tone = 0.9d } }.EnsureValid())
             .Should().Throw<InvalidOperationException>("the weights no longer sum to 1.0");

@@ -47,8 +47,23 @@ public sealed class CadenceOptions
     /// </summary>
     public double MinTimeLossMs { get; init; } = 100.0;
 
+    /// <summary>
+    /// Which cadences the chattiness levers — the per-lap tip cap (<see cref="MaxTipsPerLap"/>) and the global
+    /// cross-cadence cooldown (<see cref="GlobalCooldown"/>) — are allowed to SILENCE. Defaults to
+    /// <see cref="CoachCadence.Corner"/> only: a silenced sector- or lap-summary is more jarring than one
+    /// dropped corner tip, so sector and lap summaries are exempt from these two levers and stay subject only to
+    /// the materiality floor (and their own per-cadence <see cref="Cooldowns"/>). Every spoken tip of any cadence
+    /// still counts toward the budget and arms the global cooldown — this set governs only which cadences those
+    /// levers can mute. Valid range: any subset of cadences (empty = the cap and global cooldown never silence
+    /// anything). The materiality floor is unaffected and applies to all cadences.
+    /// </summary>
+    public IReadOnlySet<CoachCadence> GovernedCadences { get; init; } =
+        new HashSet<CoachCadence> { CoachCadence.Corner };
+
     public void EnsureValid()
     {
+        ArgumentNullException.ThrowIfNull(GovernedCadences);
+
         foreach (CoachCadence cadence in Enum.GetValues<CoachCadence>())
         {
             if (!Cooldowns.TryGetValue(cadence, out TimeSpan cooldown) || cooldown < TimeSpan.Zero)

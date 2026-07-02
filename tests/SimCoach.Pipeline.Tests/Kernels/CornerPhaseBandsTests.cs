@@ -56,6 +56,20 @@ public sealed class CornerPhaseBandsTests
         lo.Should().BeLessThan(hi);
     }
 
+    [Fact]
+    public void A_wrapping_corner_returns_raw_non_wrapping_endpoints_a_documented_limitation()
+    {
+        // An S/F-straddling corner (start 0.95, apex 1.02, end 1.10). The band length/offsets fold correctly
+        // via Mod1, but TurnInToApexBand returns raw `start + offset` to match the metric's non-wrapping frame
+        // slicing — so Hi exceeds 1.0 instead of folding to ~0.04. This documents (not fixes) the divergence
+        // from the live resolver, which folds with Mod1; ACC's S/F sits on a straight so no real corner wraps.
+        (float lo, float hi) = CornerPhaseBands.TurnInToApexBand(0.95, 1.02, 1.10, 0.25);
+
+        lo.Should().BeApproximately(0.97625f, 1e-4f);
+        hi.Should().BeApproximately(1.04f, 1e-4f, "the raw non-wrapping endpoint runs past the S/F line rather than folding");
+        hi.Should().BeGreaterThan(1.0f);
+    }
+
     [Theory]
     [InlineData(1.0, 0.0)]
     [InlineData(-0.25, 0.75)]
