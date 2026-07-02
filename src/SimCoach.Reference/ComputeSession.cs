@@ -59,6 +59,7 @@ internal sealed class ComputeSession
     private double _oversteerAccum;
     private int _balanceCornerCount;
     private float _prevSectorCrossPos;
+    private bool _lapPoisoned;
     private TelemetryFrame? _lastFrame;
 
     public ComputeSession(
@@ -83,6 +84,10 @@ internal sealed class ComputeSession
         _identity = identity;
     }
 
+    // A lap is coachable only when it is unpoisoned AND its start-line was observed — the latter drops
+    // out-lap frames before the first crossing, which have no bounded lap to attribute samples to.
+    private bool CurrentLapCoachable() => !_lapPoisoned && _lapSegmenter.HasStartedLap;
+
     /// <summary>Processes one frame: corner-exit events, then sector crosses, then lap completion.</summary>
     public void Accept(TelemetryFrame frame)
     {
@@ -93,10 +98,20 @@ internal sealed class ComputeSession
             InitSession(frame);
         }
 
+        // M1 poison latch: the first pit/invalid frame poisons the whole accumulating lap. The latch is
+        // one-way and only re-armed at the next start-line crossing (ResetForNextLap), so events already
+        // published earlier on a lap that later dives into the pit are not un-emitted (frame-level latch
+        // limitation; a buffer-and-flush swap would localise here). Trackers still run unconditionally
+        // below so their per-lap window state re-arms; only the emit calls are gated.
+        if (!CoachableFramePredicate.IsCoachable(frame))
+        {
+            _lapPoisoned = true;
+        }
+
         foreach (CornerTracker tracker in _cornerTrackers)
         {
             IReadOnlyList<TelemetryFrame>? window = tracker.Accept(frame);
-            if (window is not null)
+            if (window is not null && CurrentLapCoachable())
             {
                 EmitCorner(tracker.Corner, window);
             }
@@ -210,26 +225,32 @@ internal sealed class ComputeSession
         bool wrapped = endPos < _prevSectorCrossPos;
         float refEndPos = wrapped ? 1f : endPos;
 
-        int deltaMs = 0;
-        if (_reference is not null)
+        // A poisoned (pit/invalid/out-lap) crossing must not feed the sector-delta average or emit a tip,
+        // but _prevSectorCrossPos MUST keep advancing regardless so the next coachable crossing on the same
+        // lap measures its delta from the correct start position (M1: gate publish + accumulation only).
+        if (CurrentLapCoachable())
         {
-            int refSectorMs = GridMetrics.TimeAt(_reference, refEndPos) - GridMetrics.TimeAt(_reference, _prevSectorCrossPos);
-            deltaMs = split.SectorTimeMs - refSectorMs;
+            int deltaMs = 0;
+            if (_reference is not null)
+            {
+                int refSectorMs = GridMetrics.TimeAt(_reference, refEndPos) - GridMetrics.TimeAt(_reference, _prevSectorCrossPos);
+                deltaMs = split.SectorTimeMs - refSectorMs;
+            }
+
+            (long sum, int count) = _sectorDeltaAccum.GetValueOrDefault(split.SectorIndex);
+            _sectorDeltaAccum[split.SectorIndex] = (sum + deltaMs, count + 1);
+
+            var ev = new SectorEvent
+            {
+                T = frame.T,
+                SectorIdx = split.SectorIndex,
+                SectorTimeMs = split.SectorTimeMs,
+                DeltaMs = deltaMs,
+            };
+            ev.TopLosses.AddRange(TopLosses(
+                _lapLosses.Where(c => c.ApexPosition >= _prevSectorCrossPos && c.ApexPosition <= refEndPos)));
+            _domain.Publish(DomainEvent.Sector(ev));
         }
-
-        (long sum, int count) = _sectorDeltaAccum.GetValueOrDefault(split.SectorIndex);
-        _sectorDeltaAccum[split.SectorIndex] = (sum + deltaMs, count + 1);
-
-        var ev = new SectorEvent
-        {
-            T = frame.T,
-            SectorIdx = split.SectorIndex,
-            SectorTimeMs = split.SectorTimeMs,
-            DeltaMs = deltaMs,
-        };
-        ev.TopLosses.AddRange(TopLosses(
-            _lapLosses.Where(c => c.ApexPosition >= _prevSectorCrossPos && c.ApexPosition <= refEndPos)));
-        _domain.Publish(DomainEvent.Sector(ev));
 
         _prevSectorCrossPos = wrapped ? 0f : endPos;
     }
@@ -237,10 +258,11 @@ internal sealed class ComputeSession
     private void HandleLap(CompletedLap completed, TelemetryFrame frame)
     {
         _lapCount++;
-        // Fuel summary averages over racing laps only — an in/out/pit lap's per-lap estimate is skewed.
-        // The completing `frame` is the next lap's start-line crossing, so read fuel from the completed
-        // lap's own last frame, not from `frame`.
-        if (completed.Frames.Count > 0 && !completed.Frames.Any(f => f.IsInPitLane))
+        // Fuel summary averages over coachable racing laps only — an in/out/pit or invalid lap's per-lap
+        // estimate is skewed. Shares the frame-level CoachableFramePredicate with the M1 emit-gate (Q2) so
+        // both agree on what a racing frame is. The completing `frame` is the next lap's start-line
+        // crossing, so read fuel from the completed lap's own last frame, not from `frame`.
+        if (completed.Frames.Count > 0 && completed.Frames.All(CoachableFramePredicate.IsCoachable))
         {
             _fuelPerLapAccum += completed.Frames[^1].FuelPerLapL;
             _racingLapCount++;
@@ -427,6 +449,7 @@ internal sealed class ComputeSession
 
         _lapLosses.Clear();
         _prevSectorCrossPos = 0f;
+        _lapPoisoned = false; // re-arm: a poisoned lap does not poison the whole session.
     }
 
     private static int? SectorTime(CompletedLap lap, int index) =>

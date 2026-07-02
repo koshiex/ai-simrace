@@ -182,6 +182,123 @@ public sealed class ComputeSessionTests
     }
 
     [Fact]
+    public async Task Out_and_in_lap_frames_contribute_no_corner_or_sector_events()
+    {
+        // lapCount 4 → bounded laps 2 and 3. Marking lap 2 as a pit (out/in-lap) lap must remove exactly
+        // its corner and sector contributions from the stream and the session aggregates; the flying laps
+        // are untouched. (Synthetic pit laps carry clean-lap times, so the proof is the count delta, not a
+        // magnitude — the real 66535 ms out-lap sector can no longer average into sector_avg_delta.)
+        using var cleanHarness = new ComputeTestHarness();
+        using var pitHarness = new ComputeTestHarness();
+
+        IReadOnlyList<DomainEvent> cleanEvents = await cleanHarness.RunAsync(
+            SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4), SessionId);
+        IReadOnlyList<DomainEvent> pitEvents = await pitHarness.RunAsync(
+            SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4, pitLaps: new HashSet<int> { 2 }), SessionId);
+
+        int cleanCorners = cleanEvents.OfType<CornerEvent>(DomainEventKind.Corner).Count();
+        int cleanSectors = cleanEvents.OfType<SectorEvent>(DomainEventKind.Sector).Count();
+        pitEvents.OfType<CornerEvent>(DomainEventKind.Corner).Should().HaveCount(
+            cleanCorners - SyntheticTracks.Spa.Corners.Count, "lap 2's corners are all suppressed");
+        pitEvents.OfType<SectorEvent>(DomainEventKind.Sector).Should().HaveCount(
+            cleanSectors - SyntheticTracks.Spa.SectorCount, "lap 2's sector crossings are all suppressed");
+
+        // HandleLap is NOT gated: the pit lap still completes and counts as a lap.
+        pitEvents.OfType<LapEvent>(DomainEventKind.Lap).Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task Invalid_frame_latches_poison_for_the_whole_lap_and_the_next_lap_re_arms()
+    {
+        // A single is_valid_lap=false frame BEFORE the first corner poisons the entire lap: the latch must
+        // suppress all three later corner emits (a naive per-frame gate would suppress none, since no
+        // corner window closes on that early frame). The following lap emits normally, proving re-arm.
+        using var cleanHarness = new ComputeTestHarness();
+        using var dirtyHarness = new ComputeTestHarness();
+
+        IReadOnlyList<TelemetryFrame> clean = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
+        IReadOnlyList<TelemetryFrame> dirty = WithSingleInvalidFrame(clean, lapNumber: 3, atLeastPos: 0.02f);
+
+        IReadOnlyList<DomainEvent> cleanEvents = await cleanHarness.RunAsync(clean, SessionId);
+        IReadOnlyList<DomainEvent> dirtyEvents = await dirtyHarness.RunAsync(dirty, SessionId);
+
+        int cleanCorners = cleanEvents.OfType<CornerEvent>(DomainEventKind.Corner).Count();
+        // Exactly lap 3's corners vanish (latch); laps 2 and 4 still fire → re-arm proven by the delta.
+        dirtyEvents.OfType<CornerEvent>(DomainEventKind.Corner).Should().HaveCount(
+            cleanCorners - SyntheticTracks.Spa.Corners.Count);
+    }
+
+    [Fact]
+    public async Task Session_of_only_out_and_in_laps_emits_no_corner_or_sector_events()
+    {
+        // The lap_count==0 pathology (sessions 162041/165856): every lap is an out/in/pit lap. No corner
+        // or sector event may fire and the session aggregates must be empty — yet the bounded laps still
+        // complete (segmentation is position-based, independent of the pit flag).
+        using var harness = new ComputeTestHarness();
+        IReadOnlyList<TelemetryFrame> frames = SyntheticSessionBuilder.Build(
+            SyntheticTracks.Spa, lapCount: 4, pitLaps: new HashSet<int> { 1, 2, 3, 4 });
+
+        IReadOnlyList<DomainEvent> events = await harness.RunAsync(frames, SessionId);
+
+        events.OfType<CornerEvent>(DomainEventKind.Corner).Should().BeEmpty();
+        events.OfType<SectorEvent>(DomainEventKind.Sector).Should().BeEmpty();
+        SessionEvent session = events.OfType<SessionEvent>(DomainEventKind.Session).Single();
+        session.AggregatedLosses.Should().BeEmpty();
+        session.SectorAvgDeltaMs.Should().BeEmpty();
+        events.OfType<LapEvent>(DomainEventKind.Lap).Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task Late_pit_dive_keeps_already_emitted_corners_but_suppresses_the_tail()
+    {
+        // Pins the frame-level latch boundary (Q1): a lap that emits valid corners and THEN dives into the
+        // pit at the very end keeps its already-published corners (the latch cannot un-emit), while the
+        // poisoned tail — here lap 3's final sector crossing at the lap boundary — is suppressed.
+        using var cleanHarness = new ComputeTestHarness();
+        using var lateHarness = new ComputeTestHarness();
+
+        IReadOnlyList<TelemetryFrame> clean = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
+        // Corner windows all close by pos 0.90; entering the pit only after that leaves every corner intact.
+        IReadOnlyList<TelemetryFrame> late = WithPitTail(clean, lapNumber: 3, fromPos: 0.90f);
+
+        IReadOnlyList<DomainEvent> cleanEvents = await cleanHarness.RunAsync(clean, SessionId);
+        IReadOnlyList<DomainEvent> lateEvents = await lateHarness.RunAsync(late, SessionId);
+
+        // Early corners survive: the latch does not un-emit what was already published.
+        lateEvents.OfType<CornerEvent>(DomainEventKind.Corner).Should().HaveCount(
+            cleanEvents.OfType<CornerEvent>(DomainEventKind.Corner).Count());
+        // Only the poisoned tail is lost: lap 3's boundary (final-sector) crossing is suppressed.
+        lateEvents.OfType<SectorEvent>(DomainEventKind.Sector).Should().HaveCount(
+            cleanEvents.OfType<SectorEvent>(DomainEventKind.Sector).Count() - 1);
+    }
+
+    private static IReadOnlyList<TelemetryFrame> WithSingleInvalidFrame(
+        IReadOnlyList<TelemetryFrame> frames, int lapNumber, float atLeastPos)
+    {
+        List<TelemetryFrame> result = [.. frames.Select(f => f.Clone())];
+        TelemetryFrame? target = result
+            .FirstOrDefault(f => f.LapNumber == lapNumber && f.NormalizedCarPosition >= atLeastPos);
+        if (target is not null)
+        {
+            target.IsValidLap = false;
+        }
+
+        return result;
+    }
+
+    private static IReadOnlyList<TelemetryFrame> WithPitTail(
+        IReadOnlyList<TelemetryFrame> frames, int lapNumber, float fromPos)
+    {
+        List<TelemetryFrame> result = [.. frames.Select(f => f.Clone())];
+        foreach (TelemetryFrame frame in result.Where(f => f.LapNumber == lapNumber && f.NormalizedCarPosition > fromPos))
+        {
+            frame.IsInPitLane = true;
+        }
+
+        return result;
+    }
+
+    [Fact]
     public async Task Completes_the_domain_fan_out_even_with_no_frames()
     {
         using var harness = new ComputeTestHarness();
