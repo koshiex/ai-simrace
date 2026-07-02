@@ -10,16 +10,12 @@ namespace SimCoach.Coach.Rules;
 /// </summary>
 public sealed class RuleEngineOptions
 {
-    /// <summary>Per-cadence minimum gap between tips (<see cref="TimeSpan.Zero"/> = no cooldown).</summary>
-    public IReadOnlyDictionary<CoachCadence, TimeSpan> Cooldowns { get; init; } =
-        new Dictionary<CoachCadence, TimeSpan>
-        {
-            [CoachCadence.Corner] = TimeSpan.FromSeconds(4),
-            [CoachCadence.Sector] = TimeSpan.FromSeconds(8),
-            [CoachCadence.Lap] = TimeSpan.Zero,
-            [CoachCadence.Session] = TimeSpan.Zero,
-            [CoachCadence.Strategy] = TimeSpan.Zero,
-        };
+    /// <summary>
+    /// Tier-1 user-facing cadence preferences (per-cadence + global cooldowns, per-lap tip cap, materiality
+    /// floor) — the driver-tunable "how chatty" surface, kept as one coherent group (see
+    /// <see cref="CadenceOptions"/>) so it can back a settings panel later.
+    /// </summary>
+    public CadenceOptions Cadence { get; init; } = new();
 
     /// <summary>Suppress when brake + |steer| exceeds this (driver fully loaded). Real-time cadences only.</summary>
     public double WorkloadBrakeSteerSum { get; init; } = 1.6;
@@ -60,14 +56,8 @@ public sealed class RuleEngineOptions
 
     public void EnsureValid()
     {
-        foreach (CoachCadence cadence in Enum.GetValues<CoachCadence>())
-        {
-            if (!Cooldowns.TryGetValue(cadence, out TimeSpan cooldown) || cooldown < TimeSpan.Zero)
-            {
-                throw new InvalidOperationException(
-                    $"RuleEngineOptions.Cooldowns is missing or negative for cadence '{cadence}'.");
-            }
-        }
+        ArgumentNullException.ThrowIfNull(Cadence);
+        Cadence.EnsureValid();
 
         if (SessionBudgetUsd <= 0)
         {

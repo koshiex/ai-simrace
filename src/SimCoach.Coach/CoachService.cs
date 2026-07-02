@@ -182,6 +182,9 @@ public sealed class CoachService : BackgroundService
             case DomainEventKind.Lap:
                 var lap = (LapEvent)domainEvent.Payload;
                 _currentLap = lap.LapNumber;
+                // A lap boundary opens a fresh per-lap chattiness budget (M10): the counter governs "tips since
+                // the last lap boundary", so the lap-cadence tip below counts toward the new lap's budget.
+                _ruleEngine.ResetLap();
                 await ProcessRealtimeAsync(CoachCadence.Lap, _builder.BuildLap(lap, Context()), sessionId, ct)
                     .ConfigureAwait(false);
                 break;
@@ -202,7 +205,15 @@ public sealed class CoachService : BackgroundService
     {
         IGoldView view = GoldView.For(gold);
         IReadOnlyList<CoachAction> subset = _registry.ValidSubset(view, _coachOptions);
-        RuleDecision decision = _ruleEngine.ShouldSpeak(subset, cadence, _ambient.LatestGate(), _budget);
+
+        // Precompute the two cadence-governor scalars here (the pure RuleEngine takes no CoachOptions/severity
+        // dependency): the absolute measured time-loss for the materiality floor, and whether the lead action is
+        // High severity (the never-silent bypass). delta_ms is signed (self−ref), so |delta| is the magnitude;
+        // an absent delta_ms (e.g. a no-PB corner) yields 0, which the engine's floor treats as fail-open.
+        double timeLossMs = view.TryGetNumber("delta_ms", out double d) ? Math.Abs(d) : 0;
+        bool highSeverity = subset.Count > 0 && _coachOptions.SeverityFor(subset[0].Priority) == CoachSeverity.High;
+        RuleDecision decision =
+            _ruleEngine.ShouldSpeak(subset, cadence, _ambient.LatestGate(), _budget, timeLossMs, highSeverity);
 
         if (decision.Outcome == RuleOutcome.Silent)
         {

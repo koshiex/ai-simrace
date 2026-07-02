@@ -4,16 +4,23 @@ namespace SimCoach.Coach.Rules;
 
 /// <summary>
 /// Decides whether a candidate tip speaks, stays silent, or downgrades to a template — the FR-035 quiet
-/// zones. Pure gate logic over the valid subset, the latest-frame snapshot, and session spend; the only
-/// state is a per-cadence cooldown map (single-consumer = CoachService, so no locking) updated via
-/// <see cref="NoteTip"/> and cleared at the session boundary via <see cref="ResetSession"/>. Frame-dependent
-/// gates fail OPEN when the snapshot carries no live frame (<see cref="GateSnapshot.HasFrame"/> is false).
+/// zones plus the cadence-governor (materiality floor, cross-cadence global cooldown, per-lap tip cap).
+/// Pure gate logic over the valid subset, the latest-frame snapshot, session spend, and two precomputed
+/// scalars (<c>timeLossMs</c> + <c>highSeverity</c>) supplied by the caller — the engine takes no
+/// <c>CoachOptions</c>/severity dependency. The only state is a per-cadence cooldown map, the global
+/// last-emit timestamp, and the per-lap tip counter (single-consumer = CoachService, so no locking),
+/// updated via <see cref="NoteTip"/>, zeroed per lap via <see cref="ResetLap"/>, and cleared at the session
+/// boundary via <see cref="ResetSession"/>. Frame-dependent gates fail OPEN when the snapshot carries no
+/// live frame (<see cref="GateSnapshot.HasFrame"/> is false); a High-severity lead bypasses all three
+/// cadence-governor gates (the never-silent guarantee).
 /// </summary>
 public sealed class RuleEngine
 {
     private readonly RuleEngineOptions _options;
     private readonly TimeProvider _clock;
     private readonly Dictionary<CoachCadence, DateTimeOffset> _lastEmit = new();
+    private DateTimeOffset _lastEmitGlobal;
+    private int _tipsThisLap;
 
     public RuleEngine(RuleEngineOptions options, TimeProvider clock)
     {
@@ -25,7 +32,8 @@ public sealed class RuleEngine
     }
 
     public RuleDecision ShouldSpeak(
-        IReadOnlyList<CoachAction> subset, CoachCadence cadence, in GateSnapshot frame, in BudgetState budget)
+        IReadOnlyList<CoachAction> subset, CoachCadence cadence, in GateSnapshot frame, in BudgetState budget,
+        double timeLossMs, bool highSeverity)
     {
         ArgumentNullException.ThrowIfNull(subset);
 
@@ -84,6 +92,26 @@ public sealed class RuleEngine
             }
         }
 
+        // Cadence-governor (M10). A High-severity lead bypasses all three — the never-silent guarantee, the
+        // same policy as M7's abstain guard, enforced here with an explicit !highSeverity conjunct so a future
+        // high-priority catch-all can never be silenced by cadence governance.
+        // timeLossMs == 0 means "no measured loss" (e.g. a no-PB corner with no delta_ms) — the floor fails OPEN
+        // there, exactly like the frame gates, so absolute feedback is never muted for lack of a reference.
+        if (!highSeverity && timeLossMs > 0 && timeLossMs < _options.Cadence.MinTimeLossMs)
+        {
+            return RuleDecision.Silent(QuietReason.BelowTimeLossFloor);
+        }
+
+        if (!highSeverity && InGlobalCooldown())
+        {
+            return RuleDecision.Silent(QuietReason.GlobalCooldown);
+        }
+
+        if (!highSeverity && _tipsThisLap >= _options.Cadence.MaxTipsPerLap)
+        {
+            return RuleDecision.Silent(QuietReason.LapTipBudget);
+        }
+
         if (InCooldown(cadence))
         {
             return RuleDecision.Silent(QuietReason.Cooldown);
@@ -103,11 +131,28 @@ public sealed class RuleEngine
         budget.SessionCostUsd >= _options.SessionBudgetUsd ||
         (_options.MonthlyBudgetUsd > 0 && budget.RollingMonthlyCostUsd >= _options.MonthlyBudgetUsd);
 
-    /// <summary>Records that a tip was emitted for <paramref name="cadence"/>, arming its cooldown.</summary>
-    public void NoteTip(CoachCadence cadence, DateTimeOffset emittedAtUtc) => _lastEmit[cadence] = emittedAtUtc;
+    /// <summary>
+    /// Records that a tip was emitted for <paramref name="cadence"/>: arms its per-cadence cooldown, the global
+    /// cross-cadence cooldown, and counts it against the per-lap tip budget. Silence paths (a quiet-zone or an
+    /// M7 abstain) must NOT call this, so cadence budget is only spent by tips that actually speak.
+    /// </summary>
+    public void NoteTip(CoachCadence cadence, DateTimeOffset emittedAtUtc)
+    {
+        _lastEmit[cadence] = emittedAtUtc;
+        _lastEmitGlobal = emittedAtUtc;
+        _tipsThisLap++;
+    }
 
-    /// <summary>Clears all cooldowns at a session boundary so a singleton engine carries no stale state.</summary>
-    public void ResetSession() => _lastEmit.Clear();
+    /// <summary>Zeroes the per-lap tip counter at a lap boundary so the next lap gets a fresh chattiness budget.</summary>
+    public void ResetLap() => _tipsThisLap = 0;
+
+    /// <summary>Clears all cadence state at a session boundary so a singleton engine carries no stale state.</summary>
+    public void ResetSession()
+    {
+        _lastEmit.Clear();
+        _lastEmitGlobal = default;
+        _tipsThisLap = 0;
+    }
 
     private static bool IsRealtimeGated(CoachCadence cadence) =>
         cadence is CoachCadence.Corner or CoachCadence.Sector;
@@ -132,9 +177,15 @@ public sealed class RuleEngine
         return false;
     }
 
+    private bool InGlobalCooldown()
+    {
+        TimeSpan cooldown = _options.Cadence.GlobalCooldown;
+        return cooldown > TimeSpan.Zero && _clock.GetUtcNow() - _lastEmitGlobal < cooldown;
+    }
+
     private bool InCooldown(CoachCadence cadence)
     {
-        TimeSpan cooldown = _options.Cooldowns[cadence];
+        TimeSpan cooldown = _options.Cadence.Cooldowns[cadence];
         if (cooldown <= TimeSpan.Zero || !_lastEmit.TryGetValue(cadence, out DateTimeOffset last))
         {
             return false;
