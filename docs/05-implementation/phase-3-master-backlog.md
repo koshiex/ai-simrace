@@ -2,6 +2,21 @@
 
 *Дата: 2026-07-01 · Ветка `feat/phase-3-pr8` · Авторитетный прогон: `20260701-171602-738` (Monza / BMW M4 GT3, live LLM, 1 чистый PB-круг).*
 
+> ## Статус исполнения (обновлено 2026-07-02)
+>
+> **Сделано (18 из 43):** ✅ M1, M2, M3, M4, M5, M6, M8, M11, M12, M13, M14, M16, M17, M23, M24, M25, M27, M29. M15 фактически снят M5 (имя = 1–2 токена).
+> - **P0 — гейт Фазы 4 — закрыт полностью** (правдивость детекции M1/M2/M3 + не-мусорная фраза M4/M5/M6).
+> - Реализовано в двух паках: LLM/prompt-batch (`feat/phase-3-fixes-batch`) и detection-truthfulness (`feat/phase-3-detection`). Оба провалидированы Strict→Defender→Judge (план) и Strict→Defence→Judge (дифф); каждая задача = один коммит.
+> - **NO-GO по правдивости детекции СНЯТ.** Повторная ground-truth валидация на сессии `20260701-171602-738` со свежим независимым оракулом прошла 2/2: «3929мс Curva Grande» → ~0, «+14799мс/−14.8с S1» → ~+17мс, min_speed_diff → ~0, brake-onset апстрим (M16). См. `phase-3-detection-truthfulness-plan.md`, `phase-3-detection-pregate-v0.md`, `ground-truth-revalidation.md`.
+> - Отгружено в **PR #26** (→ main): https://github.com/koshiex/ai-simrace/pull/26.
+>
+> **Осталось (25):**
+> - **P1 (4):** ⬜ M7 (abstain), ⬜ M9 (фазовый контекст шиканы — user-visible), ⬜ M10 (cadence-governor), ⬜ M18 (RU-eval гейт — единственный открытый пункт из минимальной планки GO).
+> - **P2 (9):** ⬜ M19, M20, M21, M22, M26, M28, M30, M31, M32.
+> - **P3 (11):** ⬜ M33–M43 (архитектурное; M42 doc-drift и M43 latent-guards — quick-wins).
+>
+> **Рекомендация на следующий пак:** P1-качество — M9, M7, M10, M18.
+
 Этот документ сводит воедино три ревью Фазы 3 в один приоритизированный план. Детали и доказательства — в исходных документах:
 
 - **[ПД]** [`phase-3-acceptance.md`](phase-3-acceptance.md) — дефекты продукта/UX/полноты (находки #A…#Q + пробелы полноты).
@@ -33,9 +48,9 @@
 
 | # | Пункт | Тип | Эффорт | Куда смотреть | Что закрывает |
 |---|---|---|---|---|---|
-| M1 | **Coachable-lap гейт** на эмиссии `EmitCorner`/`EmitSector` и во ВСЕ сессионные аккумуляторы (racing, non-pit, valid) | детекция / архитектура | medium | `ComputeSession.cs:96-109,201,220-221`; `SessionLossAccumulator.cs:24-42` | `[СИС#1]` `[ПД#B,#C,#E]` — ложные советы на out/in-круге, отравлённые средние, инвертированный debrief |
-| M2 | **Выравнивание span**: self time-at-position считать над тем же `[Start,End]`, что и ref; триггер возврата газа — только для exit-специфичных self-кернелов | kernel-correctness | medium | `CornerEventBuilder.cs:79-92`; `CornerTracker.cs:58-68` | `[СИС#2]` `[ПД#A]` — «3929мс Curva Grande» (= время прохождения эталона), truncated self-кинематика |
-| M3 | **Plausibility-guard** перед рендером/фразингом: отбрасывать/понижать потерю, если величина или знак противоречат круговой delta (потеря сектора > дефицита круга; знак против круговой delta) | детекция / readiness | medium | `ComputeSession.cs:348-354`; `TipValidator.cs:82-119`; debrief assembly | `[СИС#3]` `[ПД#D]` — фильтр «уверенно озвученной лжи»; страховка на случай остаточных артефактов |
+| ✅ M1 | **Coachable-lap гейт** на эмиссии `EmitCorner`/`EmitSector` и во ВСЕ сессионные аккумуляторы (racing, non-pit, valid) | детекция / архитектура | medium | `ComputeSession.cs:96-109,201,220-221`; `SessionLossAccumulator.cs:24-42` | `[СИС#1]` `[ПД#B,#C,#E]` — ложные советы на out/in-круге, отравлённые средние, инвертированный debrief |
+| ✅ M2 | **Выравнивание span**: self time-at-position считать над тем же `[Start,End]`, что и ref; триггер возврата газа — только для exit-специфичных self-кернелов | kernel-correctness | medium | `CornerEventBuilder.cs:79-92`; `CornerTracker.cs:58-68` | `[СИС#2]` `[ПД#A]` — «3929мс Curva Grande» (= время прохождения эталона), truncated self-кинематика |
+| ✅ M3 | **Plausibility-guard** перед рендером/фразингом: отбрасывать/понижать потерю, если величина или знак противоречат круговой delta (потеря сектора > дефицита круга; знак против круговой delta) | детекция / readiness | medium | `ComputeSession.cs:348-354`; `TipValidator.cs:82-119`; debrief assembly | `[СИС#3]` `[ПД#D]` — фильтр «уверенно озвученной лжи»; страховка на случай остаточных артефактов |
 
 > **Почему все три, а не одна:** M1 убирает out/in-контаминацию, но `[СИС#2.2]` доказал — «3929мс» воспроизводится и на чистом круге (это дефект span, M2). M3 — последний рубеж: даже с M1+M2 любой новый артефакт детекции не должен доходить до озвучки. Это и есть алгоритмический guard, который заменяет «LLM должен понять, что число — бред» (он не может, он селектор+фразер).
 
@@ -43,9 +58,9 @@
 
 | # | Пункт | Тип | Эффорт | Куда смотреть | Что закрывает |
 |---|---|---|---|---|---|
-| M4 | **Пустой плейсхолдер `lap_pb`** «Личный рекорд! Главная зона — .» — политика отсутствующего параметра | баг | quick-win | `actionRegistry.json:310`; `GoldArtifactBuilder.cs:117`; `PhraseRenderer.cs:22/42-44` | `[ПД#N]` |
-| M5 | **Русские имена поворотов**: добавить `corner_name_ru`=`GetShort` в Gold + жёсткое prompt-правило «только RU-форма, не транслитерировать» + перевести template-путь на `GetShort` | gold + prompt | quick-win | `GoldCornerEvent.cs`; `GoldArtifactBuilder.cs:30`; `coach.system.v1.ru.txt` (правило 2); `CoachService.cs:305`; `CornerNameMap.cs` | `[ПД#P]` `[LLM n34/n3]` — зоопарк «Curva Grande»↔«Роджи»↔«Параболике» |
-| M6 | **Один совет на фразу + запрет сырых чисел в голосе** (числа только в debrief) | prompt | quick-win | `coach.system.v1.ru.txt:5,7-8`; `coach.fewshot.v1.ru.json` | `[ПД#Q,#D]` `[LLM n1/n2]` — «TTS не успевает / info-garbage» |
+| ✅ M4 | **Пустой плейсхолдер `lap_pb`** «Личный рекорд! Главная зона — .» — политика отсутствующего параметра | баг | quick-win | `actionRegistry.json:310`; `GoldArtifactBuilder.cs:117`; `PhraseRenderer.cs:22/42-44` | `[ПД#N]` |
+| ✅ M5 | **Русские имена поворотов**: добавить `corner_name_ru`=`GetShort` в Gold + жёсткое prompt-правило «только RU-форма, не транслитерировать» + перевести template-путь на `GetShort` | gold + prompt | quick-win | `GoldCornerEvent.cs`; `GoldArtifactBuilder.cs:30`; `coach.system.v1.ru.txt` (правило 2); `CoachService.cs:305`; `CornerNameMap.cs` | `[ПД#P]` `[LLM n34/n3]` — зоопарк «Curva Grande»↔«Роджи»↔«Параболике» |
+| ✅ M6 | **Один совет на фразу + запрет сырых чисел в голосе** (числа только в debrief) | prompt | quick-win | `coach.system.v1.ru.txt:5,7-8`; `coach.fewshot.v1.ru.json` | `[ПД#Q,#D]` `[LLM n1/n2]` — «TTS не успевает / info-garbage» |
 
 > **M4–M6 не зависят от 2A** и делаются параллельно. M5 использует уже существующие RU-формы (`GetShort`), которые сейчас вычисляются, но в Gold не попадают.
 
@@ -56,16 +71,16 @@
 | # | Пункт | Тип | Эффорт | Куда смотреть | Источник |
 |---|---|---|---|---|---|
 | M7 | **Право промолчать (abstain)**: sentinel `"none"` в enum на слабом catch-all; трактовать как тишину; границы (High никогда не молчит) | schema + code | medium | `OutputSchema.cs:25-46`; `CoachService.cs:247-262`; `CoachOptions.cs` | `[LLM n29/n8]` `[ПД#I]` |
-| M8 | **Привязка `phrase_ru` к смыслу `action_id`** + RU-хинт действия в меню + anti-example | prompt + data | quick-win | `PromptBuilder.cs:130`; `actionRegistry.json`; `coach.system.v1.ru.txt` | `[LLM n4/n30]` |
+| ✅ M8 | **Привязка `phrase_ru` к смыслу `action_id`** + RU-хинт действия в меню + anti-example | prompt + data | quick-win | `PromptBuilder.cs:130`; `actionRegistry.json`; `coach.system.v1.ru.txt` | `[LLM n4/n30]` |
 | M9 | **Фазовый контекст для `straighter_braking`**: overlap только в turn-in/apex, не brake-на-прямой | детекция / дизайн | medium | `actionRegistry.json:52-66`; `BrakeOverlapSteerKernels.cs`; `CornerPhaseResolver.cs` | `[ПД#F]` — «шикана: не тормози» |
 | M10 | **Cadence-governor**: приоритет по потере времени, cooldown, «одна вещь за раз» (пересекается с M6/M7) | продукт / дизайн | medium | `RuleEngine.cs`; `RuleEngineOptions.cs`; `CoachService.cs:200-235` | `[ПД#I,#Q,#J]` |
-| M11 | **Evidence-weighted арбитраж** в corner-промпте: выбирать по подтверждению числами Gold, не blind-first-pick | prompt | quick-win | `coach.system.v1.ru.txt` (правило 1) | `[LLM n28]` |
-| M12 | **Cold-start ветка** (нет эталона): что говорить без reference-полей | prompt | quick-win | `coach.system.v1.ru.txt`; few-shot `:46-58` | `[LLM n7]` `[ПД#H]` |
-| M13 | **`temperature=0`, `top_p=1`** на каденс-routes (сейчас sampling не задан вообще) | config | quick-win | `RouteOptions.cs`; `OpenRouterProvider.cs:85-99`; `appsettings.json` | `[LLM n21]` |
-| M14 | **Свап corner-модели** → `google/gemini-3.1-flash-lite` (+ явный thinking-off, + rate-card) — режет хвост таймаутов на 2с-кэпе | routing | quick-win | `appsettings.json:60,70-72` | `[LLM n15/n16]` |
-| M15 | **Единый word-cap**: имя поворота не считать словами (в основном решается M5: `corner_name_ru` = 1–2 токена) | schema | medium | `PhraseWordCount.cs`; `TipValidator.cs:57`; `CoachOptions.cs:15` | `[ПД#K/L/M]` `[LLM n9]` |
-| M16 | **`brake_point_diff_m`**: расширить окно ~200м вверх по трассе до реальной зоны торможения (сейчас часто схлопывается в 0) | kernel-correctness | medium | `BrakeKernels.cs:47-56`; `CornerEventBuilder.cs:83-85` | `[СИС#5]` |
-| M17 | **Debrief как bounded-аналитик**: plausibility-guard противоречивых потерь (prompt-only) + заземление «почему» (категория + мс) | prompt | quick-win | `coach.system.debrief.v1.ru.txt` | `[LLM n31/n32-QW]` `[ПД#3]` |
+| ✅ M11 | **Evidence-weighted арбитраж** в corner-промпте: выбирать по подтверждению числами Gold, не blind-first-pick | prompt | quick-win | `coach.system.v1.ru.txt` (правило 1) | `[LLM n28]` |
+| ✅ M12 | **Cold-start ветка** (нет эталона): что говорить без reference-полей | prompt | quick-win | `coach.system.v1.ru.txt`; few-shot `:46-58` | `[LLM n7]` `[ПД#H]` |
+| ✅ M13 | **`temperature=0`, `top_p=1`** на каденс-routes (сейчас sampling не задан вообще) | config | quick-win | `RouteOptions.cs`; `OpenRouterProvider.cs:85-99`; `appsettings.json` | `[LLM n21]` |
+| ✅ M14 | **Свап corner-модели** → `google/gemini-3.1-flash-lite` (+ явный thinking-off, + rate-card) — режет хвост таймаутов на 2с-кэпе | routing | quick-win | `appsettings.json:60,70-72` | `[LLM n15/n16]` |
+| 🟡 M15 | **Единый word-cap**: имя поворота не считать словами (в основном решается M5: `corner_name_ru` = 1–2 токена) | schema | medium | `PhraseWordCount.cs`; `TipValidator.cs:57`; `CoachOptions.cs:15` | `[ПД#K/L/M]` `[LLM n9]` |
+| ✅ M16 | **`brake_point_diff_m`**: расширить окно ~200м вверх по трассе до реальной зоны торможения (сейчас часто схлопывается в 0) | kernel-correctness | medium | `BrakeKernels.cs:47-56`; `CornerEventBuilder.cs:83-85` | `[СИС#5]` |
+| ✅ M17 | **Debrief как bounded-аналитик**: plausibility-guard противоречивых потерь (prompt-only) + заземление «почему» (категория + мс) | prompt | quick-win | `coach.system.debrief.v1.ru.txt` | `[LLM n31/n32-QW]` `[ПД#3]` |
 | M18 | **RU-eval гейт (m5)**: LLM-судья + рубрика + фикстуры no-PB/corner/debrief + числовой порог — обещан планом, не построен | полнота / тесты | medium | новый eval-проект в `tests/`; `phase-3-detailed-plan.md:1108-1132` | `[ПД#23]` — регрессионный барьер для всех prompt-правок выше |
 
 > **M18 — стратегический:** без него все правки промптов (M5,M6,M8,M11,M12,M17) делаются «на глаз». Строить его стоит рано, чтобы измерять эффект остальных P1.
@@ -80,13 +95,13 @@
 | M20 | **Session-метрики через детерминированный слой**: Session Gold field set + templated debrief (сейчас `GoldFieldNames.For(Session)` бросает; consistency считается, но в тип не доходит) | полнота | medium | `GoldFieldNames.cs:43`; `ComputeSession.cs:386-414`; `DebriefTemplate.cs` | `[СИС#7]` `[ПД §2]` |
 | M21 | **`corner_catch_all` — молчать вместо raw-длительности**; активировать мёртвое поле `reason` + `reason_ru` глосс; де-дубль same-family действий | детекция + prompt | medium | `actionRegistry.json:222-236`; `WhenClause.cs`/`ClauseEvaluator.cs`; `GoldArtifactBuilder.cs:45` | `[ПД#G]` `[LLM n35]` |
 | M22 | **Реальная fallback-цепочка**: расширить триггер роутера (Timeout/ServerError, не только CircuitOpen) + задать `FallbackRouteKey` (debrief → `claude-haiku-4.5`) + circuit-tuning | code + config | medium | `LlmRouter.cs:52-59`; `RouteOptions.cs`; `appsettings.json:89-93` | `[LLM n17/n18/n23]` |
-| M23 | **Наблюдаемость accept/fallback**: структурный лог/счётчик source+cadence+причина отбраковки (сейчас теряется в `out _`) | баг / метрики | quick-win | `CoachService.cs:246-262,391-405` | `[ПД#O]` `[LLM n33]` |
-| M24 | **`min_speed`/throttle-resume self-кернелы над полным span**, а не 2-кадровым окном (следствие M2) | kernel-correctness | medium | `CornerTracker.cs:52-62`; `ThrottleSpeedKernels.cs:22-31` | `[СИС#6]` |
-| M25 | **Замена mean-of-crossings на best-lap/median** посекторную delta (частично решается M1) | accuracy / aggregation | medium | `ComputeSession.cs:411-414,220-221` | `[СИС#4]` |
+| ✅ M23 | **Наблюдаемость accept/fallback**: структурный лог/счётчик source+cadence+причина отбраковки (сейчас теряется в `out _`) | баг / метрики | quick-win | `CoachService.cs:246-262,391-405` | `[ПД#O]` `[LLM n33]` |
+| ✅ M24 | **`min_speed`/throttle-resume self-кернелы над полным span**, а не 2-кадровым окном (следствие M2) | kernel-correctness | medium | `CornerTracker.cs:52-62`; `ThrottleSpeedKernels.cs:22-31` | `[СИС#6]` |
+| ✅ M25 | **Замена mean-of-crossings на best-lap/median** посекторную delta (частично решается M1) | accuracy / aggregation | medium | `ComputeSession.cs:411-414,220-221` | `[СИС#4]` |
 | M26 | **`BalanceKernels`**: steady-state gating + нормализация understeer/oversteer до clamp/порогов (сейчас перенос массы под тормозом читается как understeer; уже гейтит live-действия) | kernel-correctness | medium | `BalanceKernels.cs:33-52`; `ComputeSession.cs:132-134` | `[СИС#9]` |
-| M27 | **`IsInPitLane` в clean-предикат** (согласовать с fuel-гейтом) | детекция | quick-win | `CleanLapPredicate.cs:29`; `ComputeSession.cs:249-256` | `[ПД#E]` `[СИС]` |
+| ✅ M27 | **`IsInPitLane` в clean-предикат** (согласовать с fuel-гейтом) | детекция | quick-win | `CleanLapPredicate.cs:29`; `ComputeSession.cs:249-256` | `[ПД#E]` `[СИС]` |
 | M28 | **Персистить `reasoning_tokens`** + подтвердить thinking-off из данных; retry-промпт эхом причины отказа; per-family robustness (Gemini `maxItems`, debrief-validation, refusal-log) | code / наблюдаемость | quick-win | `SqliteCostMeter.cs`; `OpenRouterProvider.cs:237-241`; `GeminiSchemaTranslator.cs`; `coach.retry.v1.ru.txt` | `[LLM n22/n6/n13]` |
-| M29 | **`MonthlyBudgetUsd` ненулевой** перед Live (сейчас 0 = off); safe-ceiling ~$5-10 | config | quick-win | `appsettings.json:51` | `[LLM n26]` `[ПД#25]` |
+| ✅ M29 | **`MonthlyBudgetUsd` ненулевой** перед Live (сейчас 0 = off); safe-ceiling ~$5-10 | config | quick-win | `appsettings.json:51` | `[LLM n26]` `[ПД#25]` |
 | M30 | **A/B RU-качества one-liner** (2.5 vs 3.1 vs DeepSeek V4 Flash vs Qwen3.6) на реальных Gold-событиях | eval | medium | shadow-harness; `coach_tips`/`llm_usage` | `[LLM n19]` |
 | M31 | **Bounded confidence-поле** (enum high/low) + логирование — только вместе с abstain-гейтом (M7) и после замера калибровки | schema + code | quick-win | `OutputSchema.cs:38-42`; `CoachService.cs:265-272` | `[LLM n12/n33]` |
 | M32 | **Дедуп per corner_id+lap + межкруговая память** (пересекается с M10) | дизайн | medium | `CoachService.cs`; `RuleEngine.cs` | `[ПД#J]` `[LLM n37]` |
