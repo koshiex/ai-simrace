@@ -31,8 +31,8 @@ internal sealed class ComputeSession
     private readonly SectorSegmenter _sectorSegmenter = new();
     private readonly List<CornerContribution> _lapLosses = [];
     private readonly SessionLossAccumulator _sessionLosses = new();
-    private readonly Dictionary<int, int> _bestSectorMs = [];                    // clean-lap per-sector minima
-    private readonly Dictionary<int, (long Sum, int Count)> _sectorDeltaAccum = []; // per-sector delta avg input
+    private readonly Dictionary<int, int> _bestSectorMs = [];        // clean-lap per-sector minima (best = min)
+    private readonly Dictionary<int, List<int>> _sectorDeltaAccum = []; // per-sector coachable-crossing deltas (M25: median input)
     private List<CornerTracker> _cornerTrackers = [];
 
     private bool _started;
@@ -237,8 +237,13 @@ internal sealed class ComputeSession
                 deltaMs = split.SectorTimeMs - refSectorMs;
             }
 
-            (long sum, int count) = _sectorDeltaAccum.GetValueOrDefault(split.SectorIndex);
-            _sectorDeltaAccum[split.SectorIndex] = (sum + deltaMs, count + 1);
+            if (!_sectorDeltaAccum.TryGetValue(split.SectorIndex, out List<int>? deltas))
+            {
+                deltas = [];
+                _sectorDeltaAccum[split.SectorIndex] = deltas;
+            }
+
+            deltas.Add(deltaMs);
 
             var ev = new SectorEvent
             {
@@ -430,10 +435,15 @@ internal sealed class ComputeSession
         return Math.Max(0, _runningBestMs - bestSectorsSum);
     }
 
+    // M25 (Q4): the per-sector session aggregate is the MEDIAN of the coachable-lap crossing deltas, not
+    // the mean. The mean let one anomalous crossing invert the sign of a whole sector's reported loss.
+    // The proto field is still named sector_avg_delta_ms (field 14) — only the estimator changed; the
+    // wire contract is untouched. This is separate from _bestSectorMs (min), which drives best-sector
+    // highlighting and must not be conflated with loss attribution.
     private IEnumerable<int> SectorAvgDeltas() =>
         _sectorDeltaAccum
             .OrderBy(pair => pair.Key)
-            .Select(pair => (int)(pair.Value.Sum / pair.Value.Count));
+            .Select(pair => SectorDeltaAggregator.Median(pair.Value));
 
     private void RebuildCornerTrackers() =>
         _cornerTrackers = _trackModel.Corners
