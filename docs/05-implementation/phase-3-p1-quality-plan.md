@@ -78,9 +78,22 @@ abstain guard + M10's `!highSeverity` gates).
 - **Never-silent:** High bypasses all three silence sources (see above).
 - **Priority realization:** floor + cap + cooldowns for P1; cross-event/cross-lap **ranking deferred to
   M32**.
+- **Sector/Lap summaries (resolved post-review 2026-07-02):** the per-lap cap and the global cooldown
+  are **Corner-only**; **Sector and Lap summaries are exempt** from both (they still respect the
+  materiality floor, which fails open for them) — a silenced sector/lap summary is more jarring than one
+  corner tip (consistent with the corner-only M7 abstain decision). Implemented as a Tier-1
+  user-facing `CadenceOptions.GovernedCadences` (`IReadOnlySet<CoachCadence>`, default `{ Corner }`);
+  all cadences still *arm* the global cooldown (so it stays genuinely cross-cadence), but only governed
+  cadences can be *muted* by the cap/cooldown. The Session/debrief path bypasses `ShouldSpeak` and is
+  never gated.
 
 ### M18 — RU-eval gate
 
+- **Calibration TODO (post-review 2026-07-02):** the committed known-bad anchors are held below the bar
+  by a per-dimension floor `RuEvalOptions.MinDimensionScore` (default `2.0`, offline-pinned) in addition
+  to the composite bar and the stricter groundedness floor. The exact `MinDimensionScore` / `PassBar`
+  values await a **first real-network calibration run** (the env-gated path needs an API key); if the
+  judge scores egregious anchors in the 2–3 band, raise `MinDimensionScore` toward the groundedness floor.
 - **Judge:** `anthropic/claude-sonnet-4.6`.
 - **Reference-anchored:** a committed canonical RU phrase per fixture (the judge compares candidate to
   reference, not blind).
