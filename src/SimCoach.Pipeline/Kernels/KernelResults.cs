@@ -21,6 +21,14 @@ public sealed record CornerMetrics
     public required float MinSpeedMps { get; init; }
     public required float MinSpeedPosition { get; init; }
 
+    /// <summary>
+    /// True only when the minimum sits strictly inside the window (not on either endpoint) and dips
+    /// below both endpoints — a genuine deceleration apex, not a flat/monotonic transit. When false the
+    /// window has no coachable minimum-speed point, so the min-speed contribution is suppressed
+    /// (D-minspeed).
+    /// </summary>
+    public required bool HasInSpanMinimum { get; init; }
+
     /// <summary>Where sustained throttle resumed after the minimum-speed point, or <c>null</c>.</summary>
     public float? ThrottleOnPosition { get; init; }
 }

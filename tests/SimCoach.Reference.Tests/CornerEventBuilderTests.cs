@@ -41,6 +41,23 @@ public sealed class CornerEventBuilderTests
     }
 
     [Fact]
+    public void A_flat_full_throttle_corner_yields_near_zero_delta_and_suppresses_min_speed()
+    {
+        // M2 regression guard: a flat full-throttle transit measured over the same [Start,End] span as
+        // the (distinct) reference must report ~0 delta — not the phantom ≈ -refDuration a collapsed
+        // throttle-resume stub produced. D-minspeed also silences its min-speed field.
+        IReadOnlyList<TelemetryFrame> self = FlatFullThrottleCorner();
+        ResampledLap reference = ReferenceGrid();
+
+        (CornerEvent ev, _) = CornerEventBuilder.Build(_corner, self, reference, LapLengthM, GridLength);
+
+        Math.Abs(ev.DeltaMs).Should().BeLessThanOrEqualTo(
+            10, "self measures the full [Start,End] span, matching the reference span duration");
+        ev.MinSpeedDiffKmh.Should().Be(
+            0f, "a flat transit corner has no true in-span minimum → min-speed is suppressed (D-minspeed)");
+    }
+
+    [Fact]
     public void With_no_reference_only_self_fields_are_populated()
     {
         IReadOnlyList<TelemetryFrame> self = SlowerSelfCorner();
@@ -84,6 +101,20 @@ public sealed class CornerEventBuilderTests
             float brake = pos is >= 0.31f and <= 0.40f ? 0.8f : 0f;
             float throttle = pos >= 0.48f ? 0.8f : 0f;
             frames.Add(Frame(pos, speed, brake, throttle, tMs: 15 * k, worldX: (pos * LapLengthM) + 2f));
+        }
+
+        return frames;
+    }
+
+    // Flat self corner [0.30..0.50], constant 60 m/s at full throttle, 10 ms/frame — the same span
+    // duration (200 ms) the reference grid slice covers, so the span-aligned delta is ~0.
+    private static IReadOnlyList<TelemetryFrame> FlatFullThrottleCorner()
+    {
+        List<TelemetryFrame> frames = [];
+        for (int k = 0; k <= 20; k++)
+        {
+            float pos = 0.30f + (0.01f * k);
+            frames.Add(Frame(pos, speed: 60f, brake: 0f, throttle: 1.0f, tMs: 10 * k, worldX: pos * LapLengthM));
         }
 
         return frames;

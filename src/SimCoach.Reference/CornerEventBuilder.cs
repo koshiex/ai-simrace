@@ -31,10 +31,15 @@ internal static class CornerEventBuilder
         float lapLengthM,
         int gridLength)
     {
-        BrakeProfile brakeSelf = BrakeKernels.Analyze(selfFrames);
-        CornerMetrics speedSelf = ThrottleSpeedKernels.Analyze(selfFrames);
-        BalanceScores balanceSelf = BalanceKernels.Analyze(selfFrames);
-        bool offTrack = OffTrack(selfFrames);
+        // M2: every self-derived kernel and the self duration are measured over the geometric
+        // [StartPosition, EndPosition] sub-window — the same span the reference grid slice covers —
+        // never over the raw tracker buffer (which M16 later extends upstream of the start).
+        IReadOnlyList<TelemetryFrame> selfSpan = SelectSpan(selfFrames, corner.StartPosition, corner.EndPosition);
+
+        BrakeProfile brakeSelf = BrakeKernels.Analyze(selfSpan);
+        CornerMetrics speedSelf = ThrottleSpeedKernels.Analyze(selfSpan);
+        BalanceScores balanceSelf = BalanceKernels.Analyze(selfSpan);
+        bool offTrack = OffTrack(selfSpan);
 
         var ev = new CornerEvent
         {
@@ -44,9 +49,9 @@ internal static class CornerEventBuilder
             UndersteerScore = balanceSelf.UndersteerScore,
             OversteerScore = balanceSelf.OversteerScore,
             OffTrack = offTrack,
-            WheelspinScore = WheelspinKernels.WheelspinScore(selfFrames),
-            BrakeOverlapSteerPct = BrakeOverlapSteerKernels.OverlapPct(selfFrames),
-            SteeringJitter = SteeringJitterKernels.SteeringJitter(selfFrames),
+            WheelspinScore = WheelspinKernels.WheelspinScore(selfSpan),
+            BrakeOverlapSteerPct = BrakeOverlapSteerKernels.OverlapPct(selfSpan),
+            SteeringJitter = SteeringJitterKernels.SteeringJitter(selfSpan),
         };
 
         bool hasReference = reference is not null && lapLengthM > 0f;
@@ -76,18 +81,23 @@ internal static class CornerEventBuilder
         BrakeProfile brakeRef = BrakeKernels.Analyze(refFrames);
         CornerMetrics speedRef = ThrottleSpeedKernels.Analyze(refFrames);
 
-        int selfDurationMs = DurationMs(selfFrames);
+        int selfDurationMs = DurationMs(selfSpan);
         int refDurationMs = refLap.TMsFromLapStart[k1] - refLap.TMsFromLapStart[k0];
         int deltaMs = selfDurationMs - refDurationMs;
 
         float brakePointDiffM =
             ((brakeSelf.BrakeOnPosition ?? corner.StartPosition) - (brakeRef.BrakeOnPosition ?? corner.StartPosition))
             * lapLengthM;
-        float minSpeedDiffKmh = (speedSelf.MinSpeedMps - speedRef.MinSpeedMps) * MetresPerSecondToKmh;
+
+        // D-minspeed: suppress the min-speed contribution for a corner with no true in-span minimum
+        // (flat/transit corners), so it stays silent on min-speed instead of emitting boundary noise.
+        float minSpeedDiffKmh = speedSelf.HasInSpanMinimum
+            ? (speedSelf.MinSpeedMps - speedRef.MinSpeedMps) * MetresPerSecondToKmh
+            : 0f;
         float throttleResumeDiffM =
             ((speedRef.ThrottleOnPosition ?? corner.EndPosition) - (speedSelf.ThrottleOnPosition ?? corner.EndPosition))
             * lapLengthM;
-        float racingLineDeviationM = RacingLineDeviation(selfFrames, refLap);
+        float racingLineDeviationM = RacingLineDeviation(selfSpan, refLap);
 
         ev.DeltaMs = deltaMs;
         ev.BrakePointDiffM = brakePointDiffM;
@@ -101,6 +111,28 @@ internal static class CornerEventBuilder
         return (ev, new CornerContribution(
             corner.Id, deltaMs, speedSelf.MinSpeedPosition, reason,
             balanceSelf.UndersteerScore, balanceSelf.OversteerScore));
+    }
+
+    /// <summary>
+    /// The single lap-crossing sub-window whose frames fall inside <c>[start, end]</c>. Frames the
+    /// tracker buffered upstream of the start (M16) or the one frame past the end are excluded so every
+    /// self kernel sees exactly the reference span. Falls back to the raw buffer only if the filter is
+    /// empty (a degenerate window), which keeps the kernels' non-empty precondition.
+    /// </summary>
+    private static IReadOnlyList<TelemetryFrame> SelectSpan(
+        IReadOnlyList<TelemetryFrame> frames, float start, float end)
+    {
+        List<TelemetryFrame> span = [];
+        foreach (TelemetryFrame frame in frames)
+        {
+            float pos = frame.NormalizedCarPosition;
+            if (pos >= start && pos <= end)
+            {
+                span.Add(frame);
+            }
+        }
+
+        return span.Count > 0 ? span : frames;
     }
 
     private static bool OffTrack(IReadOnlyList<TelemetryFrame> frames)

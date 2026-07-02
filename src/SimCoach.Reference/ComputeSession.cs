@@ -437,7 +437,7 @@ internal sealed class ComputeSession
 
     private void RebuildCornerTrackers() =>
         _cornerTrackers = _trackModel.Corners
-            .Select(corner => new CornerTracker(corner, _options.ResumeThrottlePct))
+            .Select(corner => new CornerTracker(corner))
             .ToList();
 
     private void ResetForNextLap()

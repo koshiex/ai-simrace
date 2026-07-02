@@ -6,7 +6,11 @@ namespace SimCoach.Reference;
 /// </summary>
 public sealed class ComputeOptions
 {
-    /// <summary>Sustained throttle fraction that marks the corner-exit trigger (back on power).</summary>
+    /// <summary>
+    /// Sustained throttle fraction that marks a driver as back on power. No longer gates corner
+    /// emission (M2 fires on the geometric corner end); retained for its validated range and any
+    /// future exit-metric reconciliation with the Pipeline kernel's own constant.
+    /// </summary>
     public float ResumeThrottlePct { get; init; } = 0.5f;
 
     /// <summary>How many corners to report in a lap/sector <c>top_losses</c> list.</summary>

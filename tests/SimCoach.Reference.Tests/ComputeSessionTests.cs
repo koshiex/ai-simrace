@@ -258,8 +258,9 @@ public sealed class ComputeSessionTests
         using var lateHarness = new ComputeTestHarness();
 
         IReadOnlyList<TelemetryFrame> clean = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
-        // Corner windows all close by pos 0.90; entering the pit only after that leaves every corner intact.
-        IReadOnlyList<TelemetryFrame> late = WithPitTail(clean, lapNumber: 3, fromPos: 0.90f);
+        // The last corner fires just past its end (0.90 → the 0.905 frame); entering the pit only after
+        // that (0.92) leaves every corner intact while still poisoning the lap's final-sector tail.
+        IReadOnlyList<TelemetryFrame> late = WithPitTail(clean, lapNumber: 3, fromPos: 0.92f);
 
         IReadOnlyList<DomainEvent> cleanEvents = await cleanHarness.RunAsync(clean, SessionId);
         IReadOnlyList<DomainEvent> lateEvents = await lateHarness.RunAsync(late, SessionId);
