@@ -36,4 +36,62 @@ public sealed class ComputeOptionsTests
 
         act.Should().NotThrow("zero disables the widening but is a valid configuration");
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void EnsureValid_throws_on_non_positive_corner_ceiling(int ceiling)
+    {
+        // M3 Tier A: a zero/negative ceiling would neutralise every corner loss, silencing all coaching.
+        var options = new ComputeOptions { MaxPlausibleCornerLossMs = ceiling };
+
+        Action act = options.EnsureValid;
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*MaxPlausibleCornerLossMs*");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void EnsureValid_throws_on_non_positive_sector_ceiling(int ceiling)
+    {
+        var options = new ComputeOptions { MaxPlausibleSectorLossMs = ceiling };
+
+        Action act = options.EnsureValid;
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*MaxPlausibleSectorLossMs*");
+    }
+
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(-0.5f)]
+    public void EnsureValid_throws_on_non_positive_deficit_ratio(float ratio)
+    {
+        // M3 Tier B: a zero/negative ratio would collapse the deficit budget to the floor everywhere.
+        var options = new ComputeOptions { LapDeficitLossRatio = ratio };
+
+        Action act = options.EnsureValid;
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*LapDeficitLossRatio*");
+    }
+
+    [Fact]
+    public void EnsureValid_throws_on_negative_deficit_floor()
+    {
+        var options = new ComputeOptions { LapDeficitFloorMs = -1 };
+
+        Action act = options.EnsureValid;
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*LapDeficitFloorMs*");
+    }
+
+    [Fact]
+    public void EnsureValid_allows_zero_deficit_floor()
+    {
+        var options = new ComputeOptions { LapDeficitFloorMs = 0 };
+
+        Action act = options.EnsureValid;
+
+        act.Should().NotThrow("a zero floor is valid — it just removes the near-zero-deficit cushion");
+    }
 }

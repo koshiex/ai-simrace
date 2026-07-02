@@ -55,6 +55,7 @@ internal sealed class ComputeSession
     private int _racingLapCount;
     private float _endTyreWearPct;
     private int? _pbTimeMs;
+    private int? _bestLapDeficitMs;
     private double _understeerAccum;
     private double _oversteerAccum;
     private int _balanceCornerCount;
@@ -168,8 +169,8 @@ internal sealed class ComputeSession
                 EndTyreWearPct = _endTyreWearPct,
             };
             // Stints are descoped for Phase 2 — the empty repeated field is proto3-valid.
-            session.AggregatedLosses.AddRange(_sessionLosses.Build(_options.AggregatedLossesCap));
-            session.SectorAvgDeltaMs.AddRange(SectorAvgDeltas());
+            session.AggregatedLosses.AddRange(PlausibleAggregatedLosses());
+            session.SectorAvgDeltaMs.AddRange(PlausibleSectorAvgDeltas());
             _domain.Publish(DomainEvent.Session(session));
         }
 
@@ -211,6 +212,21 @@ internal sealed class ComputeSession
     {
         (CornerEvent ev, CornerContribution contribution) = CornerEventBuilder.Build(
             corner, window, _reference, _lapLengthM, _reference?.GridLength ?? 0, _options.BrakeWindowUpstreamM);
+
+        // M3 Tier A: an implausibly large corner delta (either sign) is a detection artefact, not real
+        // pace. corner_catch_all renders abs(delta_ms), so a -3929 ms gain would voice a fabricated
+        // 3929 ms loss. Zero the reference-relative loss (silent fallback, no registry edit) so the
+        // catch-all cannot fire and the corner drops out of top-losses; self-derived kernel/balance
+        // fields stay intact. Lap deficit is unknown mid-lap, so only the absolute ceiling applies.
+        if (!LossPlausibility.WithinCeiling(ev.DeltaMs, _options.MaxPlausibleCornerLossMs))
+        {
+            _logger.LogDebug(
+                "M3 neutralised implausible corner loss {DeltaMs} ms at {CornerId} (ceiling {Ceiling} ms), session {Session}",
+                ev.DeltaMs, corner.Id, _options.MaxPlausibleCornerLossMs, _identity.SessionId);
+            ev.DeltaMs = 0;
+            contribution = contribution with { DeltaMs = 0 };
+        }
+
         _domain.Publish(DomainEvent.Corner(ev));
         _lapLosses.Add(contribution);
         _sessionLosses.Accept(contribution);
@@ -235,6 +251,18 @@ internal sealed class ComputeSession
             {
                 int refSectorMs = GridMetrics.TimeAt(_reference, refEndPos) - GridMetrics.TimeAt(_reference, _prevSectorCrossPos);
                 deltaMs = split.SectorTimeMs - refSectorMs;
+            }
+
+            // M3 Tier A (mirrors EmitCorner): an implausibly large per-crossing sector delta — e.g. an
+            // ungated out-lap crossing if M1 regresses — must not voice a fabricated realtime tip via
+            // sector_catch_all, nor poison the median. Lap deficit is unknown mid-lap, so only the
+            // absolute ceiling applies; zero it (silent fallback) before it feeds the accumulator or event.
+            if (!LossPlausibility.WithinCeiling(deltaMs, _options.MaxPlausibleSectorLossMs))
+            {
+                _logger.LogDebug(
+                    "M3 neutralised implausible sector delta {DeltaMs} ms at sector {Sector} (ceiling {Ceiling} ms), session {Session}",
+                    deltaMs, split.SectorIndex, _options.MaxPlausibleSectorLossMs, _identity.SessionId);
+                deltaMs = 0;
             }
 
             if (!_sectorDeltaAccum.TryGetValue(split.SectorIndex, out List<int>? deltas))
@@ -296,6 +324,15 @@ internal sealed class ComputeSession
             isPb = true;
             _runningBestMs = completed.LapTimeMs;
             _pbTimeMs = completed.LapTimeMs;
+            // M3: capture the best lap's deficit HERE, while deltaMs is still measured against the
+            // pre-update reference. MaybeUpdate below overwrites _reference with this PB when it beats the
+            // stored reference, after which (pbTime - _reference[^1]) would collapse to ~0 and defeat the
+            // session-tier deficit budget in Complete(). deltaMs is null only without a reference, in
+            // which case the session-tier guard degrades to inert.
+            if (deltaMs is not null)
+            {
+                _bestLapDeficitMs = deltaMs;
+            }
         }
 
         ThermalResult thermal = ThermalKernels.Analyze(completed.Frames);
@@ -315,7 +352,24 @@ internal sealed class ComputeSession
                 BrakeOverheat = thermal.BrakeOverheat,
             },
         };
-        lapEvent.TopLosses.AddRange(TopLosses(_lapLosses));
+        // M3 Tier B: drop any lap top-loss whose magnitude cannot fit the lap's own deficit budget. The
+        // lap deficit is known at completion (lapEvent.DeltaMs), so a sign-inverted or oversized corner
+        // loss is filtered before it reaches either the LLM or the template phrasing path.
+        foreach (CornerLoss loss in TopLosses(_lapLosses))
+        {
+            if (LossPlausibility.WithinDeficit(
+                loss.DeltaMs, lapEvent.DeltaMs, _options.LapDeficitLossRatio, _options.LapDeficitFloorMs))
+            {
+                lapEvent.TopLosses.Add(loss);
+            }
+            else
+            {
+                _logger.LogDebug(
+                    "M3 dropped implausible lap top-loss {DeltaMs} ms at {CornerId} vs lap deficit {Deficit} ms, session {Session}",
+                    loss.DeltaMs, loss.CornerId, lapEvent.DeltaMs, _identity.SessionId);
+            }
+        }
+
         _domain.Publish(DomainEvent.Lap(lapEvent));
 
         // Geometry is baked and fixed for the session (ADR-0014); a clean lap only updates the reference.
@@ -444,6 +498,68 @@ internal sealed class ComputeSession
         _sectorDeltaAccum
             .OrderBy(pair => pair.Key)
             .Select(pair => SectorDeltaAggregator.Median(pair.Value));
+
+    // M3 Tier B on the session aggregate: drop any corner whose per-occurrence average loss cannot fit
+    // the best lap's deficit budget. _bestLapDeficitMs is captured pre-overwrite in HandleLap (a PB
+    // overwrites the reference), so the budget survives even when self==reference by Complete(). Without a
+    // captured deficit (no reference/PB) the guard degrades to inert — it never fabricates a budget.
+    private IEnumerable<AggregatedLoss> PlausibleAggregatedLosses()
+    {
+        IReadOnlyList<AggregatedLoss> losses = _sessionLosses.Build(_options.AggregatedLossesCap);
+        if (_bestLapDeficitMs is not int deficit)
+        {
+            return losses;
+        }
+
+        List<AggregatedLoss> kept = [];
+        foreach (AggregatedLoss loss in losses)
+        {
+            if (LossPlausibility.WithinDeficit(
+                loss.AvgLossMs, deficit, _options.LapDeficitLossRatio, _options.LapDeficitFloorMs))
+            {
+                kept.Add(loss);
+            }
+            else
+            {
+                _logger.LogDebug(
+                    "M3 dropped implausible aggregated loss avg {AvgLossMs} ms at {CornerId} vs best-lap deficit {Deficit} ms, session {Session}",
+                    loss.AvgLossMs, loss.CornerId, deficit, _identity.SessionId);
+            }
+        }
+
+        return kept;
+    }
+
+    // M3 Tier B on the per-sector median deltas. A sector whose median cannot fit the deficit budget
+    // (e.g. a poisoned +14799 ms S1 on a lap that gained 1381 ms) is NEUTRALISED to 0 rather than removed
+    // — the list is positional (sector 0,1,2), so dropping an element would mis-index the debrief.
+    // Compared only against the lap deficit, never the sector absolute time (the 14799 < 35994 trap).
+    private IEnumerable<int> PlausibleSectorAvgDeltas()
+    {
+        IEnumerable<int> deltas = SectorAvgDeltas();
+        if (_bestLapDeficitMs is not int deficit)
+        {
+            return deltas;
+        }
+
+        List<int> guarded = [];
+        foreach (int delta in deltas)
+        {
+            if (LossPlausibility.WithinDeficit(delta, deficit, _options.LapDeficitLossRatio, _options.LapDeficitFloorMs))
+            {
+                guarded.Add(delta);
+            }
+            else
+            {
+                _logger.LogDebug(
+                    "M3 neutralised implausible sector median delta {DeltaMs} ms vs best-lap deficit {Deficit} ms, session {Session}",
+                    delta, deficit, _identity.SessionId);
+                guarded.Add(0);
+            }
+        }
+
+        return guarded;
+    }
 
     private void RebuildCornerTrackers()
     {
