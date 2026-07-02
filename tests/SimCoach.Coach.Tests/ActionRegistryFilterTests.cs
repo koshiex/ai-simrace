@@ -102,6 +102,48 @@ public sealed class ActionRegistryFilterTests
         rendered.PhraseRu.Should().NotContain("Теряешь");
     }
 
+    // A corner whose only non-neutral signal is a given brake-overlap fraction — every other field is 0,
+    // so straighter_braking (brake_overlap_steer_pct > threshold) is the only action that can fire.
+    private static DictionaryGoldView OverlapOnlyGold(double overlapPct) =>
+        CornerGold(
+            hasReference: true,
+            new Dictionary<string, double>
+            {
+                ["brake_point_diff_m"] = 0.0,
+                ["min_speed_diff_kmh"] = 0.0,
+                ["delta_ms"] = 0.0,
+                ["understeer_score"] = 0.0,
+                ["oversteer_score"] = 0.0,
+                ["wheelspin_score"] = 0.0,
+                ["brake_overlap_steer_pct"] = overlapPct,
+                ["steering_jitter"] = 0.0,
+                ["trail_brake_diff_pct"] = 0.0,
+                ["throttle_resume_diff_m"] = 0.0,
+                ["racing_line_deviation_m"] = 0.0,
+            });
+
+    [Fact]
+    public void Straighter_braking_stays_silent_below_the_recalibrated_threshold()
+    {
+        // M9: after phase-scoping, the Variante del Rettifilo braking-chicane false positive resolves to a
+        // low turn-in→apex overlap (0.2), which sits below the recalibrated 0.5 registry threshold.
+        IReadOnlyList<CoachAction> subset = _registry.ValidSubset(OverlapOnlyGold(0.2), new CoachOptions());
+
+        subset.Select(a => a.Id).Should().NotContain(
+            "straighter_braking", "a phase-scoped chicane overlap below the recalibrated threshold must not fire");
+    }
+
+    [Fact]
+    public void Straighter_braking_fires_at_or_above_the_recalibrated_threshold()
+    {
+        // A genuine sustained brake-into-apex resolves to a high phase-scoped overlap (0.6 > 0.5) and
+        // survives the filter — the recalibrated boundary is pinned here.
+        IReadOnlyList<CoachAction> subset = _registry.ValidSubset(OverlapOnlyGold(0.6), new CoachOptions());
+
+        subset.Select(a => a.Id).Should().Contain(
+            "straighter_braking", "a genuine over-brake above the recalibrated threshold still fires");
+    }
+
     [Fact]
     public void Caps_at_max_actions_in_menu()
     {

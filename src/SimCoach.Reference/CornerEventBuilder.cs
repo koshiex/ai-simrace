@@ -30,7 +30,8 @@ internal static class CornerEventBuilder
         ResampledLap? reference,
         float lapLengthM,
         int gridLength,
-        float brakeWindowUpstreamM)
+        float brakeWindowUpstreamM,
+        double apexWindowFraction)
     {
         // M2: every self-derived kernel and the self duration are measured over the geometric
         // [StartPosition, EndPosition] sub-window — the same span the reference grid slice covers —
@@ -48,6 +49,15 @@ internal static class CornerEventBuilder
         BalanceScores balanceSelf = BalanceKernels.Analyze(selfSpan);
         bool offTrack = OffTrack(selfSpan);
 
+        // M9: unwanted brake-while-steering is measured ONLY over the turn-in → apex band, not the whole
+        // geometric window — so a straight-line braking approach or a full braking chicane no longer
+        // inflates the fraction and mis-fires "выпрямляй руль". The band comes from the SAME shared
+        // apex-band helper the live corner-phase gate uses (one definition of "apex"). An empty band ⇒ 0
+        // (kernel contract). The band is a sub-range of [Start,End], so no new S/F wrap surface is added.
+        (float bandLo, float bandHi) = CornerPhaseBands.TurnInToApexBand(
+            corner.StartPosition, corner.ApexPosition, corner.EndPosition, apexWindowFraction);
+        IReadOnlyList<TelemetryFrame> overlapSpan = FramesInSpan(selfSpan, bandLo, bandHi);
+
         var ev = new CornerEvent
         {
             T = selfFrames[^1].T,
@@ -57,7 +67,7 @@ internal static class CornerEventBuilder
             OversteerScore = balanceSelf.OversteerScore,
             OffTrack = offTrack,
             WheelspinScore = WheelspinKernels.WheelspinScore(selfSpan),
-            BrakeOverlapSteerPct = BrakeOverlapSteerKernels.OverlapPct(selfSpan),
+            BrakeOverlapSteerPct = BrakeOverlapSteerKernels.OverlapPct(overlapSpan),
             SteeringJitter = SteeringJitterKernels.SteeringJitter(selfSpan),
         };
 

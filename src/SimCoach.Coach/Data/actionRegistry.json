@@ -61,7 +61,7 @@
       "priority": { "phase": "brake", "rank": 13 },
       "requires_reference": false,
       "when": [
-        { "field": "brake_overlap_steer_pct", "op": "gt", "value": 0.3 }
+        { "field": "brake_overlap_steer_pct", "op": "gt", "value": 0.5 }
       ],
       "params": [
         { "name": "corner", "from": "corner_name" }

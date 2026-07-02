@@ -1,5 +1,6 @@
 using FluentAssertions;
 using SimCoach.Coach.Rules;
+using SimCoach.Pipeline.Kernels;
 using SimCoach.Reference;
 using Xunit;
 
@@ -47,5 +48,22 @@ public sealed class CornerPhaseResolverTests
     public void No_baked_geometry_resolves_to_none()
     {
         _resolver.Resolve(0.5, []).Should().Be(GateCornerPhase.None);
+    }
+
+    // M9 parity: the resolver and the brake-overlap metric share ONE apex-band definition
+    // (CornerPhaseBands). The phase boundaries the resolver classifies against are exactly the shared
+    // helper's offsets, so the live gate and the metric can never disagree about "apex".
+    [Fact]
+    public void Phase_boundaries_come_from_the_shared_corner_phase_helper()
+    {
+        Corner corner = _oneCorner[0];
+        CornerPhaseOffsets offsets = CornerPhaseBands.Offsets(
+            corner.StartPosition, corner.ApexPosition, corner.EndPosition, 0.25);
+
+        // A position just inside the apex band resolves to Apex; a hair before turn-in start is Braking;
+        // between turn-in start and apex start is Entry — all keyed off the shared offsets.
+        _resolver.Resolve(corner.StartPosition + offsets.ApexStart + 1e-4, _oneCorner).Should().Be(GateCornerPhase.Apex);
+        _resolver.Resolve(corner.StartPosition + offsets.TurnInStart - 1e-4, _oneCorner).Should().Be(GateCornerPhase.Braking);
+        _resolver.Resolve(corner.StartPosition + offsets.TurnInStart + 1e-4, _oneCorner).Should().Be(GateCornerPhase.Entry);
     }
 }

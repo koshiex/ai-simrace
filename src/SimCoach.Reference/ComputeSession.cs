@@ -211,7 +211,8 @@ internal sealed class ComputeSession
     private void EmitCorner(Corner corner, IReadOnlyList<TelemetryFrame> window)
     {
         (CornerEvent ev, CornerContribution contribution) = CornerEventBuilder.Build(
-            corner, window, _reference, _lapLengthM, _reference?.GridLength ?? 0, _options.BrakeWindowUpstreamM);
+            corner, window, _reference, _lapLengthM, _reference?.GridLength ?? 0,
+            _options.BrakeWindowUpstreamM, _options.ApexWindowFraction);
 
         // M3 Tier A: an implausibly large corner delta (either sign) is a detection artefact, not real
         // pace. corner_catch_all renders abs(delta_ms), so a -3929 ms gain would voice a fabricated

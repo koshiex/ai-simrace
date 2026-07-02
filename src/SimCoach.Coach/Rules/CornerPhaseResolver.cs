@@ -1,3 +1,4 @@
+using SimCoach.Pipeline.Kernels;
 using SimCoach.Reference;
 
 namespace SimCoach.Coach.Rules;
@@ -25,31 +26,30 @@ public sealed class CornerPhaseResolver
 
         foreach (Corner corner in corners)
         {
-            double length = Mod1(corner.EndPosition - corner.StartPosition);
-            if (length <= 0)
+            // Shared apex-band math (SimCoach.Pipeline) — the SINGLE definition of "apex" the metric also
+            // uses, so the live gate and the brake-overlap window can never disagree in code.
+            CornerPhaseOffsets offsets = CornerPhaseBands.Offsets(
+                corner.StartPosition, corner.ApexPosition, corner.EndPosition, _apexBandFraction);
+            if (offsets.Length <= 0)
             {
                 continue; // degenerate window
             }
 
-            double posOffset = Mod1(position - corner.StartPosition);
-            if (posOffset > length)
+            double posOffset = CornerPhaseBands.Mod1(position - corner.StartPosition);
+            if (posOffset > offsets.Length)
             {
                 continue; // not inside this corner's window
             }
 
-            double apexOffset = Mod1(corner.ApexPosition - corner.StartPosition);
-            double apexStart = apexOffset * (1.0 - _apexBandFraction);
-            double apexEnd = apexOffset + ((length - apexOffset) * _apexBandFraction);
-
-            if (posOffset >= apexStart && posOffset <= apexEnd)
+            if (posOffset >= offsets.ApexStart && posOffset <= offsets.ApexEnd)
             {
                 return GateCornerPhase.Apex;
             }
 
-            if (posOffset < apexStart)
+            if (posOffset < offsets.ApexStart)
             {
                 // Entry zone: the first half is the braking phase, the rest is turn-in.
-                return posOffset < apexStart / 2.0 ? GateCornerPhase.Braking : GateCornerPhase.Entry;
+                return posOffset < offsets.TurnInStart ? GateCornerPhase.Braking : GateCornerPhase.Entry;
             }
 
             return GateCornerPhase.Exit;
@@ -57,7 +57,4 @@ public sealed class CornerPhaseResolver
 
         return GateCornerPhase.None;
     }
-
-    /// <summary>Forward distance in [0, 1) — folds a raw position delta into the lap's wrap-around.</summary>
-    private static double Mod1(double value) => ((value % 1.0) + 1.0) % 1.0;
 }
