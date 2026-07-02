@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using FluentAssertions;
+using Google.Protobuf.WellKnownTypes;
 using SimCoach.Contracts.V1;
 using SimCoach.Storage.Repositories;
 using SimCoach.TestKit;
@@ -271,6 +272,149 @@ public sealed class ComputeSessionTests
         // Only the poisoned tail is lost: lap 3's boundary (final-sector) crossing is suppressed.
         lateEvents.OfType<SectorEvent>(DomainEventKind.Sector).Should().HaveCount(
             cleanEvents.OfType<SectorEvent>(DomainEventKind.Sector).Count() - 1);
+    }
+
+    [Fact]
+    public async Task M3_tier_a_neutralises_an_over_ceiling_corner_delta_and_drops_it_from_losses()
+    {
+        // Pins the EmitCorner Tier-A wire-point (ComputeSession :221). Lap 2 is the reference; lap 3
+        // carries a genuine over-ceiling reference-relative delta on Curva Grande (t03). With the wired
+        // default ceiling the published delta is zeroed and the corner never reaches top-losses; with the
+        // guard disabled the same frames leak the raw delta — the differential proves the guard is live,
+        // not that the delta was never there.
+        IReadOnlyList<TelemetryFrame> baseFrames = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
+        IReadOnlyList<TelemetryFrame> frames = StretchBand(baseFrames, lapNumber: 3, from: 0.78f, to: 0.90f, extraMs: 3000);
+
+        using var guarded = new ComputeTestHarness();
+        using var disabled = new ComputeTestHarness();
+        IReadOnlyList<DomainEvent> guardedEvents = await guarded.RunAsync(frames, SessionId);
+        IReadOnlyList<DomainEvent> disabledEvents = await disabled.RunAsync(frames, SessionId, Permissive());
+
+        int ceiling = new ComputeOptions().MaxPlausibleCornerLossMs;
+
+        // Guard on: every published t03 delta collapses to 0 and t03 is absent from every losses surface.
+        IReadOnlyList<CornerEvent> guardedT03 =
+            [.. guardedEvents.OfType<CornerEvent>(DomainEventKind.Corner).Where(c => c.CornerId == "monza_t03" || c.CornerId == "spa_t03")];
+        guardedT03.Should().OnlyContain(c => c.DeltaMs == 0, "the over-ceiling delta is neutralised before phrasing");
+        List<LapEvent> guardedLaps = [.. guardedEvents.OfType<LapEvent>(DomainEventKind.Lap)];
+        guardedLaps[1].TopLosses.Should().NotContain(l => l.CornerId == "spa_t03");
+        guardedEvents.OfType<SessionEvent>(DomainEventKind.Session).Single()
+            .AggregatedLosses.Should().NotContain(l => l.CornerId == "spa_t03");
+
+        // Guard off: the same frames leak the raw over-ceiling delta straight into the losses surfaces.
+        disabledEvents.OfType<CornerEvent>(DomainEventKind.Corner)
+            .Where(c => c.CornerId == "spa_t03").Max(c => c.DeltaMs).Should().BeGreaterThan(ceiling);
+        disabledEvents.OfType<SessionEvent>(DomainEventKind.Session).Single()
+            .AggregatedLosses.Should().Contain(l => l.CornerId == "spa_t03");
+        List<LapEvent> disabledLaps = [.. disabledEvents.OfType<LapEvent>(DomainEventKind.Lap)];
+        disabledLaps[1].TopLosses.Should().Contain(l => l.CornerId == "spa_t03");
+    }
+
+    [Fact]
+    public async Task M3_tier_a_neutralises_an_over_ceiling_sector_crossing_but_keeps_positional_indexing()
+    {
+        // Pins the EmitSector Tier-A wire-point (ComputeSession :260). Lap 3's final sector carries an
+        // over-ceiling per-crossing delta while its first sector carries a small, in-budget one. The
+        // poisoned crossing is neutralised to 0, the clean neighbour survives, and sector_avg_delta_ms
+        // stays a 3-element positional vector (a dropped element would mis-index the debrief).
+        IReadOnlyList<TelemetryFrame> baseFrames = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
+        IReadOnlyList<TelemetryFrame> poisoned = StretchBand(baseFrames, lapNumber: 3, from: 0.667f, to: 1.0f, extraMs: 11000);
+        IReadOnlyList<TelemetryFrame> frames = StretchBand(poisoned, lapNumber: 3, from: 0f, to: 0.10f, extraMs: 500);
+
+        using var guarded = new ComputeTestHarness();
+        using var disabled = new ComputeTestHarness();
+        IReadOnlyList<DomainEvent> guardedEvents = await guarded.RunAsync(frames, SessionId);
+        IReadOnlyList<DomainEvent> disabledEvents = await disabled.RunAsync(frames, SessionId, Permissive());
+
+        int ceiling = new ComputeOptions().MaxPlausibleSectorLossMs;
+
+        // Guard on: no per-crossing delta survives above the ceiling; the clean neighbour crossing does.
+        IReadOnlyList<SectorEvent> guardedSectors = [.. guardedEvents.OfType<SectorEvent>(DomainEventKind.Sector)];
+        guardedSectors.Max(s => s.DeltaMs).Should().BeLessThan(ceiling, "the over-ceiling crossing is zeroed");
+        guardedSectors.Max(s => s.DeltaMs).Should().BeGreaterThan(0, "the small in-budget crossing is untouched");
+
+        SessionEvent guardedSession = guardedEvents.OfType<SessionEvent>(DomainEventKind.Session).Single();
+        guardedSession.SectorAvgDeltaMs.Should().HaveCount(3, "the aggregate stays a positional per-sector vector");
+        guardedSession.SectorAvgDeltaMs.Should().Contain(0, "the poisoned sector is neutralised to 0, not dropped");
+
+        // Guard off: the raw over-ceiling crossing reappears — the differential proves the guard is live.
+        disabledEvents.OfType<SectorEvent>(DomainEventKind.Sector).Max(s => s.DeltaMs).Should().BeGreaterThan(ceiling);
+        disabledEvents.OfType<SessionEvent>(DomainEventKind.Session).Single()
+            .SectorAvgDeltaMs.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public async Task M3_complete_tier_filters_against_the_pre_overwrite_lap_deficit()
+    {
+        // The load-bearing case (ComputeSession :334): lap 2 seeds a genuinely SLOWER reference, lap 3 is
+        // a PB that overwrites it (_reference = self at :378) yet still loses time at one corner while
+        // gaining overall. The session-tier budget must reflect lap 3's PRE-overwrite deficit (a large
+        // gain), not the ~0 a post-overwrite self==ref read would give — otherwise the still-valid corner
+        // loss would be wrongly dropped. A refactor moving the deficit capture below MaybeUpdate fails here.
+        IReadOnlyList<TelemetryFrame> baseFrames = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
+        IReadOnlyList<TelemetryFrame> slowRef = StretchBand(baseFrames, lapNumber: 2, from: 0f, to: 1.0f, extraMs: 6000);
+        IReadOnlyList<TelemetryFrame> frames = StretchBand(slowRef, lapNumber: 3, from: 0.78f, to: 0.90f, extraMs: 1800);
+
+        using var harness = new ComputeTestHarness();
+        IReadOnlyList<DomainEvent> events = await harness.RunAsync(frames, SessionId);
+
+        var options = new ComputeOptions();
+        List<LapEvent> lapEvents = [.. events.OfType<LapEvent>(DomainEventKind.Lap)];
+        LapEvent lap3 = lapEvents[1];
+        lap3.IsPb.Should().BeTrue("lap 3 beats the slower reference lap 2 and overwrites the reference");
+        lap3.DeltaMs.Should().BeLessThan(0, "lap 3 gained time overall — a real PB against the slow reference");
+
+        SessionEvent session = events.OfType<SessionEvent>(DomainEventKind.Session).Single();
+        session.AggregatedLosses.Should().ContainSingle(l => l.CornerId == "spa_t03");
+        AggregatedLoss t03 = session.AggregatedLosses.Single(l => l.CornerId == "spa_t03");
+        t03.AvgLossMs.Should().BeGreaterThan(
+            options.LapDeficitFloorMs,
+            "a post-overwrite self==ref deficit (~0) collapses the Tier-B budget to the floor and would drop this loss");
+        Math.Abs(lap3.DeltaMs).Should().BeGreaterThan(
+            t03.AvgLossMs,
+            "the pre-overwrite lap-deficit budget still admits the loss — the capture is taken before MaybeUpdate");
+    }
+
+    // All-guards-off options: every plausibility ceiling/budget is effectively infinite, so the same
+    // injected artefacts flow through untouched. Used only to prove (by differential) that the on-by-default
+    // guard is what neutralises them — never as a production configuration.
+    private static ComputeOptions Permissive() => new()
+    {
+        MaxPlausibleCornerLossMs = int.MaxValue,
+        MaxPlausibleSectorLossMs = int.MaxValue,
+        LapDeficitFloorMs = int.MaxValue,
+    };
+
+    // Rewrites frame timestamps so the [from, to) position band on `lapNumber` takes `extraMs` longer,
+    // leaving every other span's internal duration unchanged (downstream frames shift later in time,
+    // monotonic). Positions and every telemetry channel are untouched — duration is the only lever the
+    // reference-relative delta (and thus the M3 guard) reads, so this injects a controlled per-corner /
+    // per-sector loss without perturbing segmentation or the kernels.
+    private static IReadOnlyList<TelemetryFrame> StretchBand(
+        IReadOnlyList<TelemetryFrame> frames, int lapNumber, float from, float to, int extraMs)
+    {
+        List<TelemetryFrame> result = [.. frames.Select(f => f.Clone())];
+        int bandCount = result.Count(f =>
+            f.LapNumber == lapNumber && f.NormalizedCarPosition >= from && f.NormalizedCarPosition < to);
+        if (bandCount == 0)
+        {
+            return result;
+        }
+
+        double perFrameMs = extraMs / (double)bandCount;
+        double offsetMs = 0;
+        foreach (TelemetryFrame frame in result)
+        {
+            if (frame.LapNumber == lapNumber
+                && frame.NormalizedCarPosition >= from && frame.NormalizedCarPosition < to)
+            {
+                offsetMs += perFrameMs;
+            }
+
+            frame.T = Timestamp.FromDateTimeOffset(frame.T.ToDateTimeOffset() + TimeSpan.FromMilliseconds(offsetMs));
+        }
+
+        return result;
     }
 
     private static IReadOnlyList<TelemetryFrame> WithSingleInvalidFrame(

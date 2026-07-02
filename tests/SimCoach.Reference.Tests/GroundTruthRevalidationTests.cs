@@ -21,7 +21,10 @@ namespace SimCoach.Reference.Tests;
 /// unset → skip, so CI stays green and the raw MCAP never enters the repo (privacy; <c>.gitignore
 /// *.mcap</c>). Regenerate the fixture-side inputs with tools/SimCoach.GroundTruthDump +
 /// scripts/groundtruth_oracle.py per docs/05-implementation/ground-truth-revalidation.md. The M3
-/// defence-in-depth fact is hermetic and always runs — the permanent CI regression net.
+/// helper fact below is hermetic and always runs, but it only checks the <see cref="LossPlausibility"/>
+/// helper against the wired default thresholds — the ComputeSession wiring of that guard
+/// (EmitCorner/EmitSector/HandleLap/Complete + the pre-overwrite deficit capture) is pinned hermetically
+/// by the M3_* facts in <c>ComputeSessionTests</c>.
 /// </para>
 /// <para>
 /// Reality caveat (documented in the plan): the fixture's on-disk reference was overwritten in place by
@@ -137,10 +140,11 @@ public sealed class GroundTruthRevalidationTests
     }
 
     /// <summary>
-    /// M3 defence-in-depth (acceptance #5), hermetic and always-on: the plausibility guard drops a
-    /// sign-inverted/oversized loss for BOTH corner and sector, keyed on the lap deficit, using the wired
-    /// <see cref="ComputeOptions"/> defaults. Independent of the M1 latch / M2 span so it holds even if
-    /// both regress (the standalone unit suite in LossPlausibilityTests exercises the edges).
+    /// M3 helper-level check (acceptance #5), hermetic and always-on: confirms the <see cref="LossPlausibility"/>
+    /// helper rejects the two headline lies (an over-ceiling corner delta and a deficit-busting sector delta)
+    /// when called with the wired <see cref="ComputeOptions"/> defaults. This is a threshold sanity check on
+    /// the pure helper, NOT a test of the ComputeSession wiring — that is covered hermetically by the M3_*
+    /// facts in <c>ComputeSessionTests</c>; the per-edge behaviour is in LossPlausibilityTests.
     /// </summary>
     [Fact]
     public void Plausibility_guard_drops_the_two_lies_with_the_wired_thresholds()
