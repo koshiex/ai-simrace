@@ -4,18 +4,25 @@ namespace SimCoach.Reference;
 
 /// <summary>
 /// Per-corner, in-lap state machine that buffers the frames inside a corner window and fires once the
-/// car crosses the <b>geometric corner end</b> (<see cref="Corner.EndPosition"/>). The full
-/// <c>[StartPosition, EndPosition]</c> span is what the self-side kernels measure (M2/M24); the
-/// throttle-resume point is derived inside the kernel, not by truncating this buffer. Firing once per
-/// corner per lap avoids double-emission; the buffer covers a single lap-crossing. Reset between laps.
+/// car crosses the <b>geometric corner end</b> (<see cref="Corner.EndPosition"/>). The buffer arms
+/// <paramref name="upstreamNormalized"/> ahead of <see cref="Corner.StartPosition"/> (M16) so the real
+/// braking zone is captured; the full <c>[StartPosition, EndPosition]</c> span is what the self-side
+/// delta/min-speed kernels measure (M2/M24), while the brake-onset scan alone reads the upstream pre-roll
+/// (<see cref="CornerEventBuilder"/> slices both out of this one buffer). Firing once per corner per lap
+/// avoids double-emission; the buffer covers a single lap-crossing. Reset between laps.
 /// </summary>
 internal sealed class CornerTracker
 {
     private readonly List<TelemetryFrame> _buffer = [];
+    private readonly float _armPosition;
     private bool _active;
     private bool _emitted;
 
-    public CornerTracker(Corner corner) => Corner = corner;
+    public CornerTracker(Corner corner, float upstreamNormalized)
+    {
+        Corner = corner;
+        _armPosition = corner.StartPosition - upstreamNormalized;
+    }
 
     public Corner Corner { get; }
 
@@ -30,7 +37,7 @@ internal sealed class CornerTracker
         float pos = frame.NormalizedCarPosition;
         if (!_active)
         {
-            if (pos < Corner.StartPosition || pos > Corner.EndPosition)
+            if (pos < _armPosition || pos > Corner.EndPosition)
             {
                 return null;
             }

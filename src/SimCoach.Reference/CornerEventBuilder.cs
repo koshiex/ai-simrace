@@ -29,7 +29,8 @@ internal static class CornerEventBuilder
         IReadOnlyList<TelemetryFrame> selfFrames,
         ResampledLap? reference,
         float lapLengthM,
-        int gridLength)
+        int gridLength,
+        float brakeWindowUpstreamM)
     {
         // M2: every self-derived kernel and the self duration are measured over the geometric
         // [StartPosition, EndPosition] sub-window — the same span the reference grid slice covers —
@@ -85,8 +86,21 @@ internal static class CornerEventBuilder
         int refDurationMs = refLap.TMsFromLapStart[k1] - refLap.TMsFromLapStart[k0];
         int deltaMs = selfDurationMs - refDurationMs;
 
+        // M16: brake onset is the ONE metric read over the upstream-widened pre-roll (the real braking
+        // zone starts before the geometric corner). Both sides widen by the same metric distance so a
+        // symmetric extension cannot bias the diff. Everything else above stays on the [Start,End]
+        // sub-window (M2's contract); the widened slices are local to BrakeOnPosition and go nowhere else.
+        float upstreamNormalized = brakeWindowUpstreamM / lapLengthM;
+        IReadOnlyList<TelemetryFrame> selfBrakeScan =
+            SelectSpan(selfFrames, corner.StartPosition - upstreamNormalized, corner.EndPosition);
+        int upstreamGrid = (int)MathF.Round(upstreamNormalized * gridLength);
+        int k0Brake = Math.Max(0, k0 - upstreamGrid);
+        IReadOnlyList<TelemetryFrame> refBrakeScan = GridMetrics.SliceToFrames(refLap, k0Brake, k1);
+        float? selfBrakeOn = BrakeKernels.Analyze(selfBrakeScan).BrakeOnPosition;
+        float? refBrakeOn = BrakeKernels.Analyze(refBrakeScan).BrakeOnPosition;
+
         float brakePointDiffM =
-            ((brakeSelf.BrakeOnPosition ?? corner.StartPosition) - (brakeRef.BrakeOnPosition ?? corner.StartPosition))
+            ((selfBrakeOn ?? corner.StartPosition) - (refBrakeOn ?? corner.StartPosition))
             * lapLengthM;
 
         // D-minspeed: suppress the min-speed contribution for a corner with no true in-span minimum

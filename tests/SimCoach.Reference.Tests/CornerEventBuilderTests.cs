@@ -10,6 +10,7 @@ public sealed class CornerEventBuilderTests
 {
     private const float LapLengthM = 1000f;
     private const int GridLength = 101;
+    private const float BrakeWindowUpstreamM = 300f;
 
     private static readonly Corner _corner = new()
     {
@@ -26,7 +27,7 @@ public sealed class CornerEventBuilderTests
         ResampledLap reference = ReferenceGrid();
 
         (CornerEvent ev, CornerContribution contribution) =
-            CornerEventBuilder.Build(_corner, self, reference, LapLengthM, GridLength);
+            CornerEventBuilder.Build(_corner, self, reference, LapLengthM, GridLength, BrakeWindowUpstreamM);
 
         ev.DeltaMs.Should().BePositive("the self window takes longer than the reference window");
         ev.MinSpeedDiffKmh.Should().BeNegative("self min speed is lower");
@@ -49,7 +50,7 @@ public sealed class CornerEventBuilderTests
         IReadOnlyList<TelemetryFrame> self = FlatFullThrottleCorner();
         ResampledLap reference = ReferenceGrid();
 
-        (CornerEvent ev, _) = CornerEventBuilder.Build(_corner, self, reference, LapLengthM, GridLength);
+        (CornerEvent ev, _) = CornerEventBuilder.Build(_corner, self, reference, LapLengthM, GridLength, BrakeWindowUpstreamM);
 
         Math.Abs(ev.DeltaMs).Should().BeLessThanOrEqualTo(
             10, "self measures the full [Start,End] span, matching the reference span duration");
@@ -63,7 +64,7 @@ public sealed class CornerEventBuilderTests
         IReadOnlyList<TelemetryFrame> self = SlowerSelfCorner();
 
         (CornerEvent ev, CornerContribution contribution) =
-            CornerEventBuilder.Build(_corner, self, reference: null, LapLengthM, gridLength: 0);
+            CornerEventBuilder.Build(_corner, self, reference: null, LapLengthM, gridLength: 0, BrakeWindowUpstreamM);
 
         ev.DeltaMs.Should().Be(0);
         ev.MinSpeedDiffKmh.Should().Be(0);
@@ -82,11 +83,41 @@ public sealed class CornerEventBuilderTests
         self[5].TyresOut = 3;
 
         (CornerEvent ev, CornerContribution contribution) =
-            CornerEventBuilder.Build(_corner, self, ReferenceGrid(), LapLengthM, GridLength);
+            CornerEventBuilder.Build(_corner, self, ReferenceGrid(), LapLengthM, GridLength, BrakeWindowUpstreamM);
 
         ev.OffTrack.Should().BeTrue();
         contribution.Reason.Should().Be("off_track");
         ev.Reason.Should().Be("off_track");
+    }
+
+    [Fact]
+    public void Braking_upstream_of_the_start_is_captured_without_leaking_into_delta()
+    {
+        // M16: the real braking zone opens before the geometric corner start. With the tracker armed
+        // upstream, the self buffer carries pre-roll frames; the brake-onset scan must read them (a
+        // sign-correct, non-collapsed diff) while delta/min-speed stay on the [Start,End] sub-window.
+        IReadOnlyList<TelemetryFrame> full = UpstreamBrakingSelfCorner(includePreRoll: true);
+        IReadOnlyList<TelemetryFrame> inSpanOnly = UpstreamBrakingSelfCorner(includePreRoll: false);
+        ResampledLap reference = UpstreamBrakingReference();
+
+        (CornerEvent widened, _) =
+            CornerEventBuilder.Build(_corner, full, reference, LapLengthM, GridLength, BrakeWindowUpstreamM);
+        (CornerEvent spanOnly, _) =
+            CornerEventBuilder.Build(_corner, inSpanOnly, reference, LapLengthM, GridLength, BrakeWindowUpstreamM);
+
+        // Self brakes at 0.24, reference at 0.27 → (0.24 - 0.27) * 1000 m ≈ -30 m (self braked earlier).
+        // Without the upstream pre-roll the self onset would collapse to the corner start (fallback),
+        // fabricating a +30 m diff — the strict-window bug M16 removes.
+        widened.BrakePointDiffM.Should().BeApproximately(-30f, 1.5f);
+        widened.BrakePointDiffM.Should().BeNegative("the upstream pre-roll exposes the real brake onset");
+        spanOnly.BrakePointDiffM.Should().BeApproximately(
+            30f, 1.5f, "dropping the pre-roll collapses the self onset back to the corner start");
+
+        // M2 isolation regression: dropping the pre-roll frames leaves delta/min-speed identical — the
+        // widened brake scan never leaks into the [Start,End] kernels.
+        widened.DeltaMs.Should().Be(spanOnly.DeltaMs);
+        widened.MinSpeedDiffKmh.Should().Be(spanOnly.MinSpeedDiffKmh);
+        widened.MinSpeedDiffKmh.Should().BeNegative("self's in-span apex is slower than the reference apex");
     }
 
     // Self corner [0.30..0.50]: brakes earlier (0.31), slower apex (30 m/s), later throttle (0.48),
@@ -120,7 +151,36 @@ public sealed class CornerEventBuilderTests
         return frames;
     }
 
-    private static ResampledLap ReferenceGrid()
+    // Self corner covering [0.20..0.50] whose braking zone (0.24..0.28) opens upstream of the 0.30 start
+    // and whose apex minimum (30 m/s at 0.40) sits strictly inside [Start,End]. tMs keys off the absolute
+    // grid index so the in-span frames carry identical timestamps whether or not the pre-roll is included.
+    private static IReadOnlyList<TelemetryFrame> UpstreamBrakingSelfCorner(bool includePreRoll)
+    {
+        List<TelemetryFrame> frames = [];
+        for (int k = 0; k <= 30; k++)
+        {
+            float pos = 0.20f + (0.01f * k);
+            if (!includePreRoll && pos < _corner.StartPosition)
+            {
+                continue;
+            }
+
+            float speed = pos <= 0.40f ? Lerp(60f, 30f, Frac(0.20f, 0.40f, pos)) : Lerp(30f, 60f, Frac(0.40f, 0.50f, pos));
+            float brake = pos is >= 0.24f and <= 0.28f ? 0.8f : 0f;
+            float throttle = pos >= 0.45f ? 0.8f : 0f;
+            frames.Add(Frame(pos, speed, brake, throttle, tMs: 15 * k, worldX: pos * LapLengthM));
+        }
+
+        return frames;
+    }
+
+    // Reference whose braking zone (0.27..0.29) is entirely upstream of the 0.30 start — so a strict
+    // [Start,End] scan finds no onset, exactly the collapse M16 targets — with a slower apex (40 m/s).
+    private static ResampledLap UpstreamBrakingReference() => ReferenceGrid(0.27f, 0.29f);
+
+    private static ResampledLap ReferenceGrid() => ReferenceGrid(0.33f, 0.40f);
+
+    private static ResampledLap ReferenceGrid(float brakeFrom, float brakeTo)
     {
         float[] position = new float[GridLength];
         int[] tMs = new int[GridLength];
@@ -136,7 +196,7 @@ public sealed class CornerEventBuilderTests
             speed[k] = pos is >= 0.30f and <= 0.40f ? Lerp(60f, 40f, Frac(0.30f, 0.40f, pos))
                 : pos is > 0.40f and <= 0.50f ? Lerp(40f, 60f, Frac(0.40f, 0.50f, pos))
                 : 60f;
-            brake[k] = pos is >= 0.33f and <= 0.40f ? 0.8f : 0f;
+            brake[k] = pos >= brakeFrom && pos <= brakeTo ? 0.8f : 0f;
             throttle[k] = pos >= 0.45f ? 0.8f : 0f;
             worldX[k] = pos * LapLengthM;
         }

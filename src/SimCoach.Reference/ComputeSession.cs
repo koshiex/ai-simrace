@@ -210,7 +210,7 @@ internal sealed class ComputeSession
     private void EmitCorner(Corner corner, IReadOnlyList<TelemetryFrame> window)
     {
         (CornerEvent ev, CornerContribution contribution) = CornerEventBuilder.Build(
-            corner, window, _reference, _lapLengthM, _reference?.GridLength ?? 0);
+            corner, window, _reference, _lapLengthM, _reference?.GridLength ?? 0, _options.BrakeWindowUpstreamM);
         _domain.Publish(DomainEvent.Corner(ev));
         _lapLosses.Add(contribution);
         _sessionLosses.Accept(contribution);
@@ -445,10 +445,18 @@ internal sealed class ComputeSession
             .OrderBy(pair => pair.Key)
             .Select(pair => SectorDeltaAggregator.Median(pair.Value));
 
-    private void RebuildCornerTrackers() =>
+    private void RebuildCornerTrackers()
+    {
+        // M16: arm each tracker a fixed metric distance upstream of the corner start so the braking zone
+        // is buffered. Without a lap length the metre→normalized conversion is undefined and brake diffs
+        // are disabled anyway, so the window stays at the geometric start (no widening).
+        float upstreamNormalized = _hasLength && _lapLengthM > 0f
+            ? _options.BrakeWindowUpstreamM / _lapLengthM
+            : 0f;
         _cornerTrackers = _trackModel.Corners
-            .Select(corner => new CornerTracker(corner))
+            .Select(corner => new CornerTracker(corner, upstreamNormalized))
             .ToList();
+    }
 
     private void ResetForNextLap()
     {

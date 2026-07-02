@@ -22,7 +22,7 @@ public sealed class CornerTrackerTests
         // calls Reset() on every start-line crossing, so a tracker that fired on lap 1 must fire again
         // on lap 2. (The old crossing predicate never fired on real ACC, so this reset never ran and
         // trackers stayed latched after the first lap.)
-        CornerTracker tracker = new(_corner);
+        CornerTracker tracker = new(_corner, upstreamNormalized: 0f);
 
         DriveCorner(tracker).Should().NotBeNull("the tracker fires on corner exit the first lap");
         tracker.Reset();
@@ -34,11 +34,29 @@ public sealed class CornerTrackerTests
     {
         // Once latched, a second throttle stab in the same corner must not re-emit (one event per
         // corner per lap) until Reset.
-        CornerTracker tracker = new(_corner);
+        CornerTracker tracker = new(_corner, upstreamNormalized: 0f);
 
         DriveCorner(tracker).Should().NotBeNull();
         tracker.Accept(Frame(pos: 0.18f, speedMps: 40f, throttlePct: 0.9f)).Should().BeNull(
             "the corner already fired this lap");
+    }
+
+    [Fact]
+    public void Arms_upstream_of_the_start_and_buffers_the_braking_zone()
+    {
+        // M16: with a non-zero upstream distance the tracker arms before StartPosition, so a frame that
+        // brakes ahead of the geometric start is buffered and reaches the fired window (the brake-onset
+        // scan needs it). A zero-upstream tracker would drop that same frame.
+        CornerTracker tracker = new(_corner, upstreamNormalized: 0.05f);
+
+        tracker.Accept(Frame(pos: 0.06f, speedMps: 55f, throttlePct: 0f)); // upstream of the 0.10 start
+        tracker.Accept(Frame(pos: 0.10f, speedMps: 40f, throttlePct: 0f));
+        tracker.Accept(Frame(pos: 0.15f, speedMps: 30f, throttlePct: 0.2f));
+        IReadOnlyList<TelemetryFrame>? window = tracker.Accept(Frame(pos: 0.22f, speedMps: 45f, throttlePct: 0.9f));
+
+        window.Should().NotBeNull();
+        window!.Should().Contain(f => f.NormalizedCarPosition < _corner.StartPosition,
+            "the upstream pre-roll frame is buffered for the brake-onset scan");
     }
 
     // Enter the window, reach minimum speed, resume throttle, then cross the geometric corner end →
