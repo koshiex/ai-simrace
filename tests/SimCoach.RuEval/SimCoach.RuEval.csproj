@@ -29,6 +29,7 @@
     <!-- Committed proto-event JSON fixtures + judge prompt, loaded off the assembly manifest (no file paths). -->
     <EmbeddedResource Include="Fixtures\*.json" />
     <EmbeddedResource Include="Prompts\ru-judge.system.ru.txt">
+      <WithCulture>false</WithCulture>
       <LogicalName>SimCoach.RuEval.Prompts.ru-judge.system.ru.txt</LogicalName>
     </EmbeddedResource>
   </ItemGroup>

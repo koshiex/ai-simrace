@@ -1,3 +1,4 @@
+using System.Reflection;
 using FluentAssertions;
 using SimCoach.Coach;
 using Xunit;
@@ -12,6 +13,16 @@ namespace SimCoach.RuEval;
 /// </summary>
 public sealed class RuEvalHermeticTests
 {
+    [Fact]
+    public void Judge_system_prompt_is_embedded_in_the_main_manifest_not_a_satellite()
+    {
+        // Regression: the '.ru.' culture infix routes the resource to a satellite assembly unless
+        // <WithCulture>false</WithCulture> pins it to the main manifest — RuJudge would throw when the gate runs.
+        Assembly assembly = typeof(RuJudge).Assembly;
+        using Stream? stream = assembly.GetManifestResourceStream("SimCoach.RuEval.Prompts.ru-judge.system.ru.txt");
+        stream.Should().NotBeNull("the judge prompt must live on the main manifest, not a ru/ satellite assembly");
+    }
+
     [Fact]
     public void Composite_folds_dimensions_by_the_rubric_weights()
     {
@@ -96,9 +107,9 @@ public sealed class RuEvalHermeticTests
     {
         IReadOnlyList<EvalFixture> fixtures = FixtureLoader.Load();
 
-        fixtures.Should().HaveCount(5);
+        fixtures.Should().HaveCount(6);
         fixtures.Should().Contain(f => f.KnownBad, "the scale is anchored by committed known-bad fixtures");
-        fixtures.Count(f => f.KnownBad).Should().Be(2, "the transliteration + raw-number anchors");
+        fixtures.Count(f => f.KnownBad).Should().Be(3, "the transliteration + raw-number + fabricated-fact anchors");
         fixtures.Should().Contain(f => f.Cadence == CoachCadence.Session, "the debrief fixture");
         fixtures.Should().Contain(f => f.Cadence == CoachCadence.Corner && !f.HasReference, "the no-PB corner");
 
