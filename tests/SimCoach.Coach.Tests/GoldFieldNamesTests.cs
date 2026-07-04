@@ -1,5 +1,8 @@
+using System.Reflection;
+using System.Text;
 using FluentAssertions;
 using SimCoach.Coach.Actions;
+using SimCoach.Coach.Gold;
 using Xunit;
 
 namespace SimCoach.Coach.Tests;
@@ -40,20 +43,65 @@ public sealed class GoldFieldNamesTests
         sector.Should().NotContain("top_losses");
     }
 
-    [Theory]
-    [InlineData(CoachCadence.Session)]
-    [InlineData(CoachCadence.Strategy)]
-    public void For_throws_for_cadences_without_a_set(CoachCadence cadence)
+    [Fact]
+    public void For_still_throws_for_strategy()
     {
-        Action act = () => GoldFieldNames.For(cadence);
+        Action act = () => GoldFieldNames.For(CoachCadence.Strategy);
 
         act.Should().Throw<NotSupportedException>();
+    }
+
+    [Fact]
+    public void Session_set_is_the_reflected_scalar_surface_of_the_session_payload()
+    {
+        IReadOnlySet<string> session = GoldFieldNames.For(CoachCadence.Session);
+
+        // Real drift guard (M20): derive the expectation by reflecting GoldSessionPayload's scalar properties,
+        // applying the documented exclusions (SetupHint has no MVP source), snake-casing, and adding the
+        // header's has_reference — so adding a new payload scalar actually fails this test until the catalog is
+        // updated in lockstep, rather than the pin silently tracking whatever the code already produces.
+        string[] expected =
+        [
+            .. typeof(GoldSessionPayload)
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => IsScalar(p.PropertyType) && p.Name != nameof(GoldSessionPayload.SetupHint))
+                .Select(p => ToSnakeCase(p.Name)),
+            "has_reference",
+        ];
+
+        session.Should().BeEquivalentTo(expected);
+        session.Should().OnlyHaveUniqueItems();
+        session.Should().NotContain(["aggregated_losses", "sector_avg_delta_ms", "fuel_tyre", "stints", "top_losses"]);
+    }
+
+    private static bool IsScalar(Type type)
+    {
+        Type underlying = Nullable.GetUnderlyingType(type) ?? type;
+        return underlying.IsPrimitive || underlying == typeof(string) || underlying == typeof(decimal);
+    }
+
+    private static string ToSnakeCase(string name)
+    {
+        var builder = new StringBuilder(name.Length + 4);
+        for (int i = 0; i < name.Length; i++)
+        {
+            char c = name[i];
+            if (i > 0 && char.IsUpper(c))
+            {
+                builder.Append('_');
+            }
+
+            builder.Append(char.ToLowerInvariant(c));
+        }
+
+        return builder.ToString();
     }
 
     [Theory]
     [InlineData(CoachCadence.Corner)]
     [InlineData(CoachCadence.Sector)]
     [InlineData(CoachCadence.Lap)]
+    [InlineData(CoachCadence.Session)]
     public void Each_set_is_collision_free(CoachCadence cadence)
     {
         IReadOnlySet<string> set = GoldFieldNames.For(cadence);

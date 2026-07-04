@@ -34,6 +34,7 @@ public sealed class GoldArtifactBuilder
             ThrottleResumeDiffM: hasRef ? Rounding.Meters(e.ThrottleResumeDiffM) : null,
             RacingLineDeviationM: hasRef ? Rounding.Meters(e.RacingLineDeviationM) : null,
             TrailBrakePctSelf: Rounding.Score(e.TrailBrakePctSelf),
+            PeakBrakePct: Rounding.Score(e.PeakBrakePct),
             TrailBrakePctRef: hasRef ? Rounding.Score(e.TrailBrakePctRef) : null,
             TrailBrakeDiffPct: hasRef ? Rounding.Score((double)e.TrailBrakePctSelf - e.TrailBrakePctRef) : null,
             UndersteerScore: Rounding.Score(e.UndersteerScore),

@@ -14,8 +14,8 @@ public static class GoldFieldNames
     private static readonly FrozenSet<string> _corner = new[]
     {
         "corner_id", "corner_name", "delta_ms", "brake_point_diff_m", "min_speed_diff_kmh",
-        "throttle_resume_diff_m", "racing_line_deviation_m", "trail_brake_pct_self", "trail_brake_pct_ref",
-        "trail_brake_diff_pct", "understeer_score", "oversteer_score", "wheelspin_score",
+        "throttle_resume_diff_m", "racing_line_deviation_m", "trail_brake_pct_self", "peak_brake_pct",
+        "trail_brake_pct_ref", "trail_brake_diff_pct", "understeer_score", "oversteer_score", "wheelspin_score",
         "brake_overlap_steer_pct", "steering_jitter", "off_track", "reason", "has_reference",
     }.ToFrozenSet(StringComparer.Ordinal);
 
@@ -30,16 +30,26 @@ public static class GoldFieldNames
         "tyre_overheat", "brake_overheat", "has_reference",
     }.ToFrozenSet(StringComparer.Ordinal);
 
+    // The flat scalar surface of GoldSessionPayload (plus has_reference off the session header). Non-scalar
+    // aggregates (aggregated_losses, sector_avg_delta_ms, fuel_tyre, stints) are intentionally excluded — the
+    // evaluator/renderer handle scalars only. M20 groundwork for the open Session-Gold-view question; there are
+    // no Session registry actions yet, so this only guards catalog/record drift (GoldFieldNamesTests).
+    private static readonly FrozenSet<string> _session = new[]
+    {
+        "lap_count", "clean_lap_count", "pb_time_ms", "average_lap_ms", "understeer_trend",
+        "consistency_stddev_ms", "theoretical_best_gap_ms", "has_reference",
+    }.ToFrozenSet(StringComparer.Ordinal);
+
     /// <summary>
-    /// The scalar field-name set for a cadence. Throws for <see cref="CoachCadence.Session"/> /
-    /// <see cref="CoachCadence.Strategy"/>, which have no registry actions in the MVP (an empty set would only
-    /// surface later as a confusing "unknown field" error).
+    /// The scalar field-name set for a cadence. Throws for <see cref="CoachCadence.Strategy"/>, which has no Gold
+    /// payload in the MVP (an empty set would only surface later as a confusing "unknown field" error).
     /// </summary>
     public static IReadOnlySet<string> For(CoachCadence cadence) => cadence switch
     {
         CoachCadence.Corner => _corner,
         CoachCadence.Sector => _sector,
         CoachCadence.Lap => _lap,
+        CoachCadence.Session => _session,
         _ => throw new NotSupportedException($"No Gold field-name set is defined for cadence '{cadence}'."),
     };
 }

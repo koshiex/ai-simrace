@@ -78,6 +78,67 @@ public sealed class ActionRegistryFilterTests
     }
 
     [Fact]
+    public void Fires_reference_free_action_on_a_cold_start_off_track_corner()
+    {
+        // M19: a lap-1 corner with no persisted reference but an off-track symptom must still yield a
+        // reference-free action, where today the menu would be car-control-only/empty.
+        var gold = new DictionaryGoldView(
+            CoachCadence.Corner,
+            hasReference: false,
+            numbers: new Dictionary<string, double>(StringComparer.Ordinal),
+            bools: new Dictionary<string, bool>(StringComparer.Ordinal) { ["off_track"] = true });
+
+        IReadOnlyList<CoachAction> subset = _registry.ValidSubset(gold, new CoachOptions());
+
+        subset.Should().NotBeEmpty();
+        subset.Select(a => a.Id).Should().Contain("ran_wide");
+        subset.Should().OnlyContain(a => !a.RequiresReference);
+        subset.Should().HaveCount(c => c <= new CoachOptions().MaxActionsInMenu);
+    }
+
+    [Fact]
+    public void Fires_reference_free_absolute_trail_brake_action_on_a_cold_start_corner()
+    {
+        // M19: with no reference, an absolute near-zero trail-brake still yields a reference-free action —
+        // but only once the driver actually braked (peak_brake_pct clears the had-braking gate).
+        var gold = new DictionaryGoldView(
+            CoachCadence.Corner,
+            hasReference: false,
+            numbers: new Dictionary<string, double>(StringComparer.Ordinal)
+            {
+                ["trail_brake_pct_self"] = 0.0,
+                ["peak_brake_pct"] = 0.8,
+            },
+            bools: new Dictionary<string, bool>(StringComparer.Ordinal) { ["off_track"] = false });
+
+        IReadOnlyList<CoachAction> subset = _registry.ValidSubset(gold, new CoachOptions());
+
+        subset.Select(a => a.Id).Should().Contain("trail_brake_absent");
+        subset.Should().OnlyContain(a => !a.RequiresReference);
+    }
+
+    [Fact]
+    public void Does_not_fire_absolute_trail_brake_action_on_a_no_brake_corner()
+    {
+        // A flat/lift-only corner reports trail_brake_pct_self=0 with no braking; the had-braking gate
+        // (peak_brake_pct below the brake floor) must keep trail_brake_absent silent instead of drawing a
+        // "hold the brake longer" tip every lap.
+        var gold = new DictionaryGoldView(
+            CoachCadence.Corner,
+            hasReference: false,
+            numbers: new Dictionary<string, double>(StringComparer.Ordinal)
+            {
+                ["trail_brake_pct_self"] = 0.0,
+                ["peak_brake_pct"] = 0.0,
+            },
+            bools: new Dictionary<string, bool>(StringComparer.Ordinal) { ["off_track"] = false });
+
+        IReadOnlyList<CoachAction> subset = _registry.ValidSubset(gold, new CoachOptions());
+
+        subset.Select(a => a.Id).Should().NotContain("trail_brake_absent");
+    }
+
+    [Fact]
     public void Orders_by_priority_root_cause_first()
     {
         IReadOnlyList<CoachAction> subset = _registry.ValidSubset(UndersteerGold(hasReference: true), new CoachOptions());
@@ -86,20 +147,79 @@ public sealed class ActionRegistryFilterTests
         subset.Should().BeInAscendingOrder(a => a.Priority);
     }
 
+    // A corner tripping the catch-all delta with a given reason and no specific-action symptom.
+    private static DictionaryGoldView CatchAllGold(bool hasReference, string? reason) =>
+        new(
+            CoachCadence.Corner,
+            hasReference,
+            numbers: new Dictionary<string, double>(StringComparer.Ordinal) { ["delta_ms"] = 200.0 },
+            bools: new Dictionary<string, bool>(StringComparer.Ordinal) { ["off_track"] = false },
+            strings: reason is null
+                ? new Dictionary<string, string>(StringComparer.Ordinal) { ["corner_name"] = "Eau Rouge" }
+                : new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["corner_name"] = "Eau Rouge",
+                    ["reason"] = reason,
+                });
+
     [Fact]
-    public void Corner_catch_all_phrase_is_direction_neutral_on_a_gain()
+    public void Corner_catch_all_glosses_the_reason_and_sets_no_chip()
     {
+        // M21: the catch-all names the glossed cause instead of a bare millisecond count, and the reason
+        // gloss is a string (not quantitative) so it never populates the overlay chip.
+        CoachAction catchAll = _registry.Actions.Single(a => a.Id == "corner_catch_all");
+
+        RenderedAction rendered = PhraseRenderer.Render(catchAll, CatchAllGold(hasReference: true, "late_throttle"));
+
+        rendered.PhraseRu.Should().Be("В Eau Rouge теряешь: поздний газ на выходе.");
+        rendered.PhraseRu.Should().NotContainAny("мс", "отклонение");
+        rendered.RenderedParam.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("slower")]
+    [InlineData(null)]
+    public void Corner_catch_all_stays_silent_when_reason_is_empty_or_slower(string? reason)
+    {
+        // M21: a vague loss with no nameable cause emits nothing rather than a bare millisecond count.
+        IReadOnlyList<CoachAction> subset = _registry.ValidSubset(CatchAllGold(hasReference: true, reason), new CoachOptions());
+
+        subset.Select(a => a.Id).Should().NotContain("corner_catch_all");
+    }
+
+    [Fact]
+    public void Corner_catch_all_fires_alone_when_reason_is_nameable_and_no_specific_action()
+    {
+        // M21: with a real reason and no specific symptom, the catch-all is the only passing action and
+        // survives the same-family strip — the menu never empties.
+        IReadOnlyList<CoachAction> subset =
+            _registry.ValidSubset(CatchAllGold(hasReference: true, "late_throttle"), new CoachOptions());
+
+        subset.Select(a => a.Id).Should().ContainSingle().Which.Should().Be("corner_catch_all");
+    }
+
+    [Fact]
+    public void Corner_catch_all_is_stripped_when_a_specific_same_corner_action_passes()
+    {
+        // M21 targeted strip: an understeer symptom (specific, rank < CatchAllRank) survives, so the
+        // undiscriminating catch-all is dropped from the menu even though its own clause holds.
         var gold = new DictionaryGoldView(
             CoachCadence.Corner,
             hasReference: true,
-            numbers: new Dictionary<string, double> { ["delta_ms"] = -200.0 },
-            strings: new Dictionary<string, string> { ["corner_name"] = "Eau Rouge" });
-        CoachAction catchAll = _registry.Actions.Single(a => a.Id == "corner_catch_all");
+            numbers: new Dictionary<string, double>(StringComparer.Ordinal)
+            {
+                ["delta_ms"] = 200.0,
+                ["understeer_score"] = 0.8,
+                ["min_speed_diff_kmh"] = -5.0,
+            },
+            bools: new Dictionary<string, bool>(StringComparer.Ordinal) { ["off_track"] = false },
+            strings: new Dictionary<string, string>(StringComparer.Ordinal) { ["reason"] = "late_throttle" });
 
-        RenderedAction rendered = PhraseRenderer.Render(catchAll, gold);
+        IReadOnlyList<CoachAction> subset = _registry.ValidSubset(gold, new CoachOptions());
 
-        rendered.PhraseRu.Should().Be("В Eau Rouge отклонение около 200мс.");
-        rendered.PhraseRu.Should().NotContain("Теряешь");
+        subset.Should().NotBeEmpty();
+        subset.Select(a => a.Id).Should().NotContain("corner_catch_all");
+        subset.Should().OnlyContain(a => a.Priority.Rank < new CoachOptions().CatchAllRank);
     }
 
     // A corner whose only non-neutral signal is a given brake-overlap fraction — every other field is 0,

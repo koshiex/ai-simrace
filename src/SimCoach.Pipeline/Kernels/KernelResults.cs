@@ -35,8 +35,11 @@ public sealed record CornerMetrics
 
 /// <summary>
 /// Understeer / oversteer scores — a documented heuristic proxy (the inputs are native channels;
-/// the score is not). Higher understeer = fronts sliding more than rears under steering; higher
-/// oversteer = the reverse. Both are 0 when there is no cornering or no per-wheel slip data.
+/// the score is not). Scored only over <em>steady-state mid-corner</em> frames (braking and hard
+/// longitudinal-accel frames are gated out) as the mean of a scale-free front/rear slip-asymmetry
+/// ratio, so each score is normalised to <c>[0,1]</c>. Higher understeer = fronts sliding more than
+/// rears under steering; higher oversteer = the reverse. Both are 0 when there is no steady-state
+/// cornering or no per-wheel slip data.
 /// </summary>
 public sealed record BalanceScores
 {

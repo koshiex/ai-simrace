@@ -45,7 +45,7 @@
       "requires_reference": true,
       "when": [
         { "field": "trail_brake_diff_pct", "op": "gt", "value": 0.1 },
-        { "field": "oversteer_score", "op": "gt", "value": 0.6 }
+        { "field": "oversteer_score", "op": "gt", "value": 0.35 }
       ],
       "params": [
         { "name": "corner", "from": "corner_name" }
@@ -95,7 +95,7 @@
       "priority": { "phase": "entry", "rank": 21 },
       "requires_reference": true,
       "when": [
-        { "field": "understeer_score", "op": "gt", "value": 0.6 },
+        { "field": "understeer_score", "op": "gt", "value": 0.35 },
         { "field": "min_speed_diff_kmh", "op": "lt", "value": -3.0 }
       ],
       "params": [
@@ -144,7 +144,7 @@
       "priority": { "phase": "apex", "rank": 30 },
       "requires_reference": false,
       "when": [
-        { "field": "understeer_score", "op": "gt", "value": 0.7 }
+        { "field": "understeer_score", "op": "gt", "value": 0.45 }
       ],
       "params": [
         { "name": "corner", "from": "corner_name" }
@@ -194,7 +194,7 @@
       "priority": { "phase": "exit", "rank": 40 },
       "requires_reference": false,
       "when": [
-        { "field": "oversteer_score", "op": "gt", "value": 0.6 }
+        { "field": "oversteer_score", "op": "gt", "value": 0.35 }
       ],
       "params": [
         { "name": "corner", "from": "corner_name" }
@@ -234,6 +234,43 @@
       "phrase_template_ru": "Раньше газ на выходе из {corner}."
     },
     {
+      "id": "ran_wide",
+      "label_short": "ran_wide",
+      "hint_en": "ran wide / off track (no reference)",
+      "hint_ru": "вышел за пределы трассы (без эталона)",
+      "cadence": "corner",
+      "priority": { "phase": "apex", "rank": 33 },
+      "requires_reference": false,
+      "when": [
+        { "field": "off_track", "op": "eq", "value": true }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Широко в {corner}, вышел за пределы — держи трассу."
+    },
+    {
+      "id": "trail_brake_absent",
+      "label_short": "no_trail",
+      "hint_en": "almost no trail braking (absolute, no reference)",
+      "hint_ru": "почти нет трейл-брейкинга (без эталона)",
+      "cadence": "corner",
+      "priority": { "phase": "brake", "rank": 14 },
+      "requires_reference": false,
+      "when": [
+        // had-braking gate: peak_brake_pct > 0.1 means the driver actually braked in this window (the same
+        // 0.10 brake floor the trail-brake denominator uses). Without it a flat/lift-only corner reports
+        // trail_brake_pct_self=0 and would wrongly draw a "hold the brake longer" tip every lap.
+        { "field": "peak_brake_pct", "op": "gt", "value": 0.1 },
+        // provisional absolute threshold — owner ratifies the exact value later (M19)
+        { "field": "trail_brake_pct_self", "op": "lt", "value": 0.05 }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Мало трейл-брейкинга в {corner}, дольше держи тормоз к апексу."
+    },
+    {
       "id": "corner_catch_all",
       "label_short": "corner_loss",
       "hint_en": "notable corner time loss",
@@ -241,14 +278,18 @@
       "cadence": "corner",
       "priority": { "phase": "exit", "rank": 900 },
       "requires_reference": true,
+      // M21: name the cause (glossed reason) instead of a bare millisecond count; the `reason neq slower`
+      // clause keeps the catch-all silent when the compute reason is empty/`slower` (a vague gloss adds
+      // nothing over silence).
       "when": [
-        { "field": "delta_ms", "op": "abs_gt", "value": 150.0 }
+        { "field": "delta_ms", "op": "abs_gt", "value": 150.0 },
+        { "field": "reason", "op": "neq", "value": "slower" }
       ],
       "params": [
         { "name": "corner", "from": "corner_name" },
-        { "name": "loss", "from": "delta_ms", "transform": "abs_round0", "unit": "мс" }
+        { "name": "reason", "from": "reason", "transform": "reason_ru" }
       ],
-      "phrase_template_ru": "В {corner} отклонение около {loss}."
+      "phrase_template_ru": "В {corner} теряешь: {reason}."
     },
     {
       "id": "sector_summary_loss",
