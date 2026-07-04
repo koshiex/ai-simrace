@@ -7,9 +7,10 @@ namespace SimCoach.LLM;
 /// Route resolver at the head of the decorator chain (LlmRouter → CircuitBreaker → CostMeter → provider). The
 /// supplied provider map is keyed by provider id and already wrapped per <see cref="LlmProviderChain"/>, so the
 /// router itself only resolves <see cref="LlmRequest.RouteKey"/> → <see cref="ResolvedRoute"/> → provider and,
-/// when the chosen provider's breaker is open and the route declares a <see cref="RouteOptions.FallbackRouteKey"/>,
-/// downgrades to the fallback route once. A missing route or unregistered provider is a misconfiguration and
-/// throws synchronously (ValidateOnStart makes it unreachable in a composed host).
+/// when the primary fails with a router-fallback-worthy error (<see cref="LlmFailurePolicy.ShouldRouterFallback"/>)
+/// and the route declares a <see cref="RouteOptions.FallbackRouteKey"/>, downgrades to the fallback route once.
+/// A missing route or unregistered provider is a misconfiguration and throws synchronously (ValidateOnStart makes
+/// it unreachable in a composed host).
 /// <para>
 /// Options are read from <see cref="IOptionsMonitor{T}.CurrentValue"/> per resolve so a settings write
 /// (model swap, <c>Llm:Live</c> flip, see <c>SqliteSettingsConfigurationSource</c>) takes effect on the next
@@ -49,7 +50,8 @@ internal sealed class LlmRouter : ILlmClient
     {
         LlmResult result = await provider.CompleteAsync(request, route, ct);
 
-        if (result is LlmResult.Failure { Error: LlmFailure.CircuitOpen }
+        if (result is LlmResult.Failure failure
+            && LlmFailurePolicy.ShouldRouterFallback(failure.Error)
             && _options.CurrentValue.Routes.TryGetValue(request.RouteKey, out RouteOptions? primary)
             && primary.FallbackRouteKey is string fallbackKey)
         {
