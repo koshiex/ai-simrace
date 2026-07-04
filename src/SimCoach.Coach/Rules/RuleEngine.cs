@@ -15,14 +15,21 @@ namespace SimCoach.Coach.Rules;
 /// cadence-governor gates (the never-silent guarantee). The global cooldown and the per-lap cap only silence
 /// the cadences in <see cref="CadenceOptions.GovernedCadences"/> (Corner by default) — sector/lap summaries
 /// are exempt and stay subject only to the materiality floor; the floor applies to every cadence.
+/// M32 layers a cross-lap dedup gate on top: the same advice for the same corner is silenced
+/// (<see cref="QuietReason.RepeatSuppressed"/>) within <see cref="CadenceOptions.RepeatSuppressionLaps"/>
+/// laps, keyed by <c>corner_id</c> over a monotonic lap ordinal (bumped in <see cref="ResetLap"/>) and
+/// cleared only in <see cref="ResetSession"/>. That memory is orthogonal to the cadence-governor state and,
+/// like it, is single-consumer (no locking).
 /// </summary>
 public sealed class RuleEngine
 {
     private readonly RuleEngineOptions _options;
     private readonly TimeProvider _clock;
     private readonly Dictionary<CoachCadence, DateTimeOffset> _lastEmit = new();
+    private readonly Dictionary<string, LastCornerTip> _lastCornerTip = new(StringComparer.Ordinal);
     private DateTimeOffset _lastEmitGlobal;
     private int _tipsThisLap;
+    private int _lapOrdinal;
 
     public RuleEngine(RuleEngineOptions options, TimeProvider clock)
     {
@@ -35,7 +42,7 @@ public sealed class RuleEngine
 
     public RuleDecision ShouldSpeak(
         IReadOnlyList<CoachAction> subset, CoachCadence cadence, in GateSnapshot frame, in BudgetState budget,
-        double timeLossMs, bool highSeverity)
+        double timeLossMs, bool highSeverity, in TipIdentity identity = default)
     {
         ArgumentNullException.ThrowIfNull(subset);
 
@@ -94,6 +101,18 @@ public sealed class RuleEngine
             }
         }
 
+        // Cross-lap dedup (M32) — a semantic silence orthogonal to the M10 cadence-governor below: suppress the
+        // SAME advice (exact action_id) for the SAME corner within the recent-lap horizon, plus an always-on
+        // within-lap idempotency clause, so a stateless CornerEvent stops re-saying a word-for-word repeat lap
+        // after lap. A High-severity lead BYPASSES it via the explicit !highSeverity conjunct (matches M10's
+        // never-silent design), and a blank corner_id fails it open. Checked before the cadence-governor so a
+        // repeat reports RepeatSuppressed regardless of cooldown timing; a suppressed repeat never reaches
+        // NoteTip, so it arms no cooldown and disturbs no M10 counter.
+        if (!highSeverity && IsRepeatSuppressed(identity))
+        {
+            return RuleDecision.Silent(QuietReason.RepeatSuppressed);
+        }
+
         // Cadence-governor (M10). A High-severity lead bypasses all three — the never-silent guarantee, the
         // same policy as M7's abstain guard, enforced here with an explicit !highSeverity conjunct so a future
         // high-priority catch-all can never be silenced by cadence governance. The global cooldown and per-lap
@@ -139,17 +158,34 @@ public sealed class RuleEngine
     /// <summary>
     /// Records that a tip was emitted for <paramref name="cadence"/>: arms its per-cadence cooldown, the global
     /// cross-cadence cooldown, and counts it against the per-lap tip budget. Silence paths (a quiet-zone or an
-    /// M7 abstain) must NOT call this, so cadence budget is only spent by tips that actually speak.
+    /// M7 abstain) must NOT call this, so cadence budget is only spent by tips that actually speak. M32: when a
+    /// <paramref name="cornerId"/>/<paramref name="actionId"/> pair is supplied (a real-time corner tip), it is
+    /// recorded as the corner's last spoken action at the current lap ordinal so the next visit can dedup a
+    /// repeat. This records the ACTUAL spoken action (<c>tip.ActionId</c>), which may differ from the lead the
+    /// pre-LLM gate read — keeping lead-vs-spoken from desyncing. A blank pair (sector/lap summaries) records
+    /// no corner memory.
     /// </summary>
-    public void NoteTip(CoachCadence cadence, DateTimeOffset emittedAtUtc)
+    public void NoteTip(CoachCadence cadence, DateTimeOffset emittedAtUtc, string? cornerId = null, string? actionId = null)
     {
         _lastEmit[cadence] = emittedAtUtc;
         _lastEmitGlobal = emittedAtUtc;
         _tipsThisLap++;
+        if (!string.IsNullOrEmpty(cornerId) && !string.IsNullOrEmpty(actionId))
+        {
+            _lastCornerTip[cornerId] = new LastCornerTip(actionId, _lapOrdinal);
+        }
     }
 
-    /// <summary>Zeroes the per-lap tip counter at a lap boundary so the next lap gets a fresh chattiness budget.</summary>
-    public void ResetLap() => _tipsThisLap = 0;
+    /// <summary>
+    /// Zeroes the per-lap tip counter at a lap boundary so the next lap gets a fresh chattiness budget, and
+    /// bumps the monotonic lap ordinal that the M32 cross-lap dedup measures its horizon over. The per-corner
+    /// memory itself is deliberately NOT cleared here — that is what lets dedup span laps.
+    /// </summary>
+    public void ResetLap()
+    {
+        _tipsThisLap = 0;
+        _lapOrdinal++;
+    }
 
     /// <summary>Clears all cadence state at a session boundary so a singleton engine carries no stale state.</summary>
     public void ResetSession()
@@ -157,6 +193,36 @@ public sealed class RuleEngine
         _lastEmit.Clear();
         _lastEmitGlobal = default;
         _tipsThisLap = 0;
+        _lastCornerTip.Clear();
+        _lapOrdinal = 0;
+    }
+
+    // M32 cross-lap dedup predicate. Fails OPEN (never suppresses) with no corner identity — sector/lap
+    // summaries carry no corner_id, matching the frame-gate discipline. Suppresses only when the corner's last
+    // recorded action equals this lead action AND it is either the same lap (always-on within-lap idempotency,
+    // independent of the horizon knob) or within RepeatSuppressionLaps of it. Keys on the exact action_id for
+    // now; aligns to M21's action-family key as a fast-follow.
+    private bool IsRepeatSuppressed(in TipIdentity identity)
+    {
+        if (string.IsNullOrEmpty(identity.CornerId) || string.IsNullOrEmpty(identity.ActionId))
+        {
+            return false;
+        }
+
+        if (!_lastCornerTip.TryGetValue(identity.CornerId, out LastCornerTip last) ||
+            !string.Equals(last.ActionId, identity.ActionId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        int lapsSince = _lapOrdinal - last.LapOrdinal;
+        if (lapsSince == 0)
+        {
+            return true; // within-lap idempotency: never say the same thing twice in one lap, even with the horizon off
+        }
+
+        int horizon = _options.Cadence.RepeatSuppressionLaps;
+        return horizon > 0 && lapsSince < horizon;
     }
 
     private static bool IsRealtimeGated(CoachCadence cadence) =>
@@ -216,4 +282,7 @@ public sealed class RuleEngine
 
         return best;
     }
+
+    // The corner's last spoken action and the lap ordinal it was spoken on — the M32 cross-lap dedup memory.
+    private readonly record struct LastCornerTip(string ActionId, int LapOrdinal);
 }

@@ -60,6 +60,17 @@ public sealed class CadenceOptions
     public IReadOnlySet<CoachCadence> GovernedCadences { get; init; } =
         new HashSet<CoachCadence> { CoachCadence.Corner };
 
+    /// <summary>
+    /// Cross-lap repeat suppression horizon (M32): stay quiet about the <em>same</em> advice (exact
+    /// <c>action_id</c>) for the <em>same</em> corner if it was already spoken within this many lap boundaries
+    /// — stops the coach re-saying a word-for-word repeat lap after lap ("не повторяй одно и то же в этом
+    /// повороте"). <c>0</c> = off, but an always-on within-lap idempotency clause still holds independently
+    /// (a given <c>(corner_id, action_id)</c> never speaks twice in one lap). A High-severity lead bypasses
+    /// this gate (the never-silent guarantee), and a summary with no <c>corner_id</c> fails it open. Valid
+    /// range: ≥ 0 (0 = off). Owner default 2.
+    /// </summary>
+    public int RepeatSuppressionLaps { get; init; } = 2;
+
     public void EnsureValid()
     {
         ArgumentNullException.ThrowIfNull(GovernedCadences);
@@ -86,6 +97,11 @@ public sealed class CadenceOptions
         if (MinTimeLossMs < 0)
         {
             throw new InvalidOperationException("CadenceOptions.MinTimeLossMs must be non-negative (0 = off).");
+        }
+
+        if (RepeatSuppressionLaps < 0)
+        {
+            throw new InvalidOperationException("CadenceOptions.RepeatSuppressionLaps must be non-negative (0 = off).");
         }
     }
 }

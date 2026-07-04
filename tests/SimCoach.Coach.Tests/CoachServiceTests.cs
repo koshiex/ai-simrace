@@ -262,6 +262,48 @@ public sealed class CoachServiceTests
     }
 
     [Fact]
+    public async Task Repeated_corner_on_the_next_lap_is_deduped_and_never_reaches_the_llm()
+    {
+        // M32: two identical (non-High) corner tips on consecutive laps. Cooldowns are disabled so the ONLY
+        // thing that can silence the repeat is the cross-lap dedup gate. The first corner speaks (template) and
+        // records tip.ActionId; the intervening lap summary speaks; the repeat corner is suppressed pre-LLM, so
+        // it never reaches the LLM. Only two responses are scripted — a broken dedup would call a third and throw.
+        var ruleOptions = new RuleEngineOptions
+        {
+            Cadence = new CadenceOptions { GlobalCooldown = TimeSpan.Zero, Cooldowns = NoCooldowns() },
+        };
+        var harness = new Harness(
+            hasReference: true,
+            ruleOptions,
+            new LlmResult.Failure(new LlmFailure.Timeout("slow")),   // corner 1 → template, records the action
+            new LlmResult.Failure(new LlmFailure.Timeout("slow")));  // lap summary → template
+
+        await RunToCompletionAsync(
+            harness,
+            DomainEvent.Corner(UndersteerCorner()),
+            DomainEvent.Lap(GoldTestData.Lap()),
+            DomainEvent.Corner(UndersteerCorner()));
+
+        IReadOnlyList<CoachTip> corners = harness.Sink.Tips.Where(t => t.Cadence == CoachCadence.Corner).ToList();
+        corners.Should().ContainSingle();
+        corners[0].ActionId.Should().Be("ease_understeer"); // the recorded action the repeat was matched against
+        harness.Llm.Calls.Should().Be(2); // corner 1 + the lap summary; the repeat corner was deduped pre-LLM
+    }
+
+    private static IReadOnlyDictionary<CoachCadence, TimeSpan> NoCooldowns() =>
+        Enum.GetValues<CoachCadence>().ToDictionary(c => c, _ => TimeSpan.Zero);
+
+    // A corner whose lead action is the apex-phase ease_understeer (Medium severity, so the High-severity dedup
+    // bypass does NOT apply) — the neutral corner trips no brake/entry action, so understeer alone leads.
+    private static CornerEvent UndersteerCorner()
+    {
+        CornerEvent ev = GoldTestData.CornerNeutral();
+        ev.DeltaMs = 140;
+        ev.UndersteerScore = 0.71f;
+        return ev;
+    }
+
+    [Fact]
     public async Task A_faulting_sink_is_isolated_and_the_drain_continues()
     {
         var sink = new ThrowOnceSink();
@@ -456,16 +498,28 @@ public sealed class CoachServiceTests
     private sealed class Harness
     {
         public Harness(bool hasReference, params LlmResult[] responses)
-            : this(hasReference, null, null, responses)
+            : this(hasReference, null, null, null, responses)
         {
         }
 
         public Harness(bool hasReference, ICoachTipSink? sink, params LlmResult[] responses)
-            : this(hasReference, sink, null, responses)
+            : this(hasReference, sink, null, null, responses)
+        {
+        }
+
+        public Harness(bool hasReference, RuleEngineOptions ruleOptions, params LlmResult[] responses)
+            : this(hasReference, null, null, ruleOptions, responses)
         {
         }
 
         public Harness(bool hasReference, ICoachTipSink? sink, ICostQueryRepository? cost, params LlmResult[] responses)
+            : this(hasReference, sink, cost, null, responses)
+        {
+        }
+
+        public Harness(
+            bool hasReference, ICoachTipSink? sink, ICostQueryRepository? cost, RuleEngineOptions? ruleOptions,
+            params LlmResult[] responses)
         {
             Llm = new ScriptedLlm(responses);
             ICoachTipSink effectiveSink = sink ?? Sink;
@@ -480,7 +534,7 @@ public sealed class CoachServiceTests
                 ActionRegistry.Load(),
                 new PromptBuilder(coachOptions, new PromptOptions()),
                 Llm,
-                new RuleEngine(new RuleEngineOptions(), TimeProvider.System),
+                new RuleEngine(ruleOptions ?? new RuleEngineOptions(), TimeProvider.System),
                 effectiveSink,
                 ambient,
                 names,

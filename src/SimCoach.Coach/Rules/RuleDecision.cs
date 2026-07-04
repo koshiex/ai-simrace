@@ -38,6 +38,12 @@ public enum QuietReason
 
     /// <summary>The per-lap tip cap (<see cref="CadenceOptions.MaxTipsPerLap"/>) is spent for this lap.</summary>
     LapTipBudget,
+
+    /// <summary>
+    /// The same advice for the same corner was already spoken within
+    /// <see cref="CadenceOptions.RepeatSuppressionLaps"/> laps (or already this lap) — cross-lap dedup (M32).
+    /// </summary>
+    RepeatSuppressed,
 }
 
 /// <summary>The rule-engine verdict for a candidate tip: an outcome plus the reason that drove it.</summary>

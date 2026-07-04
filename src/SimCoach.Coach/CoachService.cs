@@ -212,8 +212,11 @@ public sealed class CoachService : BackgroundService
         // an absent delta_ms (e.g. a no-PB corner) yields 0, which the engine's floor treats as fail-open.
         double timeLossMs = view.TryGetNumber("delta_ms", out double d) ? Math.Abs(d) : 0;
         bool highSeverity = subset.Count > 0 && _coachOptions.SeverityFor(subset[0].Priority) == CoachSeverity.High;
+        // M32: the pre-LLM dedup gate reads the LEAD action (subset[0]) for this corner — suppressing the
+        // obvious repeat saves the LLM call. The post-emit NoteTip below records the ACTUAL spoken action.
+        var identity = new TipIdentity(CornerIdOf(gold), subset.Count > 0 ? subset[0].Id : null);
         RuleDecision decision =
-            _ruleEngine.ShouldSpeak(subset, cadence, _ambient.LatestGate(), _budget, timeLossMs, highSeverity);
+            _ruleEngine.ShouldSpeak(subset, cadence, _ambient.LatestGate(), _budget, timeLossMs, highSeverity, identity);
 
         if (decision.Outcome == RuleOutcome.Silent)
         {
@@ -250,7 +253,9 @@ public sealed class CoachService : BackgroundService
         }
 
         await _sink.EmitTipAsync(tip, ct).ConfigureAwait(false);
-        _ruleEngine.NoteTip(cadence, _clock.GetUtcNow());
+        // M32: record the ACTUAL spoken action (BuildChosenTip may pick a non-lead subset member), so the
+        // cross-lap memory reflects what the driver heard, not the lead the pre-LLM gate read.
+        _ruleEngine.NoteTip(cadence, _clock.GetUtcNow(), tip.CornerId, tip.ActionId);
         LogTipOutcome(cadence, tip, rejectionReason, confidence);
 
         if (overBudget)
@@ -363,6 +368,12 @@ public sealed class CoachService : BackgroundService
             ProviderModelId: providerModelId,
             GeneratedAtUtc: _clock.GetUtcNow());
     }
+
+    // The dedup corner key (M32): only a corner event carries one; a sector/lap summary has no corner_id and so
+    // fails the dedup gate open. Mirrors the CornerInfo corner-id branch, so the pre-LLM gate key matches the
+    // tip.CornerId that NoteTip later records.
+    private static string? CornerIdOf<TEvent>(GoldArtifact<TEvent> gold) =>
+        gold.Event is GoldCornerEvent c && !string.IsNullOrWhiteSpace(c.CornerId) ? c.CornerId : null;
 
     private (string? CornerId, string? Name, string? Short, string? Spoken) CornerInfo<TEvent>(GoldArtifact<TEvent> gold)
     {
