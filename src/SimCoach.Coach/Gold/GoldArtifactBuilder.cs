@@ -42,7 +42,10 @@ public sealed class GoldArtifactBuilder
             BrakeOverlapSteerPct: Rounding.Score(e.BrakeOverlapSteerPct),
             SteeringJitter: Rounding.Score(e.SteeringJitter),
             OffTrack: e.OffTrack,
-            Reason: string.IsNullOrEmpty(e.Reason) ? null : e.Reason);
+            Reason: string.IsNullOrEmpty(e.Reason) ? null : e.Reason)
+        {
+            CornerNameRu = _names.GetShort(ctx.TrackId, e.CornerId),
+        };
 
         return Envelope("corner", Header(ctx), payload, ctx.Locale);
     }
@@ -119,7 +122,10 @@ public sealed class GoldArtifactBuilder
 
     private IReadOnlyList<GoldCornerLoss> Losses(string trackId, IReadOnlyList<CornerLoss> losses) =>
     [
-        .. losses.Select(l => new GoldCornerLoss(_names.ResolveName(trackId, l.CornerId), l.DeltaMs, l.Reason)),
+        .. losses.Select(l => new GoldCornerLoss(_names.ResolveName(trackId, l.CornerId), l.DeltaMs, l.Reason)
+        {
+            CornerNameRu = _names.GetShort(trackId, l.CornerId),
+        }),
     ];
 
     private IReadOnlyList<GoldAggregatedLoss> AggregatedLosses(string trackId, IReadOnlyList<AggregatedLoss> losses) =>
@@ -129,7 +135,10 @@ public sealed class GoldArtifactBuilder
             .ThenBy(l => l.CornerId, StringComparer.Ordinal)
             .Take(_options.MaxDebriefLosses)
             .Select(l => new GoldAggregatedLoss(
-                _names.ResolveName(trackId, l.CornerId), l.TotalLossMs, l.AvgLossMs, l.SampleCount, l.DominantReason)),
+                _names.ResolveName(trackId, l.CornerId), l.TotalLossMs, l.AvgLossMs, l.SampleCount, l.DominantReason)
+            {
+                CornerNameRu = _names.GetShort(trackId, l.CornerId),
+            }),
     ];
 
     private static IReadOnlyList<GoldStint> Stints(IReadOnlyList<StintSummary> stints) =>

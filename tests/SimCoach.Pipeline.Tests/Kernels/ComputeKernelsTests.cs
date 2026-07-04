@@ -32,6 +32,25 @@ public sealed class ComputeKernelsTests
     }
 
     [Fact]
+    public void Brake_onset_is_found_in_the_upstream_pre_roll()
+    {
+        // M16 feeds BrakeKernels a window that arms upstream of the geometric corner start; the kernel is
+        // unchanged, but the earliest brake-on frame now sits in that pre-roll. The onset must report that
+        // upstream position, not the first in-corner frame — that is what makes brake_point_diff non-zero.
+        TelemetryFrame[] withPreRoll =
+        [
+            Frame(pos: 0.05f, brake: 0.0f, throttle: 1.0f, speed: 70f, steer: 0.0f),
+            Frame(pos: 0.12f, brake: 0.6f, throttle: 0.0f, speed: 55f, steer: 0.1f), // onset, upstream of a 0.30 start
+            Frame(pos: 0.30f, brake: 0.8f, throttle: 0.0f, speed: 35f, steer: 0.3f),
+            Frame(pos: 0.45f, brake: 0.0f, throttle: 0.6f, speed: 40f, steer: 0.1f),
+        ];
+
+        BrakeProfile profile = BrakeKernels.Analyze(withPreRoll);
+
+        profile.BrakeOnPosition.Should().BeApproximately(0.12f, 1e-4f);
+    }
+
+    [Fact]
     public void Corner_metrics_report_min_speed_and_throttle_resume()
     {
         CornerMetrics metrics = ThrottleSpeedKernels.Analyze(_brakingCorner);
@@ -39,6 +58,24 @@ public sealed class ComputeKernelsTests
         metrics.MinSpeedMps.Should().BeApproximately(20f, 1e-4f);
         metrics.MinSpeedPosition.Should().BeApproximately(0.30f, 1e-4f);
         metrics.ThrottleOnPosition.Should().BeApproximately(0.40f, 1e-4f);
+        metrics.HasInSpanMinimum.Should().BeTrue("the speed dips to a genuine apex strictly inside the window");
+    }
+
+    [Fact]
+    public void Corner_metrics_flag_no_in_span_minimum_for_a_monotonic_transit()
+    {
+        // Speed only decelerates through the window, so the minimum lands on the trailing endpoint —
+        // not a coachable apex. D-minspeed relies on this flag to suppress the min-speed contribution.
+        TelemetryFrame[] monotonic =
+        [
+            Frame(pos: 0.00f, brake: 0.0f, throttle: 1.0f, speed: 60f, steer: 0.0f),
+            Frame(pos: 0.25f, brake: 0.0f, throttle: 1.0f, speed: 55f, steer: 0.0f),
+            Frame(pos: 0.50f, brake: 0.0f, throttle: 1.0f, speed: 50f, steer: 0.0f),
+        ];
+
+        CornerMetrics metrics = ThrottleSpeedKernels.Analyze(monotonic);
+
+        metrics.HasInSpanMinimum.Should().BeFalse("the minimum sits on the window endpoint, not strictly inside");
     }
 
     [Fact]
@@ -59,6 +96,7 @@ public sealed class ComputeKernelsTests
         brake.TrailBrakePct.Should().Be(0f);
         metrics.MinSpeedMps.Should().Be(70f);
         metrics.ThrottleOnPosition.Should().BeApproximately(0f, 1e-4f, "throttle is already open at the start");
+        metrics.HasInSpanMinimum.Should().BeFalse("a full-throttle window has no deceleration apex");
     }
 
     [Fact]

@@ -42,10 +42,18 @@ public static class ThrottleSpeedKernels
             }
         }
 
+        // A true in-span minimum sits strictly between the endpoints and dips below both — a real
+        // deceleration apex rather than a flat or monotonic transit through the window.
+        bool hasInSpanMinimum = minIndex > 0
+            && minIndex < frames.Count - 1
+            && minSpeed < frames[0].SpeedMps
+            && minSpeed < frames[^1].SpeedMps;
+
         return new CornerMetrics
         {
             MinSpeedMps = minSpeed,
             MinSpeedPosition = frames[minIndex].NormalizedCarPosition,
+            HasInSpanMinimum = hasInSpanMinimum,
             ThrottleOnPosition = throttleOn,
         };
     }

@@ -43,6 +43,18 @@ public sealed class PhraseRendererTests
         rendered.ActionLabelShort.Should().Be("test_label");
     }
 
+    [Fact]
+    public void Lap_pb_renders_without_a_dangling_placeholder()
+    {
+        CoachAction lapPb = ActionRegistry.Load().Actions.Single(a => a.Id == "lap_pb");
+
+        RenderedAction rendered = PhraseRenderer.Render(
+            lapPb, new DictionaryGoldView(CoachCadence.Lap, hasReference: false));
+
+        rendered.PhraseRu.Should().Be("Личный рекорд! Так держать.");
+        rendered.PhraseRu.Should().NotContain("{");
+    }
+
     [Theory]
     [InlineData(-3.4, "3")]
     [InlineData(3.6, "4")]

@@ -199,6 +199,27 @@ public sealed class LapSegmenterTests
         completed.Select(l => l.LapNumber).Should().Equal(5, 6);
     }
 
+    [Fact]
+    public void Has_started_lap_is_false_until_the_first_crossing_then_stays_true()
+    {
+        // Out-lap frames (before the first start-line crossing) have no bounded lap; HasStartedLap reports
+        // false there and flips true on the first crossing, so the compute emit-gate can drop pre-start
+        // (out-lap) samples. The flag is only set on the crossing frame itself, not the frames before it.
+        LapSegmenter segmenter = new();
+
+        segmenter.Accept(Frame(lapNumber: 1, pos: 0.40f, ms: 0));
+        segmenter.HasStartedLap.Should().BeFalse("no start-line crossing has been observed yet");
+
+        segmenter.Accept(Frame(lapNumber: 1, pos: 0.95f, ms: 10));
+        segmenter.HasStartedLap.Should().BeFalse();
+
+        segmenter.Accept(Frame(lapNumber: 1, pos: 0.02f, ms: 20)); // first crossing (start observed)
+        segmenter.HasStartedLap.Should().BeTrue("the first start-line crossing was just observed");
+
+        segmenter.Accept(Frame(lapNumber: 1, pos: 0.50f, ms: 30));
+        segmenter.HasStartedLap.Should().BeTrue("it stays latched for the rest of the stream");
+    }
+
     private static IReadOnlyList<CompletedLap> Segment(IReadOnlyList<TelemetryFrame> frames)
     {
         LapSegmenter segmenter = new();

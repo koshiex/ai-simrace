@@ -9,13 +9,33 @@
         "cadence": "corner",
         "session": { "track_id": "spa", "car_class": "gt3", "weather": "dry", "has_reference": true },
         "event": {
-          "corner_name": "Eau Rouge", "min_speed_diff_kmh": -6.2,
+          "corner_name": "Eau Rouge", "corner_name_ru": "О-Руж", "min_speed_diff_kmh": -6.2,
           "understeer_score": 0.74, "brake_point_diff_m": -3.1, "off_track": false
         },
-        "valid_actions": [ { "id": "wider_entry", "hint": "understeer + low min speed" } ],
+        "valid_actions": [ { "id": "wider_entry", "hint": "understeer and low min speed — widen the entry", "hint_ru": "снос и низкая минимальная скорость — расширь вход" } ],
         "phrase_limits": { "max_words": 8 }
       },
-      "assistant": { "action_id": "wider_entry", "phrase_ru": "Шире вход в Eau Rouge, неси скорость." }
+      "assistant": { "action_id": "wider_entry", "phrase_ru": "Шире заходи в О-Руж." }
+    },
+    {
+      "label": "corner-evidence",
+      "cadence": "corner",
+      "note": "Два действия co-fire; выбрано подтверждённое числами (сильный занос + перетормаживание).",
+      "negative": false,
+      "user": {
+        "cadence": "corner",
+        "session": { "track_id": "monza", "car_class": "gt3", "weather": "dry", "has_reference": true },
+        "event": {
+          "corner_name": "Curva di Lesmo 1", "corner_name_ru": "Лезмо1",
+          "trail_brake_diff_pct": 0.19, "oversteer_score": 0.71, "min_speed_diff_kmh": -0.4, "off_track": false
+        },
+        "valid_actions": [
+          { "id": "less_trail_brake", "hint": "trail-braking too deep at the apex, car steps out — release the brake earlier", "hint_ru": "перетормаживаешь у апекса, машину заносит — отпускай тормоз раньше" },
+          { "id": "earlier_throttle", "hint": "you get on the throttle too late on exit", "hint_ru": "поздно открываешь газ на выходе" }
+        ],
+        "phrase_limits": { "max_words": 8 }
+      },
+      "assistant": { "action_id": "less_trail_brake", "phrase_ru": "Меньше тормоза в Лезмо1, отпускай раньше." }
     },
     {
       "label": "sector",
@@ -25,10 +45,10 @@
         "cadence": "sector",
         "session": { "track_id": "spa", "car_class": "gt3", "weather": "dry", "has_reference": true },
         "event": { "sector_idx": 1, "delta_ms": 180, "top_corner": "Les Combes" },
-        "valid_actions": [ { "id": "sector_summary_loss", "hint": "losing time in this sector" } ],
+        "valid_actions": [ { "id": "sector_summary_loss", "hint": "you are losing time in this sector", "hint_ru": "теряешь время в этом секторе" } ],
         "phrase_limits": { "max_words": 25 }
       },
-      "assistant": { "action_id": "sector_summary_loss", "phrase_ru": "Теряешь 180 мс во втором секторе, главное — Les Combes." }
+      "assistant": { "action_id": "sector_summary_loss", "phrase_ru": "Теряешь во втором секторе, прибавь в связке." }
     },
     {
       "label": "lap",
@@ -38,23 +58,38 @@
         "cadence": "lap",
         "session": { "track_id": "spa", "car_class": "gt3", "weather": "dry", "has_reference": true },
         "event": { "lap_number": 7, "delta_ms": 260, "is_pb": false, "is_clean": true, "top_corner": "Bus Stop" },
-        "valid_actions": [ { "id": "lap_clean_focus", "hint": "clean but slower than reference" } ],
+        "valid_actions": [ { "id": "lap_clean_focus", "hint": "clean lap but slower than the reference", "hint_ru": "круг чистый, но медленнее эталона" } ],
         "phrase_limits": { "max_words": 25 }
       },
-      "assistant": { "action_id": "lap_clean_focus", "phrase_ru": "Чисто, но на 260 мс медленнее. Поработай над Bus Stop." }
+      "assistant": { "action_id": "lap_clean_focus", "phrase_ru": "Круг чистый, но медленнее — поработай над последней связкой." }
     },
     {
-      "label": "no-pb",
+      "label": "cold-start-understeer",
       "cadence": "corner",
+      "note": "has_reference=false: без сравнений с эталоном, только абсолютное поведение машины.",
       "negative": false,
       "user": {
         "cadence": "corner",
         "session": { "track_id": "monza", "car_class": "gt3", "weather": "dry", "has_reference": false },
-        "event": { "corner_name": "Variante della Roggia", "understeer_score": 0.78, "off_track": false },
-        "valid_actions": [ { "id": "ease_understeer", "hint": "strong understeer (no reference)" } ],
+        "event": { "corner_name": "Variante della Roggia (1)", "corner_name_ru": "Роджа1", "understeer_score": 0.78, "off_track": false },
+        "valid_actions": [ { "id": "ease_understeer", "hint": "heavy understeer — scrub speed and unload the front", "hint_ru": "сильный снос — сбрось скорость и разгрузи перед" } ],
         "phrase_limits": { "max_words": 8 }
       },
-      "assistant": { "action_id": "ease_understeer", "phrase_ru": "Снос в Роджа: плавнее руль, чуть меньше скорости." }
+      "assistant": { "action_id": "ease_understeer", "phrase_ru": "Снос в Роджа1: плавнее руль." }
+    },
+    {
+      "label": "cold-start-oversteer",
+      "cadence": "corner",
+      "note": "has_reference=false и corner_name_ru отсутствует: без имени и без сравнений.",
+      "negative": false,
+      "user": {
+        "cadence": "corner",
+        "session": { "track_id": "spa", "car_class": "gt3", "weather": "dry", "has_reference": false },
+        "event": { "corner_name": "Pouhon (1)", "oversteer_score": 0.69, "off_track": false },
+        "valid_actions": [ { "id": "settle_oversteer", "hint": "oversteer on exit — feed in the throttle more smoothly", "hint_ru": "занос на выходе — плавнее добавляй газ" } ],
+        "phrase_limits": { "max_words": 8 }
+      },
+      "assistant": { "action_id": "settle_oversteer", "phrase_ru": "На выходе занос — плавнее газ." }
     },
     {
       "label": "debrief",
@@ -66,8 +101,9 @@
         "event": {
           "lap_count": 14, "pb_time_ms": 138420, "average_lap_ms": 139950,
           "aggregated_losses": [
-            { "corner": "Les Combes", "total_loss_ms": 620, "avg_loss_ms": 80, "sample_count": 8, "reason": "low_min_speed" },
-            { "corner": "Bus Stop", "total_loss_ms": 410, "avg_loss_ms": 60, "sample_count": 7, "reason": "early_brake" }
+            { "corner": "Les Combes", "corner_name_ru": "Комб1", "total_loss_ms": 620, "avg_loss_ms": 80, "sample_count": 8, "reason": "low_min_speed" },
+            { "corner": "Bus Stop", "corner_name_ru": "Бус1", "total_loss_ms": 410, "avg_loss_ms": 60, "sample_count": 7, "reason": "early_brake" },
+            { "corner": "Campus", "corner_name_ru": "Кампус", "total_loss_ms": 500, "avg_loss_ms": 30, "sample_count": 3, "reason": "slower" }
           ],
           "understeer_trend": 0.31
         },
@@ -75,10 +111,11 @@
       },
       "assistant": {
         "top_losses": [
-          { "corner": "Les Combes", "ms": 620, "why": "низкая минимальная скорость на входе" },
-          { "corner": "Bus Stop", "ms": 410, "why": "раннее торможение" }
+          { "corner": "Комб1", "ms": 620, "why": "низкая минимальная скорость на входе, −620 мс" },
+          { "corner": "Бус1", "ms": 410, "why": "раннее торможение, −410 мс" },
+          { "corner": "Кампус", "ms": 500, "why": "приоритет снижен: явной причины нет, а средняя × число заездов не сходится с суммой — потеря сомнительна" }
         ],
-        "top_priority": "Сначала Les Combes: неси больше скорости в апекс.",
+        "top_priority": "Сначала Комб1: неси больше скорости в апекс.",
         "setup_hint": "Есть лёгкий устойчивый снос — попробуй чуть мягче перед."
       }
     },
@@ -86,15 +123,15 @@
       "label": "negative",
       "cadence": "corner",
       "negative": true,
-      "note": "Запрещено: action_id вне valid_actions и выдуманное число, которого нет в Gold.",
+      "note": "phrase_ru должна выражать смысл выбранного action_id; здесь выбран wider_entry (снос, шире вход), а фраза — про торможение. Это не тот совет.",
       "user": {
         "cadence": "corner",
         "session": { "track_id": "spa", "car_class": "gt3", "weather": "dry", "has_reference": true },
-        "event": { "corner_name": "Pouhon", "min_speed_diff_kmh": -4.0, "off_track": false },
-        "valid_actions": [ { "id": "higher_min_speed", "hint": "low minimum speed" } ],
+        "event": { "corner_name": "Pouhon (1)", "corner_name_ru": "Пухон1", "understeer_score": 0.72, "min_speed_diff_kmh": -4.0, "off_track": false },
+        "valid_actions": [ { "id": "wider_entry", "hint": "understeer and low min speed — widen the entry", "hint_ru": "снос и низкая минимальная скорость — расширь вход" } ],
         "phrase_limits": { "max_words": 8 }
       },
-      "assistant": { "action_id": "brake_later_by_meters", "phrase_ru": "В Pouhon тормози позже на 5 м." }
+      "assistant": { "action_id": "wider_entry", "phrase_ru": "В Пухон1 тормози позже на 5 м." }
     }
   ]
 }

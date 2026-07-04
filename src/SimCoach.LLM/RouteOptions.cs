@@ -20,6 +20,14 @@ public sealed record RouteOptions
 
     public bool Stream { get; init; }
 
+    /// <summary>Sampling temperature. Null leaves it to the provider default; 0 = deterministic (preferred for
+    /// short structured coaching output). Emitted to the provider only when set.</summary>
+    public double? Temperature { get; init; }
+
+    /// <summary>Nucleus-sampling cutoff. Null leaves it to the provider default; 1.0 = no truncation. Emitted to
+    /// the provider only when set. Best practice tunes temperature xor top_p, not both.</summary>
+    public double? TopP { get; init; }
+
     public string? FallbackRouteKey { get; init; }
 
     public void EnsureValid()
@@ -42,6 +50,16 @@ public sealed record RouteOptions
         if (Timeout < TimeSpan.FromMilliseconds(100))
         {
             throw new InvalidOperationException("RouteOptions.Timeout must be at least 100 ms.");
+        }
+
+        if (Temperature is < 0d or > 2d)
+        {
+            throw new InvalidOperationException("RouteOptions.Temperature, when set, must be within [0, 2].");
+        }
+
+        if (TopP is < 0d or > 1d)
+        {
+            throw new InvalidOperationException("RouteOptions.TopP, when set, must be within [0, 1].");
         }
 
         if (FallbackRouteKey is not null && string.IsNullOrWhiteSpace(FallbackRouteKey))

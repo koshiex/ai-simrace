@@ -22,6 +22,8 @@ internal sealed record ActionEntryDto
 
     public string? HintEn { get; init; }
 
+    public string? HintRu { get; init; }
+
     public string? Cadence { get; init; }
 
     public PriorityDto? Priority { get; init; }

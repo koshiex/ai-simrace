@@ -8,4 +8,6 @@ internal readonly record struct ResolvedRoute(
     int MaxOutputTokens,
     TimeSpan Timeout,
     ReasoningEffort Reasoning,
-    bool Stream);
+    bool Stream,
+    double? Temperature = null,
+    double? TopP = null);

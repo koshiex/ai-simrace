@@ -98,6 +98,17 @@ internal sealed class OpenRouterProvider : ILlmProvider
             ["usage"] = new JsonObject { ["include"] = true },
         };
 
+        // Sampling knobs are emitted only when the route sets them, so an unset route keeps the upstream default.
+        if (route.Temperature is double temperature)
+        {
+            body["temperature"] = temperature;
+        }
+
+        if (route.TopP is double topP)
+        {
+            body["top_p"] = topP;
+        }
+
         if (directive.ResponseFormat is not null)
         {
             body["response_format"] = directive.ResponseFormat;

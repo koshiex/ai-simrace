@@ -43,6 +43,7 @@ public sealed class GoldSessionArtifactTests
         GoldSessionPayload e = GoldTestData.Builder().BuildSession(GoldTestData.Session(), GoldTestData.Ctx()).Event;
 
         e.AggregatedLosses[0].Corner.Should().Be("Eau Rouge");
+        e.AggregatedLosses[0].CornerNameRu.Should().Be("О-Руж");
         e.AggregatedLosses[0].TotalLossMs.Should().Be(600);
         e.AggregatedLosses[0].Reason.Should().Be("low_min_speed");
     }

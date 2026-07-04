@@ -6,7 +6,9 @@ namespace SimCoach.Coach.Gold;
 /// rather than emitting misleading zeros). Always-present scalars (the B1 tip-quality scores, the self-only
 /// trail-brake, the bools) are non-nullable so they serialize even when <c>false</c> — the registry's
 /// fail-closed clause evaluator needs them present. <see cref="Reason"/> is null (omitted) when empty.
-/// No <c>sector_idx</c>: it is neither on the proto event nor a clause field.
+/// No <c>sector_idx</c>: it is neither on the proto event nor a clause field. <see cref="CornerNameRu"/> is the
+/// short Russian display form (<c>CornerNameMap.GetShort</c>) the prompt requires the model to speak; it rides
+/// alongside <see cref="CornerName"/> as a separate init member so it never disturbs the positional shape.
 /// </summary>
 public sealed record GoldCornerEvent(
     string CornerId,
@@ -25,4 +27,7 @@ public sealed record GoldCornerEvent(
     double BrakeOverlapSteerPct,
     double SteeringJitter,
     bool OffTrack,
-    string? Reason);
+    string? Reason)
+{
+    public string CornerNameRu { get; init; } = string.Empty;
+}

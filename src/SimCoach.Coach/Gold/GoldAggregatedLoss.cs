@@ -9,4 +9,7 @@ public sealed record GoldAggregatedLoss(
     int TotalLossMs,
     int AvgLossMs,
     int SampleCount,
-    string Reason);
+    string Reason)
+{
+    public string CornerNameRu { get; init; } = string.Empty;
+}

@@ -19,7 +19,6 @@ public sealed class LapSegmenter
 
     private readonly List<TelemetryFrame> _current = [];
     private TelemetryFrame? _previous;
-    private bool _startedAtLine;
 
     // Session-local monotonic lap numbering. The sim's lap counter (frame.LapNumber) resets on a
     // pit-return out-lap (ESC → box → drive out), so it re-issues a number already completed this
@@ -35,6 +34,12 @@ public sealed class LapSegmenter
     /// not it closed a bounded lap). The compute session reads this to re-arm its per-lap accumulators, so
     /// the crossing definition lives in one place instead of being duplicated and drifting.</summary>
     public bool CrossedThisFrame { get; private set; }
+
+    /// <summary>True once a start-line crossing has been observed, so the lap currently accumulating had
+    /// its start seen (the boundedness flag). Out-lap frames before the first crossing read false; the
+    /// compute emit-gate reads this to drop pre-start (out-lap) corner and sector emits, which have no
+    /// bounded lap to belong to.</summary>
+    public bool HasStartedLap { get; private set; }
 
     /// <summary>
     /// Count of position resets into the start band (<c>pos &lt; <see cref="WrapLowThreshold"/></c>) that did
@@ -57,13 +62,13 @@ public sealed class LapSegmenter
             if (IsStartLineCrossing(_previous, frame))
             {
                 CrossedThisFrame = true;
-                if (_startedAtLine && _current.Count > 0)
+                if (HasStartedLap && _current.Count > 0)
                 {
                     completed = Build(_current, frame.T.ToDateTimeOffset());
                 }
 
                 _current.Clear();
-                _startedAtLine = true; // the lap now beginning had its start observed
+                HasStartedLap = true; // the lap now beginning had its start observed
             }
             else if (IsSuspiciousReset(_previous, frame))
             {

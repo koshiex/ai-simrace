@@ -21,6 +21,7 @@ public sealed class OpenRouterProviderTests
     private static readonly HashSet<string> _allowedBodyKeys = new(StringComparer.Ordinal)
     {
         "model", "messages", "max_tokens", "stream", "reasoning", "usage", "response_format", "tools", "tool_choice",
+        "temperature", "top_p",
     };
 
     [Fact]
@@ -72,6 +73,38 @@ public sealed class OpenRouterProviderTests
         // Gemini family strips the maxLength constraint from the carried schema.
         JsonObject schema = body["response_format"]!["json_schema"]!["schema"]!.AsObject();
         schema["properties"]!["phrase_ru"]!.AsObject().ContainsKey("maxLength").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Request_body_carries_temperature_and_top_p_when_route_sets_them()
+    {
+        var handler = MockHttpMessageHandler.Json(HttpStatusCode.OK, OpenAiSuccess("{}"));
+        OpenRouterProvider provider = Provider(handler);
+
+        await provider.CompleteAsync(
+            Request(RealTimeSchema),
+            Route("openrouter-google", "google/gemini-2.5-flash-lite", temperature: 0, topP: 1.0),
+            CancellationToken.None);
+
+        JsonObject body = JsonNode.Parse(handler.LastRequestBody!)!.AsObject();
+        body["temperature"]!.GetValue<double>().Should().Be(0);
+        body["top_p"]!.GetValue<double>().Should().Be(1.0);
+    }
+
+    [Fact]
+    public async Task Request_body_omits_temperature_and_top_p_when_route_leaves_them_null()
+    {
+        var handler = MockHttpMessageHandler.Json(HttpStatusCode.OK, OpenAiSuccess("{}"));
+        OpenRouterProvider provider = Provider(handler);
+
+        await provider.CompleteAsync(
+            Request(RealTimeSchema),
+            Route("openrouter-google", "google/gemini-2.5-flash-lite"),
+            CancellationToken.None);
+
+        JsonObject body = JsonNode.Parse(handler.LastRequestBody!)!.AsObject();
+        body.Should().NotContainKey("temperature");
+        body.Should().NotContainKey("top_p");
     }
 
     [Fact]
@@ -225,8 +258,10 @@ public sealed class OpenRouterProviderTests
         string modelId,
         int maxTokens = 96,
         double timeoutMs = 2000,
-        ReasoningEffort reasoning = ReasoningEffort.Off)
-        => new(providerId, modelId, maxTokens, TimeSpan.FromMilliseconds(timeoutMs), reasoning, false);
+        ReasoningEffort reasoning = ReasoningEffort.Off,
+        double? temperature = null,
+        double? topP = null)
+        => new(providerId, modelId, maxTokens, TimeSpan.FromMilliseconds(timeoutMs), reasoning, false, temperature, topP);
 
     private static string OpenAiSuccess(string contentJson, string finish = "stop")
         => new JsonObject

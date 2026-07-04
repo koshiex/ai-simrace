@@ -217,12 +217,20 @@ public sealed class CoachService : BackgroundService
         // TemplateOnly means the budget cap was hit (the only TemplateOnly outcome) — no LLM call, and the row
         // is tagged TemplateBudget so it is distinguishable from an ordinary quality fallback.
         bool overBudget = decision.Outcome == RuleOutcome.TemplateOnly;
-        CoachTip tip = overBudget
-            ? ComposeRealtimeTip(cadence, gold, top, topRendered, topRendered.PhraseRu, TipSource.TemplateBudget, null, noPb, sessionId)
-            : await CompleteRealtimeAsync(cadence, gold, view, subset, top, topRendered, noPb, sessionId, ct).ConfigureAwait(false);
+        CoachTip tip;
+        string? rejectionReason = null;
+        if (overBudget)
+        {
+            tip = ComposeRealtimeTip(cadence, gold, top, topRendered, topRendered.PhraseRu, TipSource.TemplateBudget, null, noPb, sessionId);
+        }
+        else
+        {
+            (tip, rejectionReason) = await CompleteRealtimeAsync(cadence, gold, view, subset, top, topRendered, noPb, sessionId, ct).ConfigureAwait(false);
+        }
 
         await _sink.EmitTipAsync(tip, ct).ConfigureAwait(false);
         _ruleEngine.NoteTip(cadence, _clock.GetUtcNow());
+        LogTipOutcome(cadence, tip, rejectionReason);
 
         if (overBudget)
         {
@@ -234,7 +242,7 @@ public sealed class CoachService : BackgroundService
         }
     }
 
-    private async Task<CoachTip> CompleteRealtimeAsync<TEvent>(
+    private async Task<(CoachTip Tip, string? RejectionReason)> CompleteRealtimeAsync<TEvent>(
         CoachCadence cadence, GoldArtifact<TEvent> gold, IGoldView view, IReadOnlyList<CoachAction> subset,
         CoachAction top, RenderedAction topRendered, bool noPb, string sessionId, CancellationToken ct)
     {
@@ -244,22 +252,34 @@ public sealed class CoachService : BackgroundService
         bool allowRetry = cadence != CoachCadence.Corner; // a corner retry would land after the next corner
 
         LlmResult result = await _llm.CompleteAsync(request, ct).ConfigureAwait(false);
-        if (TryAcceptRealtime(result, ids, maxWords, out string actionId, out string phrase, out string? model))
+        if (TryAcceptRealtime(result, ids, maxWords, out string actionId, out string phrase, out string? model, out string rejection))
         {
-            return BuildChosenTip(cadence, gold, view, subset, actionId, phrase, model, noPb, sessionId);
+            return (BuildChosenTip(cadence, gold, view, subset, actionId, phrase, model, noPb, sessionId), null);
         }
 
         if (allowRetry && IsRetryable(result))
         {
             LlmRequest retry = request with { SystemPrompt = request.SystemPrompt + "\n\n" + _retryReminder };
             LlmResult second = await _llm.CompleteAsync(retry, ct).ConfigureAwait(false);
-            if (TryAcceptRealtime(second, ids, maxWords, out actionId, out phrase, out model))
+            if (TryAcceptRealtime(second, ids, maxWords, out actionId, out phrase, out model, out rejection))
             {
-                return BuildChosenTip(cadence, gold, view, subset, actionId, phrase, model, noPb, sessionId);
+                return (BuildChosenTip(cadence, gold, view, subset, actionId, phrase, model, noPb, sessionId), null);
             }
         }
 
-        return ComposeRealtimeTip(cadence, gold, top, topRendered, topRendered.PhraseRu, TipSource.Template, null, noPb, sessionId);
+        return (ComposeRealtimeTip(cadence, gold, top, topRendered, topRendered.PhraseRu, TipSource.Template, null, noPb, sessionId), rejection);
+    }
+
+    // M23: one structured accept/fallback line per real-time tip so the LLM-vs-template mix and the reason a
+    // model answer was rejected stay observable in the logs — no DB columns. Hot-path safe: the reason is
+    // already captured upstream, so this is a single pre-formatted log call.
+    private void LogTipOutcome(CoachCadence cadence, CoachTip tip, string? rejectionReason)
+    {
+        bool fellBackToTemplate = tip.Source is TipSource.Template or TipSource.TemplateBudget;
+        _logger.LogInformation(
+            "Coach tip {Cadence} action={ActionId} source={Source} fellBack={FellBack} rejection={Rejection}",
+            cadence, tip.ActionId, tip.Source, fellBackToTemplate,
+            string.IsNullOrEmpty(rejectionReason) ? "none" : rejectionReason);
     }
 
     private CoachTip BuildChosenTip<TEvent>(
@@ -302,7 +322,9 @@ public sealed class CoachService : BackgroundService
         return gold.Event switch
         {
             GoldCornerEvent c when !string.IsNullOrWhiteSpace(c.CornerId) =>
-                (c.CornerId, c.CornerName, _names.GetShort(trackId, c.CornerId), _names.GetSpokenRu(trackId, c.CornerId)),
+                // M5: name the corner with the authored RU short form (corner_name_ru contract) so the
+                // deterministic template tip speaks Russian instead of the raw Italian ResolveName.
+                (c.CornerId, _names.GetShort(trackId, c.CornerId), _names.GetShort(trackId, c.CornerId), _names.GetSpokenRu(trackId, c.CornerId)),
             GoldCornerEvent c => (c.CornerId, c.CornerName, null, null),
             GoldSectorEvent s => (null, s.TopCorner, null, null),
             GoldLapEvent l => (null, l.TopCorner, null, null),
@@ -390,19 +412,25 @@ public sealed class CoachService : BackgroundService
 
     private bool TryAcceptRealtime(
         LlmResult result, IReadOnlyCollection<string> ids, int maxWords,
-        out string actionId, out string phraseRu, out string? providerModelId)
+        out string actionId, out string phraseRu, out string? providerModelId, out string rejectionReason)
     {
         actionId = string.Empty;
         phraseRu = string.Empty;
         providerModelId = null;
         if (result is not LlmResult.Success success)
         {
+            rejectionReason = DescribeFailure(result);
             return false;
         }
 
         providerModelId = success.Info.ProviderModelId;
-        return TipValidator.TryValidateRealtime(success.Json, ids, maxWords, out actionId, out phraseRu, out _);
+        return TipValidator.TryValidateRealtime(success.Json, ids, maxWords, out actionId, out phraseRu, out rejectionReason);
     }
+
+    // A non-Success result never carries a validator reason; surface the failure variant so the accept/fallback
+    // log distinguishes an infra miss (timeout/rate-limit/transport) from a model-quality rejection.
+    private static string DescribeFailure(LlmResult result) =>
+        result is LlmResult.Failure failure ? failure.Error.GetType().Name : "no result";
 
     private bool TryAcceptDebrief(LlmResult result, out string json, out string? providerModelId)
     {

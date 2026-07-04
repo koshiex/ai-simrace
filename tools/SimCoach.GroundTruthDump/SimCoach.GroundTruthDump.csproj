@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Dev-only tool: run it on a machine with a newer runtime (no 9.0 installed) without a testhost. -->
+    <RollForward>LatestMajor</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SimCoach.Storage\SimCoach.Storage.csproj" />
+    <ProjectReference Include="..\..\src\SimCoach.Contracts\SimCoach.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -15,7 +15,7 @@ public static class CleanLapPredicate
     private const int PenaltyBit = 1 << 5;
     private const int DisqualifyingFlags = BlackFlagBit | PenaltyBit;
 
-    /// <summary>True when every frame is valid, on-track, and free of black-flag/penalty bits.</summary>
+    /// <summary>True when every frame is valid, on-track, out of the pit lane, and free of black-flag/penalty bits.</summary>
     public static bool IsClean(IReadOnlyList<TelemetryFrame> frames)
     {
         ArgumentNullException.ThrowIfNull(frames);
@@ -26,7 +26,10 @@ public static class CleanLapPredicate
 
         foreach (TelemetryFrame frame in frames)
         {
-            if (!frame.IsValidLap || frame.TyresOut != 0 || (frame.FlagsActive & DisqualifyingFlags) != 0)
+            // A pit-lane touch disqualifies the whole lap: it diverges from the racing line and must
+            // never seed a reference. This mirrors the fuel gate (ComputeSession) which already skips
+            // pit frames; CornerEventBuilder.OffTrack labeling deliberately stays pit-agnostic (M27).
+            if (!frame.IsValidLap || frame.IsInPitLane || frame.TyresOut != 0 || (frame.FlagsActive & DisqualifyingFlags) != 0)
             {
                 return false;
             }

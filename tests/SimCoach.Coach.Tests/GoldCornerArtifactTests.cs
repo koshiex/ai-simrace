@@ -28,6 +28,7 @@ public sealed class GoldCornerArtifactTests
         GoldCornerEvent e = GoldTestData.Builder().BuildCorner(GoldTestData.Corner(), GoldTestData.Ctx()).Event;
 
         e.CornerName.Should().Be("Eau Rouge");
+        e.CornerNameRu.Should().Be("О-Руж");
         e.WheelspinScore.Should().Be(0.18);
         e.BrakeOverlapSteerPct.Should().Be(0.31);
         e.SteeringJitter.Should().Be(0.09);

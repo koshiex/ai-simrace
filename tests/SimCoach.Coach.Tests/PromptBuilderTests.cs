@@ -38,6 +38,7 @@ public sealed class PromptBuilderTests
         user.RootElement.GetProperty("valid_actions").GetArrayLength().Should().Be(subset.Count);
         user.RootElement.GetProperty("valid_actions")[0].GetProperty("id").GetString().Should().Be(subset[0].Id);
         user.RootElement.GetProperty("valid_actions")[0].GetProperty("hint").GetString().Should().Be(subset[0].HintEn);
+        user.RootElement.GetProperty("valid_actions")[0].GetProperty("hint_ru").GetString().Should().Be(subset[0].HintRu);
         user.RootElement.GetProperty("phrase_limits").GetProperty("max_words").GetInt32()
             .Should().Be(_coach.InCornerMaxWords);
 

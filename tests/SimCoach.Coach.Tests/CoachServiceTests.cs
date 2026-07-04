@@ -1,5 +1,5 @@
 using FluentAssertions;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using SimCoach.Coach.Actions;
 using SimCoach.Coach.Gold;
 using SimCoach.Coach.Rules;
@@ -33,7 +33,8 @@ public sealed class CoachServiceTests
         tip.PhraseRu.Should().Be("Тормози позже немного.");
         tip.ProviderModelId.Should().Be("google/gemini-2.5-flash-lite");
         tip.ActionLabelShort.Should().Be(subset[0].ActionLabelShort);
-        tip.CornerName.Should().NotBeNullOrWhiteSpace();
+        // spa_t02 → GetShort short RU form; a revert of CornerInfo to the raw Italian "Eau Rouge" would fail here.
+        tip.CornerName.Should().Be("О-Руж");
         tip.NoPbYet.Should().BeFalse();
         harness.Llm.Calls.Should().Be(1);
     }
@@ -51,6 +52,7 @@ public sealed class CoachServiceTests
         CoachTip tip = harness.Sink.Tips[0];
         tip.Source.Should().Be(TipSource.Template);
         tip.ActionId.Should().Be(subset[0].Id); // the highest-priority action is rendered
+        tip.CornerName.Should().Be("О-Руж"); // template path still speaks the RU short form, not "Eau Rouge"
         harness.Llm.Calls.Should().Be(1); // corner cadence never retries
     }
 
@@ -248,8 +250,41 @@ public sealed class CoachServiceTests
 
         harness.Sink.Tips.Should().ContainSingle();
         harness.Sink.Tips[0].Source.Should().Be(TipSource.TemplateBudget);
+        harness.Sink.Tips[0].CornerName.Should().Be("О-Руж"); // budget fallback keeps the RU short form
         harness.Llm.Calls.Should().Be(0);
     }
+
+    [Fact]
+    public async Task Rejected_llm_answer_logs_the_validator_reason_not_none()
+    {
+        // Raw LLM success whose action_id is outside the menu → quality rejection. The M23 accept/fallback line
+        // must carry the TipValidator reason, not the "none" sentinel reserved for a clean accept.
+        var harness = new Harness(
+            hasReference: true, RawSuccess("""{"action_id":"totally_invalid","phrase_ru":"x"}"""));
+
+        await RunToCompletionAsync(harness, DomainEvent.Corner(GoldTestData.Corner()));
+
+        string tipLine = TipOutcomeLine(harness);
+        tipLine.Should().Contain("action_id 'totally_invalid' not in subset");
+        tipLine.Should().NotContain("rejection=none");
+    }
+
+    [Fact]
+    public async Task Infra_failure_logs_the_failure_variant_name_as_the_rejection()
+    {
+        // A non-Success result carries no validator reason; the M23 line must surface the infra failure variant
+        // ("Timeout") so a transport/timeout miss is distinguishable from a model-quality rejection.
+        var harness = new Harness(hasReference: true, new LlmResult.Failure(new LlmFailure.Timeout("slow")));
+
+        await RunToCompletionAsync(harness, DomainEvent.Corner(GoldTestData.Corner()));
+
+        TipOutcomeLine(harness).Should().Contain("rejection=Timeout");
+    }
+
+    private static string TipOutcomeLine(Harness harness) =>
+        harness.Logger.Snapshot()
+            .Single(e => e.Level == LogLevel.Information && e.Message.StartsWith("Coach tip", StringComparison.Ordinal))
+            .Message;
 
     private static async Task RunToCompletionAsync(Harness harness, params DomainEvent[] events)
     {
@@ -328,8 +363,10 @@ public sealed class CoachServiceTests
                 Cost,
                 Session,
                 TimeProvider.System,
-                NullLogger<CoachService>.Instance);
+                Logger);
         }
+
+        public CollectingLogger<CoachService> Logger { get; } = new();
 
         public DomainEventFanOut FanOut { get; } = new();
 
