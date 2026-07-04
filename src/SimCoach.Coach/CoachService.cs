@@ -257,6 +257,25 @@ public sealed class CoachService : BackgroundService
             return;
         }
 
+        // M32 post-LLM recheck: the pre-LLM gate keyed on the LEAD action (subset[0]) to save the call, but the
+        // model may deterministically pick a non-lead subset member (BuildChosenTip). Re-run the dedup against the
+        // ACTUAL chosen action so a stable non-lead pick still dedups lap-over-lap instead of re-speaking the same
+        // phrase every lap. On the over-budget path the chosen action IS the lead, so this merely re-affirms the
+        // pre-LLM decision. A suppressed repeat emits nothing and arms no cooldown (mirrors the M7 abstain path);
+        // the LLM call still happened on the non-budget path, so refresh the budget before going silent.
+        var chosenIdentity = new TipIdentity(tip.CornerId, tip.ActionId);
+        if (_ruleEngine.IsRepeatSuppressed(chosenIdentity, highSeverity))
+        {
+            _logger.LogDebug(
+                "Coach silent [{Reason}] for {Cadence} (post-LLM chosen-action dedup)", QuietReason.RepeatSuppressed, cadence);
+            if (!overBudget)
+            {
+                await RefreshBudgetAsync(sessionId, ct).ConfigureAwait(false);
+            }
+
+            return;
+        }
+
         await _sink.EmitTipAsync(tip, ct).ConfigureAwait(false);
         // M32: record the ACTUAL spoken action (BuildChosenTip may pick a non-lead subset member), so the
         // cross-lap memory reflects what the driver heard, not the lead the pre-LLM gate read.

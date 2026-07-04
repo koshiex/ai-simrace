@@ -201,14 +201,20 @@ public sealed class RuleEngine
         _lapOrdinal = 0;
     }
 
-    // M32 cross-lap dedup predicate. Fails OPEN (never suppresses) with no corner identity — sector/lap
-    // summaries carry no corner_id, matching the frame-gate discipline. Suppresses only when the corner's last
-    // recorded action equals this lead action AND it is either the same lap (always-on within-lap idempotency,
-    // independent of the horizon knob and of severity) or within the applicable horizon of it. M32-high-dedup:
-    // a High-severity repeat uses the longer HighSeverityRepeatSuppressionLaps horizon, a non-High repeat the
-    // ordinary RepeatSuppressionLaps. Keys on the exact action_id for now; aligns to M21's action-family key as a
-    // fast-follow.
-    private bool IsRepeatSuppressed(in TipIdentity identity, bool highSeverity)
+    /// <summary>
+    /// M32 cross-lap dedup predicate. Fails OPEN (never suppresses) with no corner identity — sector/lap
+    /// summaries carry no corner_id, matching the frame-gate discipline. Suppresses only when the corner's last
+    /// recorded action equals <paramref name="identity"/>'s action AND it is either the same lap (always-on
+    /// within-lap idempotency, independent of the horizon knob and of severity) or within the applicable horizon
+    /// of it. M32-high-dedup: a High-severity repeat uses the longer HighSeverityRepeatSuppressionLaps horizon, a
+    /// non-High repeat the ordinary RepeatSuppressionLaps. Keys on the exact action_id for now; aligns to M21's
+    /// action-family key as a fast-follow.
+    /// Public so <c>CoachService</c> can re-check the ACTUAL chosen action post-LLM: the pre-LLM gate inside
+    /// <see cref="ShouldSpeak"/> keys on the lead (subset[0]) to save the call, but the model may deterministically
+    /// pick a non-lead subset member — that repeat must still dedup instead of re-speaking every lap. This is a
+    /// pure read (no state change); <see cref="NoteTip"/> remains the only writer.
+    /// </summary>
+    public bool IsRepeatSuppressed(in TipIdentity identity, bool highSeverity)
     {
         if (string.IsNullOrEmpty(identity.CornerId) || string.IsNullOrEmpty(identity.ActionId))
         {

@@ -332,6 +332,43 @@ public sealed class CoachServiceTests
         harness.Llm.Calls.Should().Be(2); // corner 1 + the lap summary; the repeat corner was deduped pre-LLM
     }
 
+    [Fact]
+    public async Task Repeat_of_a_non_lead_chosen_action_dedups_across_laps_even_though_the_pre_llm_gate_misses_it()
+    {
+        // M32 regression: the pre-LLM dedup gate keys on the LEAD action (subset[0]) to save the call, but the
+        // model (Temperature:0) may deterministically pick a NON-lead subset member. If dedup only matched the
+        // lead, the identical chosen phrase would be re-spoken every lap — the exact behavior M32 exists to kill.
+        // Cooldowns are off so the ONLY thing that can silence the repeat is dedup; and because the lead never
+        // matches the recorded chosen action, the repeat corner DOES reach the LLM — it is the post-LLM recheck on
+        // the ACTUAL chosen action that suppresses the emit.
+        IReadOnlyList<CoachAction> subset = CornerSubset(hasReference: true);
+        subset.Count.Should().BeGreaterThan(1); // need a non-lead member for the model to pick
+        CoachAction nonLead = subset[^1];
+        nonLead.Id.Should().NotBe(subset[0].Id);
+
+        var ruleOptions = new RuleEngineOptions
+        {
+            Cadence = new CadenceOptions { GlobalCooldown = TimeSpan.Zero, Cooldowns = NoCooldowns() },
+        };
+        var harness = new Harness(
+            hasReference: true,
+            ruleOptions,
+            Realtime(nonLead.Id, "Позже тормози здесь."),          // corner 1 → LLM picks a non-lead action
+            new LlmResult.Failure(new LlmFailure.Timeout("slow")), // lap summary → template
+            Realtime(nonLead.Id, "Позже тормози здесь."));         // repeat corner → LLM picks the same action
+
+        await RunToCompletionAsync(
+            harness,
+            DomainEvent.Corner(GoldTestData.Corner()),
+            DomainEvent.Lap(GoldTestData.Lap()),
+            DomainEvent.Corner(GoldTestData.Corner()));
+
+        IReadOnlyList<CoachTip> corners = harness.Sink.Tips.Where(t => t.Cadence == CoachCadence.Corner).ToList();
+        corners.Should().ContainSingle();          // the repeat of the CHOSEN action was deduped, not re-spoken
+        corners[0].ActionId.Should().Be(nonLead.Id);
+        harness.Llm.Calls.Should().Be(3); // both corners reached the LLM (lead gate missed); post-LLM dedup silenced the repeat
+    }
+
     private static IReadOnlyDictionary<CoachCadence, TimeSpan> NoCooldowns() =>
         Enum.GetValues<CoachCadence>().ToDictionary(c => c, _ => TimeSpan.Zero);
 
