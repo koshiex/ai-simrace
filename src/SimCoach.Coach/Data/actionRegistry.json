@@ -45,7 +45,7 @@
       "requires_reference": true,
       "when": [
         { "field": "trail_brake_diff_pct", "op": "gt", "value": 0.1 },
-        { "field": "oversteer_score", "op": "gt", "value": 0.6 }
+        { "field": "oversteer_score", "op": "gt", "value": 0.35 }
       ],
       "params": [
         { "name": "corner", "from": "corner_name" }
@@ -95,7 +95,7 @@
       "priority": { "phase": "entry", "rank": 21 },
       "requires_reference": true,
       "when": [
-        { "field": "understeer_score", "op": "gt", "value": 0.6 },
+        { "field": "understeer_score", "op": "gt", "value": 0.35 },
         { "field": "min_speed_diff_kmh", "op": "lt", "value": -3.0 }
       ],
       "params": [
@@ -144,7 +144,7 @@
       "priority": { "phase": "apex", "rank": 30 },
       "requires_reference": false,
       "when": [
-        { "field": "understeer_score", "op": "gt", "value": 0.7 }
+        { "field": "understeer_score", "op": "gt", "value": 0.45 }
       ],
       "params": [
         { "name": "corner", "from": "corner_name" }
@@ -194,7 +194,7 @@
       "priority": { "phase": "exit", "rank": 40 },
       "requires_reference": false,
       "when": [
-        { "field": "oversteer_score", "op": "gt", "value": 0.6 }
+        { "field": "oversteer_score", "op": "gt", "value": 0.35 }
       ],
       "params": [
         { "name": "corner", "from": "corner_name" }

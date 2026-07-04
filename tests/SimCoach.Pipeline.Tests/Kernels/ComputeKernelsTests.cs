@@ -102,6 +102,9 @@ public sealed class ComputeKernelsTests
     [Fact]
     public void Balance_scores_separate_understeer_from_oversteer()
     {
+        // Steady-state frames (no brake, no long-g). Scores are the scale-free asymmetry ratio
+        // |front − rear| / (front + rear): understeer front 0.4 / rear 0.1 → 0.3/0.5 = 0.6;
+        // oversteer front 0.1 / rear 0.5 → 0.4/0.6 ≈ 0.6667. Both land in [0,1].
         TelemetryFrame[] understeer =
         [
             FrameWithSlip(steer: 0.3f, fl: 0.4f, fr: 0.4f, rl: 0.1f, rr: 0.1f),
@@ -115,10 +118,69 @@ public sealed class ComputeKernelsTests
         BalanceScores under = BalanceKernels.Analyze(understeer);
         BalanceScores over = BalanceKernels.Analyze(oversteer);
 
-        under.UndersteerScore.Should().BeApproximately(0.3f, 1e-4f);
+        under.UndersteerScore.Should().BeApproximately(0.6f, 1e-4f);
+        under.UndersteerScore.Should().BeInRange(0f, 1f);
         under.OversteerScore.Should().Be(0f);
-        over.OversteerScore.Should().BeApproximately(0.4f, 1e-4f);
+        over.OversteerScore.Should().BeApproximately(0.6667f, 1e-4f);
+        over.OversteerScore.Should().BeInRange(0f, 1f);
         over.UndersteerScore.Should().Be(0f);
+    }
+
+    [Fact]
+    public void Balance_ignores_braking_frames_so_load_transfer_is_not_read_as_understeer()
+    {
+        // SIS#9 regression: under braking the front axle carries transfer load and slips more, so a
+        // neutral car used to read as understeer. A heavy-braking front>rear frame must now be gated
+        // out (steady-state only) and contribute nothing — UndersteerScore == 0, not a positive score.
+        TelemetryFrame[] braking =
+        [
+            FrameWithSlip(steer: 0.3f, fl: 0.4f, fr: 0.4f, rl: 0.1f, rr: 0.1f, brake: 0.8f, longG: 1.2f),
+        ];
+
+        BalanceKernels.Analyze(braking)
+            .Should().Be(new BalanceScores { UndersteerScore = 0f, OversteerScore = 0f });
+    }
+
+    [Fact]
+    public void Balance_all_braking_window_scores_zero()
+    {
+        TelemetryFrame[] allBraking =
+        [
+            FrameWithSlip(steer: 0.3f, fl: 0.4f, fr: 0.4f, rl: 0.1f, rr: 0.1f, brake: 0.6f, longG: 0.9f),
+            FrameWithSlip(steer: 0.3f, fl: 0.5f, fr: 0.5f, rl: 0.1f, rr: 0.1f, brake: 0.4f, longG: 0.7f),
+        ];
+
+        BalanceKernels.Analyze(allBraking)
+            .Should().Be(new BalanceScores { UndersteerScore = 0f, OversteerScore = 0f });
+    }
+
+    [Fact]
+    public void Balance_score_is_bounded_by_one_for_an_extreme_raw_delta()
+    {
+        // Raw slip range is ~0..12.37; a pathological front 12 / rear 0 frame used to fold a huge raw
+        // delta into the score. The scale-free ratio caps it: |12 − 0| / (12 + 0) = 1.
+        TelemetryFrame[] extreme =
+        [
+            FrameWithSlip(steer: 0.3f, fl: 12f, fr: 12f, rl: 0f, rr: 0f),
+        ];
+
+        BalanceScores score = BalanceKernels.Analyze(extreme);
+
+        score.UndersteerScore.Should().BeLessThanOrEqualTo(1f);
+        score.UndersteerScore.Should().BeApproximately(1f, 1e-4f);
+    }
+
+    [Fact]
+    public void Balance_long_g_gate_degrades_to_brake_only_when_g_force_absent()
+    {
+        // ACC omits g-force (null vector). A steady-state (no-brake) frame must still score even
+        // though the long-g clause has no data — the gate degrades to brake-only, not all-zero.
+        TelemetryFrame[] noGForce =
+        [
+            FrameWithSlip(steer: 0.3f, fl: 0.4f, fr: 0.4f, rl: 0.1f, rr: 0.1f),
+        ];
+
+        BalanceKernels.Analyze(noGForce).UndersteerScore.Should().BeApproximately(0.6f, 1e-4f);
     }
 
     [Fact]
@@ -142,6 +204,19 @@ public sealed class ComputeKernelsTests
     private static TelemetryFrame FrameWithSlip(float steer, float fl, float fr, float rl, float rr)
     {
         TelemetryFrame frame = new() { SteerRad = steer };
+        frame.WheelSlip.AddRange([fl, fr, rl, rr]);
+        return frame;
+    }
+
+    private static TelemetryFrame FrameWithSlip(
+        float steer, float fl, float fr, float rl, float rr, float brake, float longG)
+    {
+        TelemetryFrame frame = new()
+        {
+            SteerRad = steer,
+            BrakePct = brake,
+            GForceG = new Vec3 { Z = longG },
+        };
         frame.WheelSlip.AddRange([fl, fr, rl, rr]);
         return frame;
     }
