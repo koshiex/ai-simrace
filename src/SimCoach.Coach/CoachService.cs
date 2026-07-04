@@ -42,6 +42,7 @@ public sealed class CoachService : BackgroundService
     private readonly TimeProvider _clock;
     private readonly ILogger<CoachService> _logger;
     private readonly string _retryReminder;
+    private readonly IReadOnlyDictionary<string, string> _retryReasons;
 
     private int _currentLap = 1;
     private BudgetState _budget = BudgetState.Zero;
@@ -92,6 +93,7 @@ public sealed class CoachService : BackgroundService
         _clock = clock;
         _logger = logger;
         _retryReminder = PromptResources.ReadRetryReminder(RetryVersion);
+        _retryReasons = PromptResources.ReadRetryReasons(RetryVersion);
         _subscription = fanOut.Subscribe("coach");
     }
 
@@ -554,7 +556,7 @@ public sealed class CoachService : BackgroundService
     // Retry system prompt = original + the generic retry reminder + a terse RU echo of the specific refusal
     // reason (M28), so the model corrects the exact miss rather than re-guessing the whole schema.
     private string BuildRetryPrompt(string systemPrompt, string rejectionReason)
-        => systemPrompt + "\n\n" + _retryReminder + "\n\n" + RetryReasonRu.Line(rejectionReason);
+        => systemPrompt + "\n\n" + _retryReminder + "\n\n" + RetryReasonRu.Line(_retryReasons, rejectionReason);
 
     private int RealtimeMaxWords(CoachCadence cadence) => cadence switch
     {

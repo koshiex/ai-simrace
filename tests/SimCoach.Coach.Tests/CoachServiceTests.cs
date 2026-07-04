@@ -306,16 +306,17 @@ public sealed class CoachServiceTests
     [Fact]
     public async Task Two_high_corners_inside_the_governor_cooldown_both_emit_proving_the_never_silent_bypass()
     {
-        // M45 end-to-end: a magnitude-derived High (|delta_ms| >= 250) is never-silent — it bypasses the M10
-        // cadence-governor gates (global cooldown + per-lap cap). Two High corners fired microseconds apart with a
-        // 30 s global cooldown armed by the first, and DISTINCT corner_ids so M32 cross-lap dedup keys them apart
-        // and cannot confound. Per-cadence Corner cooldown is disabled (NoCooldowns) so the ONLY governor gate in
-        // play is the one High actually bypasses — a Medium second corner here would be GlobalCooldown-silenced.
-        // Both High corners must emit and both reach the LLM, proving SeverityForLoss → tip → governor bypass end
-        // to end (not just the unit seams). A regressed bypass suppresses the second corner (one tip / one call).
+        // M45 end-to-end: a magnitude-derived High (|delta_ms| >= 250) is never-silent — it bypasses every cadence
+        // silence lever, both the M10 governor (global cooldown + per-lap cap) AND the per-cadence Corner cooldown.
+        // Two High corners fired microseconds apart with a 30 s global cooldown AND the default 4 s Corner
+        // per-cadence cooldown both armed by the first, and DISTINCT corner_ids so M32 cross-lap dedup keys them
+        // apart and cannot confound. A Medium second corner here would be silenced by either cooldown; the High
+        // second corner bypasses both. Both High corners must emit and both reach the LLM, proving SeverityForLoss
+        // → tip → full bypass end to end (not just the unit seams). A regressed bypass (of either the global or the
+        // per-cadence cooldown) suppresses the second corner (one tip / one call).
         var ruleOptions = new RuleEngineOptions
         {
-            Cadence = new CadenceOptions { GlobalCooldown = TimeSpan.FromSeconds(30), Cooldowns = NoCooldowns() },
+            Cadence = new CadenceOptions { GlobalCooldown = TimeSpan.FromSeconds(30) },
         };
         var harness = new Harness(
             hasReference: true,
@@ -328,7 +329,7 @@ public sealed class CoachServiceTests
 
         harness.Sink.Tips.Should().HaveCount(2);
         harness.Sink.Tips.Should().OnlyContain(t => t.Severity == CoachSeverity.High);
-        harness.Llm.Calls.Should().Be(2); // the second High corner bypassed the still-armed global cooldown
+        harness.Llm.Calls.Should().Be(2); // the second High corner bypassed both still-armed cooldowns
     }
 
     // A corner whose |delta_ms| clears the 250 ms High floor (never-silent), with a caller-chosen corner_id so a

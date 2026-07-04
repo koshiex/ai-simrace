@@ -19,6 +19,7 @@ public sealed class PromptResourcesTests
     [InlineData("SimCoach.Coach.Prompts.coach.system.v1.ru.txt")]
     [InlineData("SimCoach.Coach.Prompts.coach.system.debrief.v1.ru.txt")]
     [InlineData("SimCoach.Coach.Prompts.coach.fewshot.v1.ru.json")]
+    [InlineData("SimCoach.Coach.Prompts.coach.retry-reason.v1.ru.txt")]
     public void Manifest_carries_the_pinned_resource_name(string expected)
     {
         Assembly assembly = typeof(PromptBuilder).Assembly;

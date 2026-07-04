@@ -334,6 +334,27 @@ public sealed class RuleEngineTests
             .Should().Be(RuleDecision.Speak);
     }
 
+    [Fact]
+    public void High_severity_bypasses_the_per_cadence_cooldown_too()
+    {
+        // Never-silent guarantee, fourth lever: a High-severity lead must speak even inside the same-cadence
+        // cooldown window that silences an ordinary tip — this pins the !highSeverity conjunct on the per-cadence
+        // cooldown branch (deleting it would silence this High tip and fail the test). Isolate the per-cadence
+        // cooldown from the global cooldown (which High would also bypass) so the cooldown under test is the gate.
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero));
+        var options = new RuleEngineOptions { Cadence = new CadenceOptions { GlobalCooldown = TimeSpan.Zero } };
+        var engine = new RuleEngine(options, clock);
+
+        engine.NoteTip(CoachCadence.Corner, clock.GetUtcNow()); // arm the 4 s corner per-cadence cooldown
+        clock.Advance(TimeSpan.FromSeconds(2)); // well inside the 4 s window
+
+        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero, MaterialLossMs, highSeverity: false)
+            .Should().Be(RuleDecision.Silent(QuietReason.Cooldown), "an ordinary tip is silenced by the per-cadence cooldown here");
+
+        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero, MaterialLossMs, highSeverity: true)
+            .Should().Be(RuleDecision.Speak, "a High-severity lead bypasses the per-cadence cooldown too");
+    }
+
     // ---- M32 cross-lap dedup -------------------------------------------------------------------------
 
     private static TipIdentity Identity(string corner, string action) => new(corner, action);

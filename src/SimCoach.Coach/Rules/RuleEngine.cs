@@ -11,8 +11,10 @@ namespace SimCoach.Coach.Rules;
 /// last-emit timestamp, and the per-lap tip counter (single-consumer = CoachService, so no locking),
 /// updated via <see cref="NoteTip"/>, zeroed per lap via <see cref="ResetLap"/>, and cleared at the session
 /// boundary via <see cref="ResetSession"/>. Frame-dependent gates fail OPEN when the snapshot carries no
-/// live frame (<see cref="GateSnapshot.HasFrame"/> is false); a High-severity lead bypasses all three
-/// cadence-governor gates (the never-silent guarantee). The global cooldown and the per-lap cap only silence
+/// live frame (<see cref="GateSnapshot.HasFrame"/> is false); a High-severity lead bypasses ALL FOUR cadence
+/// silence sources — the materiality floor, the per-cadence cooldown, the global cooldown, and the per-lap cap
+/// (the never-silent guarantee), each enforced with an explicit <c>!highSeverity</c> conjunct. The global
+/// cooldown and the per-lap cap only silence
 /// the cadences in <see cref="CadenceOptions.GovernedCadences"/> (Corner by default) — sector/lap summaries
 /// are exempt and stay subject only to the materiality floor; the floor applies to every cadence.
 /// M32 layers a cross-lap dedup gate on top: the same advice for the same corner is silenced
@@ -117,12 +119,13 @@ public sealed class RuleEngine
             return RuleDecision.Silent(QuietReason.RepeatSuppressed);
         }
 
-        // Cadence-governor (M10). A High-severity lead bypasses all three — the never-silent guarantee, the
-        // same policy as M7's abstain guard, enforced here with an explicit !highSeverity conjunct so a future
-        // high-priority catch-all can never be silenced by cadence governance. The global cooldown and per-lap
-        // cap additionally gate only the governed cadences (Corner by default) — a sector/lap summary is exempt
-        // (owner ruling: a silenced summary is more jarring than a dropped corner tip), leaving the materiality
-        // floor as their sole cadence-governor gate.
+        // Cadence-governor (M10) + the per-cadence cooldown below. A High-severity lead bypasses ALL FOUR
+        // silence sources — the materiality floor, the per-cadence cooldown, the global cooldown, and the
+        // per-lap cap — the never-silent guarantee, the same policy as M7's abstain guard, enforced here with an
+        // explicit !highSeverity conjunct on each so a future high-priority catch-all can never be silenced by
+        // cadence governance. The global cooldown and per-lap cap additionally gate only the governed cadences
+        // (Corner by default) — a sector/lap summary is exempt (owner ruling: a silenced summary is more jarring
+        // than a dropped corner tip), leaving the materiality floor as their sole cadence-governor gate.
         // timeLossMs == 0 means "no measured loss" (e.g. a no-PB corner with no delta_ms) — the floor fails OPEN
         // there, exactly like the frame gates, so absolute feedback is never muted for lack of a reference.
         if (!highSeverity && timeLossMs > 0 && timeLossMs < _options.Cadence.MinTimeLossMs)
@@ -140,7 +143,9 @@ public sealed class RuleEngine
             return RuleDecision.Silent(QuietReason.LapTipBudget);
         }
 
-        if (InCooldown(cadence))
+        // Per-cadence cooldown (Corner 4 s / Sector 8 s). A High-severity lead bypasses it too — the fourth and
+        // last never-silent lever — so a High tip is never silenced inside the same-cadence cooldown window.
+        if (!highSeverity && InCooldown(cadence))
         {
             return RuleDecision.Silent(QuietReason.Cooldown);
         }

@@ -1,0 +1,10 @@
+missing_action_fields=нет обязательных полей action_id или phrase_ru
+action_not_allowed=action_id не из разрешённого списка
+empty_phrase_ru=пустое поле phrase_ru
+phrase_ru_too_long=фраза длиннее лимита слов
+missing_debrief_fields=нет обязательных полей top_losses или top_priority
+top_losses_too_many=слишком много элементов в top_losses
+empty_top_priority=пустое поле top_priority
+debrief_too_long=разбор длиннее лимита слов
+malformed_json=ответ не является валидным JSON
+schema_violation=ответ не соответствует схеме
