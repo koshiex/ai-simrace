@@ -258,6 +258,10 @@
       "priority": { "phase": "brake", "rank": 14 },
       "requires_reference": false,
       "when": [
+        // had-braking gate: peak_brake_pct > 0.1 means the driver actually braked in this window (the same
+        // 0.10 brake floor the trail-brake denominator uses). Without it a flat/lift-only corner reports
+        // trail_brake_pct_self=0 and would wrongly draw a "hold the brake longer" tip every lap.
+        { "field": "peak_brake_pct", "op": "gt", "value": 0.1 },
         // provisional absolute threshold — owner ratifies the exact value later (M19)
         { "field": "trail_brake_pct_self", "op": "lt", "value": 0.05 }
       ],

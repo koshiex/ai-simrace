@@ -14,8 +14,8 @@ public static class GoldFieldNames
     private static readonly FrozenSet<string> _corner = new[]
     {
         "corner_id", "corner_name", "delta_ms", "brake_point_diff_m", "min_speed_diff_kmh",
-        "throttle_resume_diff_m", "racing_line_deviation_m", "trail_brake_pct_self", "trail_brake_pct_ref",
-        "trail_brake_diff_pct", "understeer_score", "oversteer_score", "wheelspin_score",
+        "throttle_resume_diff_m", "racing_line_deviation_m", "trail_brake_pct_self", "peak_brake_pct",
+        "trail_brake_pct_ref", "trail_brake_diff_pct", "understeer_score", "oversteer_score", "wheelspin_score",
         "brake_overlap_steer_pct", "steering_jitter", "off_track", "reason", "has_reference",
     }.ToFrozenSet(StringComparer.Ordinal);
 

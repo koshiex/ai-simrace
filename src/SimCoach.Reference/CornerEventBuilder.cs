@@ -63,6 +63,7 @@ internal static class CornerEventBuilder
             T = selfFrames[^1].T,
             CornerId = corner.Id,
             TrailBrakePctSelf = brakeSelf.TrailBrakePct,
+            PeakBrakePct = brakeSelf.PeakBrakePct,
             UndersteerScore = balanceSelf.UndersteerScore,
             OversteerScore = balanceSelf.OversteerScore,
             OffTrack = offTrack,

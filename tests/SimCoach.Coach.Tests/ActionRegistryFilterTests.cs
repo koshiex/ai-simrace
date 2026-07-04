@@ -99,17 +99,43 @@ public sealed class ActionRegistryFilterTests
     [Fact]
     public void Fires_reference_free_absolute_trail_brake_action_on_a_cold_start_corner()
     {
-        // M19: with no reference, an absolute near-zero trail-brake still yields a reference-free action.
+        // M19: with no reference, an absolute near-zero trail-brake still yields a reference-free action —
+        // but only once the driver actually braked (peak_brake_pct clears the had-braking gate).
         var gold = new DictionaryGoldView(
             CoachCadence.Corner,
             hasReference: false,
-            numbers: new Dictionary<string, double>(StringComparer.Ordinal) { ["trail_brake_pct_self"] = 0.0 },
+            numbers: new Dictionary<string, double>(StringComparer.Ordinal)
+            {
+                ["trail_brake_pct_self"] = 0.0,
+                ["peak_brake_pct"] = 0.8,
+            },
             bools: new Dictionary<string, bool>(StringComparer.Ordinal) { ["off_track"] = false });
 
         IReadOnlyList<CoachAction> subset = _registry.ValidSubset(gold, new CoachOptions());
 
         subset.Select(a => a.Id).Should().Contain("trail_brake_absent");
         subset.Should().OnlyContain(a => !a.RequiresReference);
+    }
+
+    [Fact]
+    public void Does_not_fire_absolute_trail_brake_action_on_a_no_brake_corner()
+    {
+        // A flat/lift-only corner reports trail_brake_pct_self=0 with no braking; the had-braking gate
+        // (peak_brake_pct below the brake floor) must keep trail_brake_absent silent instead of drawing a
+        // "hold the brake longer" tip every lap.
+        var gold = new DictionaryGoldView(
+            CoachCadence.Corner,
+            hasReference: false,
+            numbers: new Dictionary<string, double>(StringComparer.Ordinal)
+            {
+                ["trail_brake_pct_self"] = 0.0,
+                ["peak_brake_pct"] = 0.0,
+            },
+            bools: new Dictionary<string, bool>(StringComparer.Ordinal) { ["off_track"] = false });
+
+        IReadOnlyList<CoachAction> subset = _registry.ValidSubset(gold, new CoachOptions());
+
+        subset.Select(a => a.Id).Should().NotContain("trail_brake_absent");
     }
 
     [Fact]

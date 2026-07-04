@@ -103,6 +103,10 @@ message CornerEvent {
   float brake_overlap_steer_pct = 14;      // 0..1, fraction of window braking while steering (unwanted overlap)
   float steering_jitter = 15;              // stddev of steer-rate over the window
   string reason = 16;                      // dominant-loss reason (closed set; "" when no reference)
+
+  // Peak brake pressure over the corner window (0..1). Self-derived; gates the reference-free
+  // trail_brake_absent action so it cannot fire on a flat/lift-only corner where the driver never braked.
+  float peak_brake_pct = 17;               // 0..1
 }
 
 // Per-sector summary emitted at sector cross.

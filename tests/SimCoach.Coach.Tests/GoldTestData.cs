@@ -22,6 +22,7 @@ internal static class GoldTestData
         BrakePointDiffM = -3.44f,
         MinSpeedDiffKmh = -5.06f,
         TrailBrakePctSelf = 0.22f,
+        PeakBrakePct = 0.85f,
         TrailBrakePctRef = 0.41f,
         ThrottleResumeDiffM = -2.75f,
         RacingLineDeviationM = 0.74f,
