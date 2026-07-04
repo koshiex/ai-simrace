@@ -2,9 +2,14 @@
 
 *Status: **implementable** — owner decisions recorded (see below), plan-level must-fixes applied,
 validated Strict→Defence→Judge. Branch: `feat/phase-3-p2`, stacked on the P1 tip (off `main`).
-Each of the nine items is exactly **one commit**. Scope constraint: **PROTO-FREE** — no `.proto` /
-`SimCoach.Contracts` change (all nine verified proto-free below). Where an item's fuller version would
-need a proto/contract change, that version is **not baked**; it is named and deferred to the P3
+Each of the nine items is exactly **one commit**. Scope constraint: **near-proto-free** — no `.proto` /
+`SimCoach.Contracts` change **except one owner-ratified additive scalar**: Wave-A review found that M19's
+`trail_brake_absent` cold-start action fired on flat/lift-only corners (`trail_brake_pct_self=0` conflates
+"braked-but-didn't-trail" with "didn't-brake-at-all"), and a brake-presence signal can only reach the
+Coach clause engine over the `CornerEvent` proto. The owner ratified adding `CornerEvent.peak_brake_pct = 17`
+(a small backward-compatible additive scalar, also useful for future brake-lockup detection, M33) to gate
+the action on `peak_brake_pct gt 0.1`. All other items stay proto-free. Where an item's fuller version
+would need further proto/contract change, that version is **not baked**; it is named and deferred to the P3
 proto/compute pack (M35/M36 neighbourhood).*
 
 ## Scope
