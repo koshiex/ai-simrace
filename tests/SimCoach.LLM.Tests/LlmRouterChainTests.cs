@@ -145,6 +145,26 @@ public sealed class LlmRouterChainTests
     }
 
     [Fact]
+    public async Task Primary_and_fallback_both_fallback_worthy_returns_the_fallback_error_without_recursing()
+    {
+        // M22: both hops fail with fallback-worthy errors (primary Timeout, fallback 503). Fallback is
+        // single-shot — the router does NOT recurse past the one hop chasing the fallback's own fallback. The
+        // returned failure is the fallback provider's error and each provider is hit exactly once.
+        var fallbackError = new LlmFailure.ServerError("fallback 503", 503);
+        var primary = new StubProvider(new LlmResult.Failure(new LlmFailure.Timeout("primary timed out")));
+        var fallback = new StubProvider(new LlmResult.Failure(fallbackError));
+        var router = new LlmRouter(
+            OptionsWith(("debrief", Route("p", "m", "debrief_fallback")), ("debrief_fallback", Route("f", "m", null))),
+            new Dictionary<string, ILlmProvider> { ["p"] = primary, ["f"] = fallback });
+
+        LlmResult result = await router.CompleteAsync(new LlmRequest("debrief", "s", "u", "{}", "n"), CancellationToken.None);
+
+        result.Should().BeOfType<LlmResult.Failure>().Which.Error.Should().BeSameAs(fallbackError);
+        primary.CallCount.Should().Be(1);
+        fallback.CallCount.Should().Be(1); // single-shot: exactly one fallback hop, no recursion
+    }
+
+    [Fact]
     public async Task Fallback_worthy_failure_without_fallback_route_returns_the_original_failure()
     {
         var timeout = new LlmFailure.Timeout("timed out");

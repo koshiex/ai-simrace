@@ -46,24 +46,39 @@ public sealed class CoachStartupValidator : IValidateOptions<CoachOptions>
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 
-    // M28 — hard-fail when the debrief route resolves to a Gemini-family model. Gemini's responseSchema strips
-    // maxItems (GeminiSchemaTranslator), so the debrief's bounded top_losses would ride unconstrained on the
-    // wire and lean entirely on the post-parse TipValidator cap — an unwanted per-family robustness gap on the
-    // one long structured payload. Keyed on the family inference, not a hardcoded model list.
+    // M28 — hard-fail when the debrief route (or any model reachable via its FallbackRouteKey chain) resolves to
+    // a Gemini-family model. Gemini's responseSchema strips maxItems (GeminiSchemaTranslator), so the debrief's
+    // bounded top_losses would ride unconstrained on the wire and lean entirely on the post-parse TipValidator
+    // cap — an unwanted per-family robustness gap on the one long structured payload. LlmRouter forwards the
+    // identical maxItems-bounded schema to the fallback, so every hop in the chain must clear the same guard.
+    // Keyed on the family inference, not a hardcoded model list. Traversal is bounded by a visited set so a
+    // cyclic/self-referential chain terminates (LlmStartupValidator #3 reports the cycle itself).
     private void ValidateDebriefRouteFamily(CoachOptions options, List<string> failures)
     {
         if (!options.RouteKeys.TryGetValue(CoachCadence.Session, out string? routeKey)
-            || string.IsNullOrWhiteSpace(routeKey)
-            || !_llmOptions.Value.Routes.TryGetValue(routeKey, out RouteOptions? route))
+            || string.IsNullOrWhiteSpace(routeKey))
         {
             return; // completeness check above already reports a missing/unresolved debrief route.
         }
 
-        if (ModelSchemaFamilyGuard.IsGeminiFamily(route.ModelId))
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        string? current = routeKey;
+        while (current is not null && visited.Add(current))
         {
-            failures.Add(
-                $"Debrief route '{routeKey}' resolves to Gemini-family model '{route.ModelId}', whose "
-                + "responseSchema strips maxItems; pick a non-Gemini model for the debrief (structured) route.");
+            if (!_llmOptions.Value.Routes.TryGetValue(current, out RouteOptions? route))
+            {
+                return; // completeness / acyclicity checks already report a missing/unresolved route.
+            }
+
+            if (ModelSchemaFamilyGuard.IsGeminiFamily(route.ModelId))
+            {
+                failures.Add(
+                    $"Debrief route '{routeKey}' reaches Gemini-family model '{route.ModelId}' (route '{current}'), "
+                    + "whose responseSchema strips maxItems; pick a non-Gemini model for the debrief route and its "
+                    + "fallback chain.");
+            }
+
+            current = route.FallbackRouteKey;
         }
     }
 

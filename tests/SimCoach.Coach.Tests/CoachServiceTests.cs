@@ -304,6 +304,43 @@ public sealed class CoachServiceTests
     }
 
     [Fact]
+    public async Task Two_high_corners_inside_the_governor_cooldown_both_emit_proving_the_never_silent_bypass()
+    {
+        // M45 end-to-end: a magnitude-derived High (|delta_ms| >= 250) is never-silent — it bypasses the M10
+        // cadence-governor gates (global cooldown + per-lap cap). Two High corners fired microseconds apart with a
+        // 30 s global cooldown armed by the first, and DISTINCT corner_ids so M32 cross-lap dedup keys them apart
+        // and cannot confound. Per-cadence Corner cooldown is disabled (NoCooldowns) so the ONLY governor gate in
+        // play is the one High actually bypasses — a Medium second corner here would be GlobalCooldown-silenced.
+        // Both High corners must emit and both reach the LLM, proving SeverityForLoss → tip → governor bypass end
+        // to end (not just the unit seams). A regressed bypass suppresses the second corner (one tip / one call).
+        var ruleOptions = new RuleEngineOptions
+        {
+            Cadence = new CadenceOptions { GlobalCooldown = TimeSpan.FromSeconds(30), Cooldowns = NoCooldowns() },
+        };
+        var harness = new Harness(
+            hasReference: true,
+            ruleOptions,
+            new LlmResult.Failure(new LlmFailure.Timeout("slow")),   // corner 1 → template, arms the global cooldown
+            new LlmResult.Failure(new LlmFailure.Timeout("slow")));  // corner 2 → template, inside that cooldown
+
+        await RunToCompletionAsync(
+            harness, DomainEvent.Corner(HighCorner("spa_t02")), DomainEvent.Corner(HighCorner("spa_t05")));
+
+        harness.Sink.Tips.Should().HaveCount(2);
+        harness.Sink.Tips.Should().OnlyContain(t => t.Severity == CoachSeverity.High);
+        harness.Llm.Calls.Should().Be(2); // the second High corner bypassed the still-armed global cooldown
+    }
+
+    // A corner whose |delta_ms| clears the 250 ms High floor (never-silent), with a caller-chosen corner_id so a
+    // pair can carry distinct identities and dodge the M32 cross-lap dedup.
+    private static CornerEvent HighCorner(string cornerId)
+    {
+        CornerEvent ev = GoldTestData.Corner(cornerId);
+        ev.DeltaMs = 300;
+        return ev;
+    }
+
+    [Fact]
     public async Task Repeated_corner_on_the_next_lap_is_deduped_and_never_reaches_the_llm()
     {
         // M32: two identical (non-High) corner tips on consecutive laps. Cooldowns are disabled so the ONLY
@@ -461,6 +498,36 @@ public sealed class CoachServiceTests
         harness.Llm.Calls.Should().Be(2);
         harness.Logger.Snapshot().Should().Contain(e =>
             e.Level == LogLevel.Information && e.Message.StartsWith("Coach abstain", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task High_magnitude_catch_all_none_still_abstains_the_deliberate_phase_based_seam()
+    {
+        // M45/M7 PINNING TEST — this is NOT a defect, it anchors a deliberate owner decision. Severity for the
+        // never-silent guarantee is derived from |delta_ms| (300 → High), but the M7 AllowsAbstain guard is
+        // deliberately left keyed on the phase-based SeverityFor at no-measured-loss sites. corner_catch_all is a
+        // weak apex-phase lead, so abstain IS offered even at a High magnitude; given an LLM "none" the corner
+        // goes SILENT rather than being force-emitted by the never-silent bypass. If the owner later closes this
+        // seam (magnitude-gates abstain), invert this to expect a single emitted High tip.
+        IReadOnlyList<CoachAction> subset = CatchAllSubset(); // catch-all lead is delta-independent for a neutral corner
+        subset[0].Id.Should().Be("corner_catch_all");
+        var harness = new Harness(hasReference: true, Realtime("none", "В повороте отклонение около 300."));
+
+        await RunToCompletionAsync(harness, DomainEvent.Corner(HighCatchAllCorner()));
+
+        harness.Sink.Tips.Should().BeEmpty();
+        harness.Llm.Calls.Should().Be(1);
+        harness.Logger.Snapshot().Should().Contain(e =>
+            e.Level == LogLevel.Information && e.Message.StartsWith("Coach abstain", StringComparison.Ordinal));
+    }
+
+    // The catch-all corner escalated past the 250 ms High floor: still a neutral (no specific-action) corner so
+    // corner_catch_all leads and abstain is offered, but now High by magnitude — the phase-vs-magnitude seam.
+    private static CornerEvent HighCatchAllCorner()
+    {
+        CornerEvent ev = GoldTestData.CornerNeutral();
+        ev.DeltaMs = 300;
+        return ev;
     }
 
     [Fact]
