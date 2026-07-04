@@ -18,16 +18,30 @@ public static class OutputSchema
     public const string DebriefSchemaName = "coach_debrief";
 
     /// <summary>
-    /// Real-time schema (corner/sector/lap). <paramref name="subsetIds"/> become the <c>action_id</c> enum.
-    /// No <c>maxLength</c>/<c>minLength</c>: those are unenforced value-constraints (the word limit is enforced
-    /// post-parse in a later PR) and Gemini's <c>responseSchema</c> rejects them outright.
+    /// The abstain sentinel <c>action_id</c> (M7). It is a member of the real-time <c>action_id</c> enum only
+    /// when abstain is offered; strict mode then makes the wire schema itself the primary guard — the model
+    /// cannot emit it otherwise. Never an action-registry id, so a leaked value never satisfies the subset.
     /// </summary>
-    public static string RealTime(IReadOnlyList<string> subsetIds)
+    public const string AbstainActionId = "none";
+
+    /// <summary>
+    /// Real-time schema (corner/sector/lap). <paramref name="subsetIds"/> become the <c>action_id</c> enum.
+    /// When <paramref name="allowAbstain"/> is set the <see cref="AbstainActionId"/> sentinel is appended once,
+    /// giving the model a first-class right to stay silent on a weak catch-all (M7). No <c>maxLength</c>/
+    /// <c>minLength</c>: those are unenforced value-constraints (the word limit is enforced post-parse) and
+    /// Gemini's <c>responseSchema</c> rejects them outright.
+    /// </summary>
+    public static string RealTime(IReadOnlyList<string> subsetIds, bool allowAbstain)
     {
         var enumArray = new JsonArray();
         foreach (string id in subsetIds)
         {
             enumArray.Add(id);
+        }
+
+        if (allowAbstain)
+        {
+            enumArray.Add(AbstainActionId);
         }
 
         var schema = new JsonObject

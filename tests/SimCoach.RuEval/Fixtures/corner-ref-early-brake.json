@@ -1,0 +1,16 @@
+{
+  "id": "corner_ref_early_brake",
+  "cadence": "corner",
+  "trackId": "spa",
+  "carClass": "gt3",
+  "weatherBucket": "dry",
+  "hasReference": true,
+  "knownBad": false,
+  "referencePhraseRu": "В Ла-Сурс тормози позже — примерно на восемь метров.",
+  "event": {
+    "cornerId": "spa_t01",
+    "deltaMs": 320,
+    "brakePointDiffM": -8.5,
+    "offTrack": false
+  }
+}

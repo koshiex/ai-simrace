@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SimCoach.Adapters.ACC;
 using SimCoach.Adapters.ACC.SharedMemory;
+using SimCoach.Coach.Rules;
 using SimCoach.Pipeline;
 using SimCoach.Reference;
 using SimCoach.Storage;
@@ -88,9 +89,25 @@ public static class TelemetryComposition
     {
         string dataRoot = ResolveDataRoot(builder.Configuration);
 
+        // M9: the apex-band fraction is a SINGLE knob. It is owned by the Coach live gate
+        // (Coach:Rules:ApexWindowFraction) and fed here into the brake-overlap metric so both share one
+        // definition of "apex" and cannot drift. Bind that one source and override any stray
+        // Compute:ApexWindowFraction, then assert equality as defense-in-depth.
+        double apexWindowFraction =
+            builder.Configuration.GetSection("Coach:Rules").Get<RuleEngineOptions>()?.ApexWindowFraction
+            ?? new RuleEngineOptions().ApexWindowFraction;
+
         ComputeOptions computeOptions =
-            builder.Configuration.GetSection("Compute").Get<ComputeOptions>() ?? new ComputeOptions();
+            (builder.Configuration.GetSection("Compute").Get<ComputeOptions>() ?? new ComputeOptions())
+            with
+            { ApexWindowFraction = apexWindowFraction };
         computeOptions.EnsureValid();
+        if (computeOptions.ApexWindowFraction != apexWindowFraction)
+        {
+            throw new InvalidOperationException(
+                "ComputeOptions.ApexWindowFraction must equal Coach:Rules:ApexWindowFraction (single shared apex band).");
+        }
+
         builder.Services.AddSingleton(computeOptions);
 
         builder.Services.AddSingleton(CornerGeometryDataset.Load());

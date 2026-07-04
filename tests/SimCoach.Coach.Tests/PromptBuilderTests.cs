@@ -49,6 +49,38 @@ public sealed class PromptBuilderTests
     }
 
     [Fact]
+    public void Corner_weak_catch_all_lead_carries_the_none_sentinel()
+    {
+        (GoldArtifact<GoldCornerEvent> gold, _) = CornerCase();
+        var catchAll = new CoachAction(
+            "corner_catch_all", "corner_loss", CoachCadence.Corner,
+            new CoachPriority(CoachPhase.Exit, _coach.CatchAllRank), RequiresReference: true,
+            When: [], Params: [], "В {corner} отклонение около {loss}.", "notable corner time loss");
+
+        LlmRequest request = NewBuilder().Build(gold, CoachCadence.Corner, [catchAll]);
+
+        using var schema = JsonDocument.Parse(request.JsonSchema);
+        schema.RootElement.GetProperty("properties").GetProperty("action_id").GetProperty("enum")
+            .EnumerateArray().Select(e => e.GetString())
+            .Should().Contain(SimCoach.Coach.Schema.OutputSchema.AbstainActionId);
+        request.SystemPrompt.Should().Contain("none"); // the RU abstain guidance is appended
+    }
+
+    [Fact]
+    public void Corner_specific_lead_does_not_carry_the_none_sentinel()
+    {
+        (GoldArtifact<GoldCornerEvent> gold, IReadOnlyList<CoachAction> subset) = CornerCase();
+        subset[0].Priority.Rank.Should().BeLessThan(_coach.CatchAllRank); // a real specific action leads
+
+        LlmRequest request = NewBuilder().Build(gold, CoachCadence.Corner, subset);
+
+        using var schema = JsonDocument.Parse(request.JsonSchema);
+        schema.RootElement.GetProperty("properties").GetProperty("action_id").GetProperty("enum")
+            .EnumerateArray().Select(e => e.GetString())
+            .Should().NotContain(SimCoach.Coach.Schema.OutputSchema.AbstainActionId);
+    }
+
+    [Fact]
     public void Session_builds_a_debrief_request_with_no_menu()
     {
         GoldArtifact<GoldSessionPayload> gold = GoldTestData.Builder().BuildSession(GoldTestData.Session(), GoldTestData.Ctx());

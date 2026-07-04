@@ -18,7 +18,7 @@ public sealed class OutputSchemaTests
     [Fact]
     public void RealTime_action_id_enum_is_exactly_the_subset()
     {
-        using var doc = JsonDocument.Parse(OutputSchema.RealTime(["wider_entry", "brake_later_by_meters"]));
+        using var doc = JsonDocument.Parse(OutputSchema.RealTime(["wider_entry", "brake_later_by_meters"], allowAbstain: false));
 
         var enumValues = doc.RootElement
             .GetProperty("properties").GetProperty("action_id").GetProperty("enum")
@@ -30,7 +30,7 @@ public sealed class OutputSchemaTests
     [Fact]
     public void RealTime_puts_subset_first_in_action_id_enum()
     {
-        using var doc = JsonDocument.Parse(OutputSchema.RealTime(["wider_entry"]));
+        using var doc = JsonDocument.Parse(OutputSchema.RealTime(["wider_entry"], allowAbstain: false));
 
         string? first = doc.RootElement
             .GetProperty("properties").GetProperty("action_id").GetProperty("enum")[0].GetString();
@@ -41,7 +41,7 @@ public sealed class OutputSchemaTests
     [Fact]
     public void RealTime_carries_no_length_constraints()
     {
-        string schema = OutputSchema.RealTime(["wider_entry", "higher_min_speed"]);
+        string schema = OutputSchema.RealTime(["wider_entry", "higher_min_speed"], allowAbstain: false);
 
         schema.Should().NotContain("maxLength").And.NotContain("minLength");
     }
@@ -49,9 +49,45 @@ public sealed class OutputSchemaTests
     [Fact]
     public void RealTime_required_equals_property_keys()
     {
-        using var doc = JsonDocument.Parse(OutputSchema.RealTime(["wider_entry"]));
+        using var doc = JsonDocument.Parse(OutputSchema.RealTime(["wider_entry"], allowAbstain: false));
 
         AssertRequiredEqualsProperties(doc.RootElement);
+    }
+
+    [Fact]
+    public void RealTime_appends_none_sentinel_once_when_abstain_allowed()
+    {
+        using var doc = JsonDocument.Parse(OutputSchema.RealTime(["corner_catch_all"], allowAbstain: true));
+
+        var enumValues = doc.RootElement
+            .GetProperty("properties").GetProperty("action_id").GetProperty("enum")
+            .EnumerateArray().Select(e => e.GetString()).ToList();
+
+        enumValues.Should().Equal("corner_catch_all", OutputSchema.AbstainActionId);
+        enumValues.Count(v => v == OutputSchema.AbstainActionId).Should().Be(1);
+    }
+
+    [Fact]
+    public void RealTime_omits_none_sentinel_when_abstain_not_allowed()
+    {
+        using var doc = JsonDocument.Parse(OutputSchema.RealTime(["corner_catch_all"], allowAbstain: false));
+
+        doc.RootElement
+            .GetProperty("properties").GetProperty("action_id").GetProperty("enum")
+            .EnumerateArray().Select(e => e.GetString())
+            .Should().NotContain(OutputSchema.AbstainActionId);
+    }
+
+    [Fact]
+    public void RealTime_required_is_unchanged_by_abstain_sentinel()
+    {
+        using var withAbstain = JsonDocument.Parse(OutputSchema.RealTime(["corner_catch_all"], allowAbstain: true));
+        using var without = JsonDocument.Parse(OutputSchema.RealTime(["corner_catch_all"], allowAbstain: false));
+
+        AssertRequiredEqualsProperties(withAbstain.RootElement);
+        AssertRequiredEqualsProperties(without.RootElement);
+        withAbstain.RootElement.GetProperty("required").EnumerateArray().Select(e => e.GetString())
+            .Should().Equal("action_id", "phrase_ru");
     }
 
     [Fact]

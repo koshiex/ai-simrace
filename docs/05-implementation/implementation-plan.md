@@ -87,6 +87,12 @@ settings panel writing through `ISettingsStore` (the store + SQLite config-sourc
 - [ ] Race mode toggle
 - [ ] Auto-hide when game loses focus
 - [ ] Cap at 30 Hz refresh
+- [ ] **M44 — overlay instead of silence:** tips suppressed by the cadence-governor (M10 per-lap cap /
+      global cooldown) or other non-abstain gates are routed to the overlay (visual, no TTS) instead of
+      being dropped — the info is preserved without audio clutter. The routing decision (`Silent(cadence)
+      → overlay`) is ratified now (Phase-3 P1); the rendering lands here with the overlay. Distinguish a
+      *cadence-suppressed* tip (show) from a genuine *abstain* / below-materiality tip (drop). See the
+      `Silent` point in `RuleEngine`/`CoachService`. Origin: owner idea from in-game testing 2026-07-04.
 
 ## Phase 6 — Post-Session Debrief (week 7)
 

@@ -1,0 +1,17 @@
+{
+  "id": "knownbad_fabricated",
+  "cadence": "corner",
+  "trackId": "spa",
+  "carClass": "gt3",
+  "weatherBucket": "dry",
+  "hasReference": true,
+  "knownBad": true,
+  "referencePhraseRu": "В Ла-Сурс тормози позже — примерно на восемь метров.",
+  "candidatePhraseRu": "В Эо-Руж добавь газу на выходе — теряешь из-за раннего подхвата на прямой.",
+  "event": {
+    "cornerId": "spa_t01",
+    "deltaMs": 320,
+    "brakePointDiffM": -8.5,
+    "offTrack": false
+  }
+}

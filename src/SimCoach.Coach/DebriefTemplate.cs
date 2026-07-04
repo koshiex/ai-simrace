@@ -25,7 +25,7 @@ public static class DebriefTemplate
             {
                 ["corner"] = loss.Corner,
                 ["ms"] = loss.TotalLossMs,
-                ["why"] = ReasonRu(loss.Reason),
+                ["why"] = ReasonGloss.ToRu(loss.Reason),
             });
         }
 
@@ -34,10 +34,37 @@ public static class DebriefTemplate
             ["top_losses"] = topLosses,
             ["top_priority"] = TopPriority(payload.AggregatedLosses),
             ["setup_hint"] = payload.SetupHint is null ? null : JsonValue.Create(payload.SetupHint),
+            ["session_metrics"] = SessionMetrics(payload),
         };
 
         return artifact.ToJsonString();
     }
+
+    // Grounded session metrics (M20): consistency stddev + theoretical-best gap surfaced with neutral RU resx
+    // labels. Both are null-dropped on their own precondition upstream (fewer than two clean laps → no
+    // consistency; no clean lap → no gap), so a null value contributes no entry rather than a misleading zero.
+    // Fixed order (consistency, then gap) keeps the artifact byte-stable for the golden test.
+    private static JsonArray SessionMetrics(GoldSessionPayload payload)
+    {
+        var metrics = new JsonArray();
+        if (payload.ConsistencyStddevMs is double consistency)
+        {
+            metrics.Add(Metric("Debrief_Metric_Consistency", JsonValue.Create(consistency)));
+        }
+
+        if (payload.TheoreticalBestGapMs is int gap)
+        {
+            metrics.Add(Metric("Debrief_Metric_TheoreticalBestGap", JsonValue.Create(gap)));
+        }
+
+        return metrics;
+    }
+
+    private static JsonObject Metric(string labelKey, JsonNode value) => new()
+    {
+        ["label"] = CoachStrings.Get(labelKey),
+        ["value"] = value,
+    };
 
     private static string TopPriority(IReadOnlyList<GoldAggregatedLoss> losses)
     {
@@ -48,9 +75,9 @@ public static class DebriefTemplate
 
         GoldAggregatedLoss top = losses[0];
         return string.Format(
-            CultureInfo.InvariantCulture, CoachStrings.Get("Debrief_TopPriority_Format"), top.Corner, ReasonRu(top.Reason));
+            CultureInfo.InvariantCulture,
+            CoachStrings.Get("Debrief_TopPriority_Format"),
+            top.Corner,
+            ReasonGloss.ToRu(top.Reason));
     }
-
-    private static string ReasonRu(string reason) =>
-        string.IsNullOrEmpty(reason) ? CoachStrings.Get("Reason_slower") : CoachStrings.Get("Reason_" + reason);
 }

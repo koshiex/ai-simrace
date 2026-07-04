@@ -28,6 +28,7 @@ public sealed class CornerGoldView : IGoldView
             case "throttle_resume_diff_m": return GoldScalar.Num(e.ThrottleResumeDiffM, out value);
             case "racing_line_deviation_m": return GoldScalar.Num(e.RacingLineDeviationM, out value);
             case "trail_brake_pct_self": return GoldScalar.Num(e.TrailBrakePctSelf, out value);
+            case "peak_brake_pct": return GoldScalar.Num(e.PeakBrakePct, out value);
             case "trail_brake_pct_ref": return GoldScalar.Num(e.TrailBrakePctRef, out value);
             case "trail_brake_diff_pct": return GoldScalar.Num(e.TrailBrakeDiffPct, out value);
             case "understeer_score": return GoldScalar.Num(e.UndersteerScore, out value);

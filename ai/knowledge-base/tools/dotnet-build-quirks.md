@@ -47,6 +47,19 @@ Use `dotnet test`'s own `-e` flag, which injects the variable straight into the 
 
 (Only .NET 6/8/10 runtimes were present — no 9.0 — so the net9.0 testhost must roll forward to 10.)
 
+**An absolute `/mnt/c/...` path as the project/sln argument fails with MSB1001.** The Windows
+`dotnet.exe` parses `/mnt/...` as an MSBuild switch ("Unknown switch") — the leading `/` looks like
+a flag. A *relative* arg from cwd works (`… build SimCoach.sln`), or pass a Windows-style path:
+
+```bash
+"/mnt/c/Program Files/dotnet/dotnet.exe" build 'C:\Users\koba9\ai-simrace\SimCoach.sln'
+"/mnt/c/Program Files/dotnet/dotnet.exe" test  'C:\Users\koba9\ai-simrace\SimCoach.sln' -e DOTNET_ROLL_FORWARD=Major
+```
+
+Same rule for any tool that shells to the Windows dotnet: the ground-truth dumper/xUnit run as
+**Windows** processes (Windows paths, and env vars via `test -e`, not a shell prefix), while the
+Python oracle runs in **WSL** (`/mnt/c` paths). See `docs/05-implementation/ground-truth-revalidation.md`.
+
 ## SDK 10+ `dotnet new sln` creates `.slnx` by default
 
 `scripts/bootstrap.sh` / `.ps1` pass `--format sln` (with fallback for older SDKs that

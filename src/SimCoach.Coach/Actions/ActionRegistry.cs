@@ -91,17 +91,29 @@ public sealed class ActionRegistry
     /// <summary>
     /// The actions valid for <paramref name="gold"/>: cadence matches, the reference requirement is satisfied,
     /// every <c>when</c> clause holds — ordered by <see cref="CoachPriority"/> and capped at
-    /// <see cref="CoachOptions.MaxActionsInMenu"/>. An empty result means "stay silent".
+    /// <see cref="CoachOptions.MaxActionsInMenu"/>. An empty result means "stay silent". When a specific
+    /// (non-catch-all, rank &lt; <see cref="CoachOptions.CatchAllRank"/>) action survives, the undiscriminating
+    /// catch-alls are stripped from the menu (M21) so a vague "corner loss" never rides alongside a real cause;
+    /// a catch-all that is the only passing action is kept, so the menu never empties.
     /// </summary>
-    public IReadOnlyList<CoachAction> ValidSubset(IGoldView gold, CoachOptions options) =>
-    [
-        .. Actions
-            .Where(a => a.Cadence == gold.Cadence)
-            .Where(a => gold.HasReference || !a.RequiresReference)
-            .Where(a => a.When.All(clause => ClauseEvaluator.Evaluate(clause, gold)))
-            .OrderBy(a => a.Priority)
-            .Take(options.MaxActionsInMenu),
-    ];
+    public IReadOnlyList<CoachAction> ValidSubset(IGoldView gold, CoachOptions options)
+    {
+        List<CoachAction> passing =
+        [
+            .. Actions
+                .Where(a => a.Cadence == gold.Cadence)
+                .Where(a => gold.HasReference || !a.RequiresReference)
+                .Where(a => a.When.All(clause => ClauseEvaluator.Evaluate(clause, gold)))
+                .OrderBy(a => a.Priority),
+        ];
+
+        bool hasSpecific = passing.Any(a => a.Priority.Rank < options.CatchAllRank);
+        IEnumerable<CoachAction> deduped = hasSpecific
+            ? passing.Where(a => a.Priority.Rank < options.CatchAllRank)
+            : passing;
+
+        return [.. deduped.Take(options.MaxActionsInMenu)];
+    }
 
     private static CoachAction MapEntry(ActionEntryDto entry)
     {
@@ -148,9 +160,21 @@ public sealed class ActionRegistry
             JsonValueKind.Number => new WhenClause(field, op, clause.Value.GetDouble(), null),
             JsonValueKind.True => new WhenClause(field, op, null, true),
             JsonValueKind.False => new WhenClause(field, op, null, false),
+            JsonValueKind.String => MapStringClause(field, op, clause.Value.GetString(), id),
             _ => throw new InvalidOperationException(
-                $"actionRegistry.json: action '{id}' clause on '{field}' has a non-number/bool value."),
+                $"actionRegistry.json: action '{id}' clause on '{field}' has a non-number/bool/string value."),
         };
+    }
+
+    private static WhenClause MapStringClause(string field, ClauseOp op, string? text, string id)
+    {
+        if (op is not (ClauseOp.Eq or ClauseOp.Neq))
+        {
+            throw new InvalidOperationException(
+                $"actionRegistry.json: action '{id}' clause on '{field}' uses a string value with a non-equality op.");
+        }
+
+        return new WhenClause(field, op, null, null, Require(text, "when.value", id));
     }
 
     private static ParamBinding MapParam(ParamBindingDto param, string id, IReadOnlySet<string> validFields)
@@ -233,6 +257,7 @@ public sealed class ActionRegistry
         null or "none" => ParamTransform.None,
         "abs_round0" => ParamTransform.AbsRound0,
         "signed_round0" => ParamTransform.SignedRound0,
+        "reason_ru" => ParamTransform.ReasonRu,
         _ => throw new InvalidOperationException(
             $"actionRegistry.json: action '{id}' has an unknown param transform '{transform}'."),
     };

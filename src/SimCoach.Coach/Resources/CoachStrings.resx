@@ -103,4 +103,12 @@
   <data name="Debrief_TopPriority_None" xml:space="preserve">
     <value>Серьёзных потерь нет — так держать.</value>
   </data>
+  <data name="Debrief_Metric_Consistency" xml:space="preserve">
+    <value>Разброс времени круга, мс</value>
+    <comment>Neutral debrief label for the clean-lap consistency stddev (M20); value is a grounded number.</comment>
+  </data>
+  <data name="Debrief_Metric_TheoreticalBestGap" xml:space="preserve">
+    <value>Отставание от теоретического круга, мс</value>
+    <comment>Neutral debrief label for the theoretical-best-lap gap (M20); value is a grounded number.</comment>
+  </data>
 </root>

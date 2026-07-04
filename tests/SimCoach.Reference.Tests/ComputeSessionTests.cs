@@ -209,11 +209,14 @@ public sealed class ComputeSessionTests
     }
 
     [Fact]
-    public async Task Invalid_frame_latches_poison_for_the_whole_lap_and_the_next_lap_re_arms()
+    public async Task Track_limits_invalid_flying_lap_still_emits_corner_and_sector_tips()
     {
-        // A single is_valid_lap=false frame BEFORE the first corner poisons the entire lap: the latch must
-        // suppress all three later corner emits (a naive per-frame gate would suppress none, since no
-        // corner window closes on that early frame). The following lap emits normally, proving re-arm.
+        // NEW M1 emission contract (was: a single is_valid_lap=false frame latched the whole lap silent).
+        // A track-limits excursion no longer silences the rest of the lap's live coaching: the invalid
+        // flying lap now emits the SAME corner + sector tips as an all-clean baseline. Only its use as an
+        // aggregate/reference input is blocked (that half is pinned by the next test). The excursion frame
+        // is placed before the first corner so a naive per-frame gate would suppress nothing — this proves
+        // emission is decoupled from the accumulation latch, not merely that the latch stopped tripping.
         using var cleanHarness = new ComputeTestHarness();
         using var dirtyHarness = new ComputeTestHarness();
 
@@ -223,10 +226,64 @@ public sealed class ComputeSessionTests
         IReadOnlyList<DomainEvent> cleanEvents = await cleanHarness.RunAsync(clean, SessionId);
         IReadOnlyList<DomainEvent> dirtyEvents = await dirtyHarness.RunAsync(dirty, SessionId);
 
-        int cleanCorners = cleanEvents.OfType<CornerEvent>(DomainEventKind.Corner).Count();
-        // Exactly lap 3's corners vanish (latch); laps 2 and 4 still fire → re-arm proven by the delta.
+        // Corner + sector emission is now identical to the all-clean baseline — lap 3's excursion is coached
+        // live exactly like the clean laps, not silenced.
         dirtyEvents.OfType<CornerEvent>(DomainEventKind.Corner).Should().HaveCount(
-            cleanCorners - SyntheticTracks.Spa.Corners.Count);
+            cleanEvents.OfType<CornerEvent>(DomainEventKind.Corner).Count(),
+            "an invalid flying lap still emits every corner tip; only its aggregate contribution is gated");
+        dirtyEvents.OfType<SectorEvent>(DomainEventKind.Sector).Should().HaveCount(
+            cleanEvents.OfType<SectorEvent>(DomainEventKind.Sector).Count(),
+            "an invalid flying lap still emits every sector tip");
+
+        // Content pin (the emission-scoped attribution defect): a STRETCHED invalid lap carries a real,
+        // in-budget >100 ms S3 loss at t03. Its live SectorEvent.TopLosses must name that corner even
+        // though the accumulation-gated aggregate stays empty. Sourced from _lapLosses (empty on an
+        // invalid lap) TopLosses was empty and the Coach rendered a dangling "главное — ." phrase; sourced
+        // from the emission-scoped _emitLosses it is well-formed. This leg FAILS before the fix.
+        IReadOnlyList<TelemetryFrame> stretchedInvalid = WithSingleInvalidFrame(
+            StretchBand(clean, lapNumber: 3, from: 0.78f, to: 0.90f, extraMs: 1800),
+            lapNumber: 3, atLeastPos: 0.02f);
+
+        using var contentHarness = new ComputeTestHarness();
+        IReadOnlyList<DomainEvent> contentEvents = await contentHarness.RunAsync(stretchedInvalid, SessionId);
+
+        List<SectorEvent> attributed =
+            [.. contentEvents.OfType<SectorEvent>(DomainEventKind.Sector).Where(s => s.TopLosses.Any(l => l.CornerId == "spa_t03"))];
+        attributed.Should().NotBeEmpty(
+            "the invalid flying lap's live sector tip carries its corner attribution from the emission-scoped buffer");
+        CornerLoss top = attributed.SelectMany(s => s.TopLosses).First(l => l.CornerId == "spa_t03");
+        top.CornerId.Should().NotBeNullOrEmpty("the sector tip's top corner is populated, not a dangling phrase");
+        top.DeltaMs.Should().BeGreaterThan(0, "the attributed loss carries its real, non-zero delta");
+    }
+
+    [Fact]
+    public async Task Track_limits_invalid_flying_lap_is_coached_live_but_never_feeds_the_session_aggregate()
+    {
+        // NEW M1 accumulation contract: the invalid flying lap emits its live t03 loss tip (with the real,
+        // non-zero delta) yet that loss must NEVER reach the session AggregatedLosses. Control lap 3 is a
+        // VALID stretched lap whose t03 loss DOES aggregate; the treatment marks the SAME lap invalid with
+        // one track-limits frame, after which the loss is coached but not aggregated. Deleting the
+        // _lapPoisoned accumulation gate (accumulating on every emittable lap) fails the NotContain leg.
+        IReadOnlyList<TelemetryFrame> baseFrames = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
+        IReadOnlyList<TelemetryFrame> stretched = StretchBand(baseFrames, lapNumber: 3, from: 0.78f, to: 0.90f, extraMs: 1800);
+        IReadOnlyList<TelemetryFrame> invalid = WithSingleInvalidFrame(stretched, lapNumber: 3, atLeastPos: 0.02f);
+
+        using var validHarness = new ComputeTestHarness();
+        using var invalidHarness = new ComputeTestHarness();
+        IReadOnlyList<DomainEvent> validEvents = await validHarness.RunAsync(stretched, SessionId);
+        IReadOnlyList<DomainEvent> invalidEvents = await invalidHarness.RunAsync(invalid, SessionId);
+
+        // Control: the valid stretched lap's t03 loss reaches the session aggregate.
+        validEvents.OfType<SessionEvent>(DomainEventKind.Session).Single()
+            .AggregatedLosses.Should().Contain(l => l.CornerId == "spa_t03", "a valid lap's t03 loss aggregates");
+
+        // Treatment: the SAME loss on the invalidated lap is still voiced live as a corner tip …
+        invalidEvents.OfType<CornerEvent>(DomainEventKind.Corner).Should().Contain(
+            c => c.CornerId == "spa_t03" && c.DeltaMs > 0,
+            "the invalid flying lap is still coached corner-by-corner with its real loss");
+        // … but never contaminates the session aggregate.
+        invalidEvents.OfType<SessionEvent>(DomainEventKind.Session).Single()
+            .AggregatedLosses.Should().NotContain(l => l.CornerId == "spa_t03", "an invalid lap must not skew the aggregate");
     }
 
     [Fact]

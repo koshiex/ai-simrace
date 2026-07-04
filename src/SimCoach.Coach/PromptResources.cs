@@ -25,8 +25,13 @@ internal static class PromptResources
 
     internal static string RetryReminderResourceName(string version) => $"{Prefix}coach.retry.{version}.ru.txt";
 
+    internal static string AbstainGuidanceResourceName(string version) => $"{Prefix}coach.abstain.{version}.ru.txt";
+
     /// <summary>The stricter RU reminder appended to a retried prompt (sector/lap/debrief), embedded + versioned.</summary>
     internal static string ReadRetryReminder(string version) => ReadEmbeddedText(RetryReminderResourceName(version));
+
+    /// <summary>The RU abstain rule (M7) appended to the corner system prompt only when abstain is offered.</summary>
+    internal static string ReadAbstainGuidance(string version) => ReadEmbeddedText(AbstainGuidanceResourceName(version));
 
     /// <summary>The system prompt text for a cadence: the on-disk override if set, else the embedded resource.</summary>
     internal static string ReadSystemText(CoachCadence cadence, PromptSelection selection) =>
@@ -72,6 +77,14 @@ internal static class PromptResources
             {
                 throw new InvalidOperationException(
                     $"Prompt override path '{selection.OverridePath}' for cadence '{cadence}' does not exist.");
+            }
+
+            // The abstain rule (M7) is versioned off the system version and appended only for corner requests
+            // that offer abstain — probe it here so a stripped/typoed name fails the startup self-test, not Build.
+            string abstainName = AbstainGuidanceResourceName(selection.SystemVersion);
+            if (!manifest.Contains(abstainName))
+            {
+                throw new InvalidOperationException($"Embedded prompt resource '{abstainName}' was not found.");
             }
 
             string fewShotName = FewShotResourceName(selection.FewShotVersion);

@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Google.Protobuf.WellKnownTypes;
 using SimCoach.Contracts.V1;
+using SimCoach.Pipeline.Kernels;
 using SimCoach.Storage;
 using Xunit;
 
@@ -11,6 +12,7 @@ public sealed class CornerEventBuilderTests
     private const float LapLengthM = 1000f;
     private const int GridLength = 101;
     private const float BrakeWindowUpstreamM = 300f;
+    private const double ApexWindowFraction = 0.25;
 
     private static readonly Corner _corner = new()
     {
@@ -27,7 +29,7 @@ public sealed class CornerEventBuilderTests
         ResampledLap reference = ReferenceGrid();
 
         (CornerEvent ev, CornerContribution contribution) =
-            CornerEventBuilder.Build(_corner, self, reference, LapLengthM, GridLength, BrakeWindowUpstreamM);
+            CornerEventBuilder.Build(_corner, self, reference, LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction);
 
         ev.DeltaMs.Should().BePositive("the self window takes longer than the reference window");
         ev.MinSpeedDiffKmh.Should().BeNegative("self min speed is lower");
@@ -50,7 +52,7 @@ public sealed class CornerEventBuilderTests
         IReadOnlyList<TelemetryFrame> self = FlatFullThrottleCorner();
         ResampledLap reference = ReferenceGrid();
 
-        (CornerEvent ev, _) = CornerEventBuilder.Build(_corner, self, reference, LapLengthM, GridLength, BrakeWindowUpstreamM);
+        (CornerEvent ev, _) = CornerEventBuilder.Build(_corner, self, reference, LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction);
 
         Math.Abs(ev.DeltaMs).Should().BeLessThanOrEqualTo(
             10, "self measures the full [Start,End] span, matching the reference span duration");
@@ -64,7 +66,7 @@ public sealed class CornerEventBuilderTests
         IReadOnlyList<TelemetryFrame> self = SlowerSelfCorner();
 
         (CornerEvent ev, CornerContribution contribution) =
-            CornerEventBuilder.Build(_corner, self, reference: null, LapLengthM, gridLength: 0, BrakeWindowUpstreamM);
+            CornerEventBuilder.Build(_corner, self, reference: null, LapLengthM, gridLength: 0, BrakeWindowUpstreamM, ApexWindowFraction);
 
         ev.DeltaMs.Should().Be(0);
         ev.MinSpeedDiffKmh.Should().Be(0);
@@ -83,7 +85,7 @@ public sealed class CornerEventBuilderTests
         self[5].TyresOut = 3;
 
         (CornerEvent ev, CornerContribution contribution) =
-            CornerEventBuilder.Build(_corner, self, ReferenceGrid(), LapLengthM, GridLength, BrakeWindowUpstreamM);
+            CornerEventBuilder.Build(_corner, self, ReferenceGrid(), LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction);
 
         ev.OffTrack.Should().BeTrue();
         contribution.Reason.Should().Be("off_track");
@@ -101,9 +103,9 @@ public sealed class CornerEventBuilderTests
         ResampledLap reference = UpstreamBrakingReference();
 
         (CornerEvent widened, _) =
-            CornerEventBuilder.Build(_corner, full, reference, LapLengthM, GridLength, BrakeWindowUpstreamM);
+            CornerEventBuilder.Build(_corner, full, reference, LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction);
         (CornerEvent spanOnly, _) =
-            CornerEventBuilder.Build(_corner, inSpanOnly, reference, LapLengthM, GridLength, BrakeWindowUpstreamM);
+            CornerEventBuilder.Build(_corner, inSpanOnly, reference, LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction);
 
         // Self brakes at 0.24, reference at 0.27 → (0.24 - 0.27) * 1000 m ≈ -30 m (self braked earlier).
         // Without the upstream pre-roll the self onset would collapse to the corner start (fallback),
@@ -136,11 +138,59 @@ public sealed class CornerEventBuilderTests
         }
 
         (CornerEvent ev, CornerContribution contribution) =
-            CornerEventBuilder.Build(_corner, upstreamOnly, ReferenceGrid(), LapLengthM, GridLength, BrakeWindowUpstreamM);
+            CornerEventBuilder.Build(_corner, upstreamOnly, ReferenceGrid(), LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction);
 
         ev.DeltaMs.Should().Be(
             0, "no self frame lands inside [Start,End] → self-only fallback, never an upstream-inflated delta");
         contribution.DeltaMs.Should().Be(0, "the degenerate window contributes nothing to top-losses");
+    }
+
+    [Fact]
+    public void M9_phase_scopes_overlap_to_the_turn_in_apex_band_silencing_a_straight_line_chicane()
+    {
+        // A braking-chicane / straight-line approach whose brake+steer overlap sits ENTIRELY outside the
+        // turn-in→apex band (in the approach [0.30,0.33] and the exit [0.43,0.50]). Whole-window scoring
+        // (the pre-M9 metric) is high and would trip straighter_braking; the phase-scoped metric is ~0.
+        IReadOnlyList<TelemetryFrame> self = StraightLineChicaneCorner();
+
+        float wholeWindow = BrakeOverlapSteerKernels.OverlapPct(self);
+        (CornerEvent ev, _) =
+            CornerEventBuilder.Build(_corner, self, reference: null, LapLengthM, gridLength: 0, BrakeWindowUpstreamM, ApexWindowFraction);
+
+        wholeWindow.Should().BeGreaterThan(0.5f, "the whole-window fraction (pre-M9) is high — the mis-fire source");
+        ev.BrakeOverlapSteerPct.Should().Be(
+            0f, "no brake+steer overlap lands inside the turn-in→apex band → phase-scoped metric is 0 (requires_reference:false path still computes)");
+    }
+
+    [Fact]
+    public void M9_a_genuine_sustained_brake_into_apex_still_trips_the_overlap()
+    {
+        // The slower-self corner trail-brakes (0.8 brake) all the way from turn-in through the apex with a
+        // constant steer load — genuine over-braking the tip SHOULD flag. The phase-scoped fraction stays
+        // above the recalibrated 0.5 registry threshold.
+        IReadOnlyList<TelemetryFrame> self = SlowerSelfCorner();
+
+        (CornerEvent ev, _) =
+            CornerEventBuilder.Build(_corner, self, ReferenceGrid(), LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction);
+
+        ev.BrakeOverlapSteerPct.Should().BeGreaterThan(
+            0.5f, "sustained brake+steer through the turn-in→apex band survives the recalibrated threshold");
+    }
+
+    // Self corner [0.30..0.50] whose brake+steer overlap is confined to the straight-line approach
+    // ([0.30,0.33]) and the exit ([0.43,0.50]) — both OUTSIDE the turn-in→apex band [0.3375,0.425].
+    // Constant 0.3 steer (Frame default), so overlap tracks the brake trace only.
+    private static IReadOnlyList<TelemetryFrame> StraightLineChicaneCorner()
+    {
+        List<TelemetryFrame> frames = [];
+        for (int k = 0; k <= 20; k++)
+        {
+            float pos = 0.30f + (0.01f * k);
+            float brake = pos <= 0.33f || pos >= 0.43f ? 0.8f : 0f;
+            frames.Add(Frame(pos, speed: 50f, brake, throttle: 0f, tMs: 10 * k, worldX: pos * LapLengthM));
+        }
+
+        return frames;
     }
 
     // Self corner [0.30..0.50]: brakes earlier (0.31), slower apex (30 m/s), later throttle (0.48),

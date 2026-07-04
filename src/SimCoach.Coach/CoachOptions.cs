@@ -27,6 +27,17 @@ public sealed class CoachOptions
     public int MaxActionsInMenu { get; init; } = 5;
 
     /// <summary>
+    /// Tier-2 (internal/advanced — detection heuristic, NOT a user slider): the <see cref="CoachPriority.Rank"/>
+    /// at or above which a real-time lead action counts as a *weak catch-all* eligible for abstain (M7). In
+    /// today's registry every specific action ranks below 900 while the catch-alls are 900/905/910, so a
+    /// rank-≥-900 lead means only the undiscriminating catch-all fired. This is an assumption about the current
+    /// registry data, not an invariant — a future high-rank specific action would need this raised. Guarded by
+    /// the explicit <c>SeverityFor(lead) != High</c> conjunct in <see cref="AllowsAbstain"/> so abstain can
+    /// never silence a High-severity tip regardless of rank.
+    /// </summary>
+    public int CatchAllRank { get; init; } = 900;
+
+    /// <summary>
     /// How many per-corner aggregated losses the debrief Gold carries (the post-parse cap, shared with the
     /// debrief output-schema <c>maxItems</c> in a later PR).
     /// </summary>
@@ -72,6 +83,18 @@ public sealed class CoachOptions
         return SeverityBands[^1].Band;
     }
 
+    /// <summary>
+    /// M7 abstain gate — the single source of truth shared by the <see cref="PromptBuilder"/> (schema + prompt)
+    /// and <c>CoachService</c> (post-parse interpretation), so the wire schema that carries <c>"none"</c> and
+    /// the branch that honours it can never drift. Three conjuncts: corner-only scope, a weak-catch-all lead
+    /// (<see cref="CatchAllRank"/> heuristic), and a defence-in-depth never-silent guard so a High-severity lead
+    /// is never abstainable.
+    /// </summary>
+    public bool AllowsAbstain(CoachCadence cadence, CoachPriority leadPriority) =>
+        cadence == CoachCadence.Corner
+        && leadPriority.Rank >= CatchAllRank
+        && SeverityFor(leadPriority) != CoachSeverity.High;
+
     public void EnsureValid()
     {
         if (InCornerMaxWords <= 0 || SectorMaxWords <= 0 || LapMaxWords <= 0 || DebriefMaxWords <= 0)
@@ -82,6 +105,11 @@ public sealed class CoachOptions
         if (MaxActionsInMenu <= 0)
         {
             throw new InvalidOperationException("CoachOptions.MaxActionsInMenu must be positive.");
+        }
+
+        if (CatchAllRank <= 0)
+        {
+            throw new InvalidOperationException("CoachOptions.CatchAllRank must be positive.");
         }
 
         if (MaxDebriefLosses <= 0)

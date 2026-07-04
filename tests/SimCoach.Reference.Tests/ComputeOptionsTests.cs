@@ -94,4 +94,19 @@ public sealed class ComputeOptionsTests
 
         act.Should().NotThrow("a zero floor is valid — it just removes the near-zero-deficit cushion");
     }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(-0.1)]
+    [InlineData(0.6)]
+    public void EnsureValid_throws_on_out_of_range_apex_window_fraction(double fraction)
+    {
+        // M9: the shared apex-band fraction must mirror RuleEngineOptions' (0, 0.5] range so the metric
+        // and the live gate stay coherent; an out-of-range value is rejected up front.
+        var options = new ComputeOptions { ApexWindowFraction = fraction };
+
+        Action act = options.EnsureValid;
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*ApexWindowFraction*");
+    }
 }

@@ -10,11 +10,11 @@ public sealed class TipValidatorTests
     [Fact]
     public void Realtime_valid_returns_action_and_phrase()
     {
-        bool ok = TipValidator.TryValidateRealtime(
+        RealtimeTipVerdict verdict = TipValidator.TryValidateRealtime(
             """{"action_id":"wider_entry","phrase_ru":"Шире вход в поворот."}""",
-            _subset, maxWords: 8, out string action, out string phrase, out _);
+            _subset, maxWords: 8, allowAbstain: false, out string action, out string phrase, out _);
 
-        ok.Should().BeTrue();
+        verdict.Should().Be(RealtimeTipVerdict.Accept);
         action.Should().Be("wider_entry");
         phrase.Should().Be("Шире вход в поворот.");
     }
@@ -22,44 +22,68 @@ public sealed class TipValidatorTests
     [Fact]
     public void Realtime_action_not_in_subset_fails()
     {
-        bool ok = TipValidator.TryValidateRealtime(
+        RealtimeTipVerdict verdict = TipValidator.TryValidateRealtime(
             """{"action_id":"tighten_apex","phrase_ru":"Позже апекс."}""",
-            _subset, maxWords: 8, out _, out _, out string failure);
+            _subset, maxWords: 8, allowAbstain: false, out _, out _, out string failure);
 
-        ok.Should().BeFalse();
+        verdict.Should().Be(RealtimeTipVerdict.Reject);
         failure.Should().Contain("not in subset");
     }
 
     [Fact]
     public void Realtime_over_word_limit_fails()
     {
-        bool ok = TipValidator.TryValidateRealtime(
+        RealtimeTipVerdict verdict = TipValidator.TryValidateRealtime(
             """{"action_id":"wider_entry","phrase_ru":"раз два три четыре пять"}""",
-            _subset, maxWords: 3, out _, out _, out string failure);
+            _subset, maxWords: 3, allowAbstain: false, out _, out _, out string failure);
 
-        ok.Should().BeFalse();
+        verdict.Should().Be(RealtimeTipVerdict.Reject);
         failure.Should().Contain("words");
     }
 
     [Fact]
     public void Realtime_empty_phrase_fails()
     {
-        bool ok = TipValidator.TryValidateRealtime(
+        RealtimeTipVerdict verdict = TipValidator.TryValidateRealtime(
             """{"action_id":"wider_entry","phrase_ru":"  "}""",
-            _subset, maxWords: 8, out _, out _, out string failure);
+            _subset, maxWords: 8, allowAbstain: false, out _, out _, out string failure);
 
-        ok.Should().BeFalse();
+        verdict.Should().Be(RealtimeTipVerdict.Reject);
         failure.Should().Contain("empty");
     }
 
     [Fact]
     public void Realtime_malformed_json_fails()
     {
-        bool ok = TipValidator.TryValidateRealtime(
-            "{not json", _subset, maxWords: 8, out _, out _, out string failure);
+        RealtimeTipVerdict verdict = TipValidator.TryValidateRealtime(
+            "{not json", _subset, maxWords: 8, allowAbstain: false, out _, out _, out string failure);
 
-        ok.Should().BeFalse();
+        verdict.Should().Be(RealtimeTipVerdict.Reject);
         failure.Should().Contain("malformed");
+    }
+
+    [Fact]
+    public void Realtime_sanctioned_none_is_abstain()
+    {
+        RealtimeTipVerdict verdict = TipValidator.TryValidateRealtime(
+            """{"action_id":"none","phrase_ru":"В повороте отклонение около 150."}""",
+            _subset, maxWords: 8, allowAbstain: true, out string action, out string phrase, out _);
+
+        // Abstain even with a non-empty phrase (M7 none+phrase decision) — the phrase is ignored.
+        verdict.Should().Be(RealtimeTipVerdict.Abstain);
+        action.Should().BeEmpty();
+        phrase.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Realtime_leaked_none_when_not_offered_is_reject()
+    {
+        RealtimeTipVerdict verdict = TipValidator.TryValidateRealtime(
+            """{"action_id":"none","phrase_ru":"тишина"}""",
+            _subset, maxWords: 8, allowAbstain: false, out _, out _, out string failure);
+
+        verdict.Should().Be(RealtimeTipVerdict.Reject);
+        failure.Should().Contain("not in subset");
     }
 
     [Fact]

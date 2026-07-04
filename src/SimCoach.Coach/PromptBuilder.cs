@@ -43,8 +43,13 @@ public sealed class PromptBuilder
                 $"PromptBuilder reached an empty real-time subset for cadence '{cadence}' — the caller must stay silent.");
         }
 
+        // Corner-only abstain (M7): the same gate feeds the schema sentinel and the prompt guidance so the model
+        // is only invited to answer "none" when the wire schema actually carries it. One source of truth
+        // (CoachOptions.AllowsAbstain) shared with CoachService's post-parse interpretation — no drift.
+        bool allowAbstain = isRealTime && _coachOptions.AllowsAbstain(cadence, validSubset[0].Priority);
+
         PromptSelection selection = _promptOptions.For(cadence);
-        string systemPrompt = BuildSystemPrompt(cadence, selection);
+        string systemPrompt = BuildSystemPrompt(cadence, selection, allowAbstain);
         string userPrompt = BuildUserPrompt(gold, cadence, validSubset, isRealTime);
         string routeKey = _coachOptions.RouteKeys[cadence];
 
@@ -52,7 +57,7 @@ public sealed class PromptBuilder
         string schemaName;
         if (isRealTime)
         {
-            jsonSchema = OutputSchema.RealTime([.. validSubset.Select(a => a.Id)]);
+            jsonSchema = OutputSchema.RealTime([.. validSubset.Select(a => a.Id)], allowAbstain);
             schemaName = OutputSchema.RealTimeSchemaName;
         }
         else
@@ -64,9 +69,14 @@ public sealed class PromptBuilder
         return new LlmRequest(routeKey, systemPrompt, userPrompt, jsonSchema, schemaName);
     }
 
-    private static string BuildSystemPrompt(CoachCadence cadence, PromptSelection selection)
+    private static string BuildSystemPrompt(CoachCadence cadence, PromptSelection selection, bool allowAbstain)
     {
         string systemText = PromptResources.ReadSystemText(cadence, selection);
+        if (allowAbstain)
+        {
+            systemText += "\n\n" + PromptResources.ReadAbstainGuidance(selection.SystemVersion);
+        }
+
         FewShotDocument fewShots = PromptResources.ReadFewShots(selection.FewShotVersion);
         string cadenceKey = CadenceKey(cadence);
         bool isRealTime = cadence is CoachCadence.Corner or CoachCadence.Sector or CoachCadence.Lap;

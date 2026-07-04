@@ -4,8 +4,18 @@ namespace SimCoach.Reference;
 /// Tuning for <see cref="ComputeService"/>. Kernel thresholds (brake hysteresis, trail-brake) stay as
 /// named constants inside the C4 kernels; these are the compute-orchestration knobs.
 /// </summary>
-public sealed class ComputeOptions
+public sealed record ComputeOptions
 {
+    /// <summary>
+    /// Tier-2 (internal/advanced — NOT a user slider): half-width fraction of the apex band, the SINGLE
+    /// shared definition of "apex". It scopes the brake-overlap metric to the turn-in → apex window and
+    /// MUST equal <c>RuleEngineOptions.ApexWindowFraction</c> (the live corner-phase gate's fraction).
+    /// The App composition edge binds ONE value from <c>Coach:Rules:ApexWindowFraction</c> and feeds it
+    /// to both, so the two can never drift; <see cref="EnsureValid"/> only range-checks it (0 &lt; x ≤ 0.5),
+    /// with the cross-options equality asserted at that edge where both values are visible.
+    /// </summary>
+    public double ApexWindowFraction { get; init; } = 0.25;
+
     /// <summary>
     /// Sustained throttle fraction that marks a driver as back on power. No longer gates corner
     /// emission (M2 fires on the geometric corner end); retained for its validated range and any
@@ -61,6 +71,11 @@ public sealed class ComputeOptions
 
     public void EnsureValid()
     {
+        if (ApexWindowFraction is <= 0 or > 0.5)
+        {
+            throw new InvalidOperationException("ComputeOptions.ApexWindowFraction must be in (0, 0.5].");
+        }
+
         if (ResumeThrottlePct is <= 0f or > 1f)
         {
             throw new InvalidOperationException("ComputeOptions.ResumeThrottlePct must be in (0, 1].");

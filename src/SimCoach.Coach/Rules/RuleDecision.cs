@@ -29,6 +29,15 @@ public enum QuietReason
     StrategyReserved,
     OverBudget,
     PriorityFloor,
+
+    /// <summary>The event's measured time-loss is below <see cref="CadenceOptions.MinTimeLossMs"/> (materiality floor).</summary>
+    BelowTimeLossFloor,
+
+    /// <summary>A tip was spoken within <see cref="CadenceOptions.GlobalCooldown"/> (cross-cadence silence).</summary>
+    GlobalCooldown,
+
+    /// <summary>The per-lap tip cap (<see cref="CadenceOptions.MaxTipsPerLap"/>) is spent for this lap.</summary>
+    LapTipBudget,
 }
 
 /// <summary>The rule-engine verdict for a candidate tip: an outcome plus the reason that drove it.</summary>

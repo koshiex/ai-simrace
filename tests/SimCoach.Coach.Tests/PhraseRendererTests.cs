@@ -90,6 +90,28 @@ public sealed class PhraseRendererTests
     }
 
     [Fact]
+    public void ReasonRu_glosses_the_code_and_is_not_promoted_to_the_chip()
+    {
+        // M21: the reason gloss is a string, not a quantitative token, so it renders into the phrase but
+        // never becomes the overlay RenderedParam chip (which stays number-or-nothing).
+        CoachAction action = Action(
+            "В {corner} теряешь: {reason}.",
+            new ParamBinding("corner", "corner_name", ParamTransform.None, null),
+            new ParamBinding("reason", "reason", ParamTransform.ReasonRu, null));
+
+        RenderedAction rendered = PhraseRenderer.Render(
+            action,
+            Gold(strings: new Dictionary<string, string>
+            {
+                ["corner_name"] = "Eau Rouge",
+                ["reason"] = "early_brake",
+            }));
+
+        rendered.PhraseRu.Should().Be("В Eau Rouge теряешь: раннее торможение.");
+        rendered.RenderedParam.Should().BeEmpty();
+    }
+
+    [Fact]
     public void Numeric_formatting_is_culture_invariant()
     {
         CultureInfo original = CultureInfo.CurrentCulture;

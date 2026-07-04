@@ -1,0 +1,28 @@
+{
+  "id": "debrief_session",
+  "cadence": "session",
+  "trackId": "spa",
+  "carClass": "gt3",
+  "weatherBucket": "dry",
+  "hasReference": true,
+  "knownBad": false,
+  "referencePhraseRu": "Главное — торможение в Ла-Сурс: там теряешь больше всего времени.",
+  "event": {
+    "trackId": "spa",
+    "weatherBucket": "dry",
+    "lapCount": 12,
+    "cleanLapCount": 8,
+    "pbTimeMs": 138420,
+    "averageLapMs": 139650,
+    "understeerTrend": 0.2,
+    "aggregatedLosses": [
+      { "cornerId": "spa_t01", "totalLossMs": 1840, "avgLossMs": 230, "sampleCount": 8, "dominantReason": "early_brake" },
+      { "cornerId": "spa_t05", "totalLossMs": 760, "avgLossMs": 95, "sampleCount": 8, "dominantReason": "late_throttle" }
+    ],
+    "sectorAvgDeltaMs": [420, 180, 90],
+    "consistencyStddevMs": 640,
+    "theoreticalBestGapMs": 1120,
+    "avgFuelPerLapL": 2.8,
+    "endTyreWearPct": 0.31
+  }
+}

@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>SimCoach.RuEval</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SimCoach.Coach\SimCoach.Coach.csproj" />
+    <ProjectReference Include="..\..\src\SimCoach.LLM\SimCoach.LLM.csproj" />
+    <ProjectReference Include="..\..\src\SimCoach.Storage\SimCoach.Storage.csproj" />
+    <ProjectReference Include="..\..\src\SimCoach.Contracts\SimCoach.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="coverlet.collector" />
+    <!-- The RU-eval stands up the real AddLlm ring (throwaway SQLite + DI + in-memory config). -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Google.Protobuf" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Committed proto-event JSON fixtures + judge prompt, loaded off the assembly manifest (no file paths). -->
+    <EmbeddedResource Include="Fixtures\*.json" />
+    <EmbeddedResource Include="Prompts\ru-judge.system.ru.txt">
+      <WithCulture>false</WithCulture>
+      <LogicalName>SimCoach.RuEval.Prompts.ru-judge.system.ru.txt</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>

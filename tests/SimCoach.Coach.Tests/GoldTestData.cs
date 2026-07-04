@@ -22,6 +22,7 @@ internal static class GoldTestData
         BrakePointDiffM = -3.44f,
         MinSpeedDiffKmh = -5.06f,
         TrailBrakePctSelf = 0.22f,
+        PeakBrakePct = 0.85f,
         TrailBrakePctRef = 0.41f,
         ThrottleResumeDiffM = -2.75f,
         RacingLineDeviationM = 0.74f,
@@ -38,6 +39,8 @@ internal static class GoldTestData
     {
         CornerId = cornerId,
         OffTrack = false,
+        // A neutral corner still trail-brakes; a proto-default 0 would trip the absolute low-trail-brake action.
+        TrailBrakePctSelf = 0.22f,
         Reason = "neutral",
     };
 

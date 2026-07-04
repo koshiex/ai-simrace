@@ -58,6 +58,25 @@ public sealed class ClauseEvaluatorTests
     }
 
     [Theory]
+    [InlineData("late_throttle", true)]   // a nameable cause differs from "slower" → fires
+    [InlineData("slower", false)]         // the sentinel matches → silent
+    [InlineData("", false)]               // an empty string is treated as absent (fail-closed) → silent
+    [InlineData(null, false)]             // an absent field → silent
+    public void Neq_on_a_string_field_gates_empty_and_the_sentinel(string? actual, bool expected)
+    {
+        // M21: `reason neq slower` keeps the catch-all silent when the reason is empty/`slower`.
+        var clause = new WhenClause("reason", ClauseOp.Neq, Number: null, Bool: null, Text: "slower");
+        var gold = new DictionaryGoldView(
+            CoachCadence.Corner,
+            hasReference: true,
+            strings: actual is null
+                ? new Dictionary<string, string>(StringComparer.Ordinal)
+                : new Dictionary<string, string>(StringComparer.Ordinal) { ["reason"] = actual });
+
+        ClauseEvaluator.Evaluate(clause, gold).Should().Be(expected);
+    }
+
+    [Theory]
     [InlineData(ClauseOp.Lt)]
     [InlineData(ClauseOp.Gt)]
     [InlineData(ClauseOp.AbsGt)]

@@ -14,4 +14,11 @@ public enum ParamTransform
     /// <c>3.6 → "+4"</c>) — the sign is the semantic direction of the correction and is unrecoverable later.
     /// </summary>
     SignedRound0,
+
+    /// <summary>
+    /// Glosses a closed-set <c>reason</c> string to its RU phrase via <see cref="ReasonGloss"/> (M21). Unlike
+    /// the numeric transforms this is <b>not quantitative</b>: it never populates the overlay's
+    /// <see cref="RenderedAction.RenderedParam"/> chip (which stays number-or-nothing).
+    /// </summary>
+    ReasonRu,
 }
