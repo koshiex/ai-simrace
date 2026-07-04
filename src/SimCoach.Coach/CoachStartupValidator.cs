@@ -39,10 +39,32 @@ public sealed class CoachStartupValidator : IValidateOptions<CoachOptions>
         var failures = new List<string>();
 
         ValidateRouteCadenceCompleteness(options, failures);
+        ValidateDebriefRouteFamily(options, failures);
         ValidateRegistryFieldsAgainstGold(failures);
         ValidatePromptResources(failures);
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
+    }
+
+    // M28 — hard-fail when the debrief route resolves to a Gemini-family model. Gemini's responseSchema strips
+    // maxItems (GeminiSchemaTranslator), so the debrief's bounded top_losses would ride unconstrained on the
+    // wire and lean entirely on the post-parse TipValidator cap — an unwanted per-family robustness gap on the
+    // one long structured payload. Keyed on the family inference, not a hardcoded model list.
+    private void ValidateDebriefRouteFamily(CoachOptions options, List<string> failures)
+    {
+        if (!options.RouteKeys.TryGetValue(CoachCadence.Session, out string? routeKey)
+            || string.IsNullOrWhiteSpace(routeKey)
+            || !_llmOptions.Value.Routes.TryGetValue(routeKey, out RouteOptions? route))
+        {
+            return; // completeness check above already reports a missing/unresolved debrief route.
+        }
+
+        if (ModelSchemaFamilyGuard.IsGeminiFamily(route.ModelId))
+        {
+            failures.Add(
+                $"Debrief route '{routeKey}' resolves to Gemini-family model '{route.ModelId}', whose "
+                + "responseSchema strips maxItems; pick a non-Gemini model for the debrief (structured) route.");
+        }
     }
 
     // #2 — every cadence (incl. reserved Strategy) maps to a route key that resolves to a registered provider.

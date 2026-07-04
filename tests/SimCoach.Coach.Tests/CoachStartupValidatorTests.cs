@@ -29,6 +29,34 @@ public sealed class CoachStartupValidatorTests
     }
 
     [Fact]
+    public void Gemini_debrief_route_hard_fails()
+    {
+        // M28: a Gemini-family debrief model strips maxItems from the debrief schema — hard-fail at startup.
+        CoachStartupValidator validator = new(
+            Llm(includeStrategy: true, debriefModel: "google/gemini-2.5-flash-lite"),
+            Options.Create(new PromptOptions()),
+            ActionRegistry.Load());
+
+        ValidateOptionsResult result = validator.Validate(null, new CoachOptions());
+
+        result.Failed.Should().BeTrue();
+        result.Failures.Should().Contain(f =>
+            f.Contains("Debrief route", StringComparison.Ordinal) && f.Contains("Gemini", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Anthropic_debrief_route_passes()
+    {
+        // The shipped debrief model (anthropic/claude-sonnet-4.6) keeps its schema bounds — must pass.
+        CoachStartupValidator validator = new(
+            Llm(includeStrategy: true, debriefModel: "anthropic/claude-sonnet-4.6"),
+            Options.Create(new PromptOptions()),
+            ActionRegistry.Load());
+
+        validator.Validate(null, new CoachOptions()).Succeeded.Should().BeTrue();
+    }
+
+    [Fact]
     public void Unresolvable_prompt_version_fails_prompt_resource_check()
     {
         IOptions<PromptOptions> badPrompts = Options.Create(new PromptOptions
@@ -49,14 +77,17 @@ public sealed class CoachStartupValidatorTests
         result.Failures.Should().Contain(f => f.Contains("Prompt resources", StringComparison.Ordinal));
     }
 
-    private static IOptions<LlmOptions> Llm(bool includeStrategy)
+    // Debrief defaults to the shipped non-Gemini model so the baseline config is valid; the family guard is
+    // exercised by passing a Gemini debriefModel.
+    private static IOptions<LlmOptions> Llm(
+        bool includeStrategy, string debriefModel = "anthropic/claude-sonnet-4.6")
     {
         var routes = new Dictionary<string, RouteOptions>
         {
             ["corner"] = Route(),
             ["sector"] = Route(),
             ["lap"] = Route(),
-            ["debrief"] = Route(),
+            ["debrief"] = Route("openrouter-anthropic", debriefModel),
         };
         if (includeStrategy)
         {
@@ -73,15 +104,21 @@ public sealed class CoachStartupValidatorTests
                     BaseUrl = "https://openrouter.test/api/v1/",
                     AuthEnvVar = "OPENROUTER_API_KEY",
                 },
+                ["openrouter-anthropic"] = new()
+                {
+                    BaseUrl = "https://openrouter.test/api/v1/",
+                    AuthEnvVar = "OPENROUTER_API_KEY",
+                },
             },
         });
     }
 
-    private static RouteOptions Route()
+    private static RouteOptions Route(
+        string providerId = "openrouter-google", string modelId = "google/gemini-2.5-flash-lite")
         => new()
         {
-            ProviderId = "openrouter-google",
-            ModelId = "google/gemini-2.5-flash-lite",
+            ProviderId = providerId,
+            ModelId = modelId,
             MaxOutputTokens = 96,
             Timeout = TimeSpan.FromSeconds(2),
         };

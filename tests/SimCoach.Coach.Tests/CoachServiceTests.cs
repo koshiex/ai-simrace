@@ -77,6 +77,25 @@ public sealed class CoachServiceTests
     }
 
     [Fact]
+    public async Task Retry_prompt_carries_the_rejection_reason_in_russian()
+    {
+        // M28: a validation-failing first answer (action_id outside the menu) must make the retry system prompt
+        // echo a terse RU cause, so the model corrects the exact miss rather than re-guessing the schema.
+        IReadOnlyList<CoachAction> subset = LapSubset();
+        string chosen = subset[0].Id;
+        var harness = new Harness(
+            hasReference: true,
+            RawSuccess("""{"action_id":"totally_invalid","phrase_ru":"x"}"""),
+            Realtime(chosen, "Береги резину этот круг."));
+
+        await RunToCompletionAsync(harness, DomainEvent.Lap(GoldTestData.Lap()));
+
+        harness.Llm.Calls.Should().Be(2);
+        harness.Llm.Requests[1].SystemPrompt
+            .Should().Contain("Причина отказа: action_id не из разрешённого списка");
+    }
+
+    [Fact]
     public async Task Timeout_falls_back_to_template_without_retry()
     {
         var harness = new Harness(hasReference: true, new LlmResult.Failure(new LlmFailure.Timeout("slow")));
@@ -106,6 +125,26 @@ public sealed class CoachServiceTests
         tip.TopLossesJson.Should().Contain("Т1");
         tip.SetupHint.Should().Be("Снизь давление в шинах");
         harness.Llm.Calls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Debrief_retry_prompt_carries_the_rejection_reason_in_russian()
+    {
+        // M28: the widened TryAcceptDebrief surfaces the validator failure so the debrief retry echoes the RU
+        // cause. First answer has an empty top_priority (quality miss → retryable); the second is valid.
+        const string valid =
+            """{"top_losses":[{"corner":"Т1","ms":120,"why":"поздний тормоз"}],"top_priority":"Тормози раньше в Т1","setup_hint":"Снизь давление"}""";
+        var harness = new Harness(
+            hasReference: true,
+            RawSuccess("""{"top_losses":[],"top_priority":""}"""),
+            RawSuccess(valid));
+
+        await RunToCompletionAsync(harness, DomainEvent.Session(GoldTestData.Session()));
+
+        harness.Llm.Calls.Should().Be(2);
+        harness.Sink.Tips.Should().ContainSingle();
+        harness.Sink.Tips[0].Source.Should().Be(TipSource.Llm);
+        harness.Llm.Requests[1].SystemPrompt.Should().Contain("Причина отказа: пустое поле top_priority");
     }
 
     [Fact]

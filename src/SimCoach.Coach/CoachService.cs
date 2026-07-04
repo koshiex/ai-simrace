@@ -289,7 +289,7 @@ public sealed class CoachService : BackgroundService
 
         if (allowRetry && IsRetryable(result))
         {
-            LlmRequest retry = request with { SystemPrompt = request.SystemPrompt + "\n\n" + _retryReminder };
+            LlmRequest retry = request with { SystemPrompt = BuildRetryPrompt(request.SystemPrompt, rejection) };
             LlmResult second = await _llm.CompleteAsync(retry, ct).ConfigureAwait(false);
             RealtimeTipVerdict retryVerdict =
                 TryAcceptRealtime(second, ids, maxWords, allowAbstain, out actionId, out phrase, out model, out rejection);
@@ -408,16 +408,18 @@ public sealed class CoachService : BackgroundService
         LlmRequest request = _promptBuilder.Build(gold, CoachCadence.Session, []);
 
         LlmResult result = await _llm.CompleteAsync(request, ct).ConfigureAwait(false);
-        if (TryAcceptDebrief(result, out string json, out string? model))
+        if (TryAcceptDebrief(result, out string json, out string? model, out string rejection))
         {
             return ComposeDebriefTip(gold, json, TipSource.Llm, model, sessionId);
         }
 
         if (IsRetryable(result))
         {
-            LlmRequest retry = request with { SystemPrompt = request.SystemPrompt + "\n\n" + _retryReminder };
+            // A retryable non-Success (SchemaViolation) carries no validator string; fall back to its variant name.
+            string reason = string.IsNullOrEmpty(rejection) ? DescribeFailure(result) : rejection;
+            LlmRequest retry = request with { SystemPrompt = BuildRetryPrompt(request.SystemPrompt, reason) };
             LlmResult second = await _llm.CompleteAsync(retry, ct).ConfigureAwait(false);
-            if (TryAcceptDebrief(second, out json, out model))
+            if (TryAcceptDebrief(second, out json, out model, out _))
             {
                 return ComposeDebriefTip(gold, json, TipSource.Llm, model, sessionId);
             }
@@ -475,17 +477,18 @@ public sealed class CoachService : BackgroundService
     private static string DescribeFailure(LlmResult result) =>
         result is LlmResult.Failure failure ? failure.Error.GetType().Name : "no result";
 
-    private bool TryAcceptDebrief(LlmResult result, out string json, out string? providerModelId)
+    private bool TryAcceptDebrief(LlmResult result, out string json, out string? providerModelId, out string failure)
     {
         json = string.Empty;
         providerModelId = null;
+        failure = string.Empty;
         if (result is not LlmResult.Success success)
         {
             return false;
         }
 
         providerModelId = success.Info.ProviderModelId;
-        if (TipValidator.TryValidateDebrief(success.Json, _coachOptions.MaxDebriefLosses, _coachOptions.DebriefMaxWords, out _, out _))
+        if (TipValidator.TryValidateDebrief(success.Json, _coachOptions.MaxDebriefLosses, _coachOptions.DebriefMaxWords, out _, out failure))
         {
             json = success.Json;
             return true;
@@ -502,6 +505,11 @@ public sealed class CoachService : BackgroundService
         LlmResult.Failure(LlmFailure.SchemaViolation) => true,
         _ => false,
     };
+
+    // Retry system prompt = original + the generic retry reminder + a terse RU echo of the specific refusal
+    // reason (M28), so the model corrects the exact miss rather than re-guessing the whole schema.
+    private string BuildRetryPrompt(string systemPrompt, string rejectionReason)
+        => systemPrompt + "\n\n" + _retryReminder + "\n\n" + RetryReasonRu.Line(rejectionReason);
 
     private int RealtimeMaxWords(CoachCadence cadence) => cadence switch
     {

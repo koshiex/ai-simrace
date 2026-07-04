@@ -165,6 +165,23 @@ public sealed class OpenRouterProviderTests
     }
 
     [Fact]
+    public async Task No_content_failure_message_carries_finish_reason()
+    {
+        // M28: a 200 with a choice but no content (e.g. the model spent the whole budget thinking) maps to a
+        // Transport failure whose message folds in finish_reason — the single most useful clue — without a logger.
+        var handler = MockHttpMessageHandler.Json(HttpStatusCode.OK, OpenAiSuccess("", finish: "length"));
+        OpenRouterProvider provider = Provider(handler);
+
+        LlmResult result = await provider.CompleteAsync(
+            Request(RealTimeSchema), Route("openrouter-google", "google/gemini-2.5-flash-lite"), CancellationToken.None);
+
+        LlmFailure.Transport transport =
+            result.Should().BeOfType<LlmResult.Failure>().Subject
+                .Error.Should().BeOfType<LlmFailure.Transport>().Subject;
+        transport.Message.Should().Contain("finish_reason: length");
+    }
+
+    [Fact]
     public async Task RateLimited_maps_429_with_retry_after()
     {
         var handler = MockHttpMessageHandler.Json(

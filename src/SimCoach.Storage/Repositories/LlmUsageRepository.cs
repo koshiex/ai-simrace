@@ -28,10 +28,10 @@ public sealed class LlmUsageRepository
             """
             INSERT INTO llm_usage
               (session_id, ts_utc, model_id, provider, cadence,
-               input_tokens, output_tokens, cached_input_tokens, cost_usd, latency_ms, status)
+               input_tokens, output_tokens, cached_input_tokens, reasoning_tokens, cost_usd, latency_ms, status)
             VALUES
               (@SessionId, @TsUtc, @ModelId, @Provider, @Cadence,
-               @InputTokens, @OutputTokens, @CachedInputTokens, @CostUsd, @LatencyMs, @Status)
+               @InputTokens, @OutputTokens, @CachedInputTokens, @ReasoningTokens, @CostUsd, @LatencyMs, @Status)
             """,
             normalized,
             cancellationToken: ct)).ConfigureAwait(false);

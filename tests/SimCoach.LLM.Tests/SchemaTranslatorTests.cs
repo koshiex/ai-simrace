@@ -62,6 +62,23 @@ public sealed class SchemaTranslatorTests
     }
 
     [Fact]
+    public void Gemini_strips_maxItems_which_leaves_the_debrief_bound_to_the_post_parse_cap()
+    {
+        // M28 rationale pin: maxItems is intentionally in _bannedKeywords, so the debrief's top_losses array
+        // bound cannot ride on the wire — it survives only as the TipValidator cap. CoachStartupValidator
+        // hard-fails a Gemini debrief route for exactly this reason.
+        const string arraySchema =
+            """{ "type": "object", "properties": { "xs": { "type": "array", "maxItems": 3, "minItems": 1 } } }""";
+
+        SchemaDirective directive = new GeminiSchemaTranslator().Translate(arraySchema, "x");
+
+        JsonObject xs = directive.ResponseFormat!["json_schema"]!["schema"]!["properties"]!["xs"]!.AsObject();
+        xs.ContainsKey("maxItems").Should().BeFalse();
+        xs.ContainsKey("minItems").Should().BeFalse();
+        xs["type"]!.GetValue<string>().Should().Be("array");
+    }
+
+    [Fact]
     public void Gemini_rewrites_string_null_union_to_nullable()
     {
         SchemaDirective directive = new GeminiSchemaTranslator().Translate(DebriefSchema, "coach_debrief");
