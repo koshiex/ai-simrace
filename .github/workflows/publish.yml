@@ -5,13 +5,16 @@ name: Publish (Windows exe)
 # runtime is bundled — no SDK/runtime install needed on the target machine) plus the loose
 # appsettings.json you edit (OpenRouter key, voice model path, etc.).
 #
-# Trigger: pull requests into main only — each PR leaves a downloadable build under its
-# checks. (Add workflow_dispatch / a v* tag -> Release later if on-demand or release builds
-# are needed.)
+# Triggers: pull requests into main (each PR leaves a downloadable build under its checks),
+# every push to main (so a merged pack produces a testable build without an open PR), and
+# workflow_dispatch (on-demand build of main from the Actions tab).
 
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   publish-windows:
