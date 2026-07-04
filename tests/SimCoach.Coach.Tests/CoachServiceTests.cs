@@ -248,6 +248,47 @@ public sealed class CoachServiceTests
     }
 
     [Fact]
+    public async Task Costly_corner_emits_a_high_severity_tip()
+    {
+        // M45: severity now tracks |delta_ms|, not the lead action's corner phase. A 300 ms loss is at/above the
+        // 250 ms High floor, so the emitted tip is High (and would bypass the cadence cap / M32 dedup).
+        CornerEvent ev = GoldTestData.Corner();
+        ev.DeltaMs = 300;
+        var harness = new Harness(hasReference: true, new LlmResult.Failure(new LlmFailure.Timeout("slow")));
+
+        await RunToCompletionAsync(harness, DomainEvent.Corner(ev));
+
+        harness.Sink.Tips.Should().ContainSingle();
+        harness.Sink.Tips[0].Severity.Should().Be(CoachSeverity.High);
+    }
+
+    [Fact]
+    public async Task Modest_loss_brake_corner_is_medium_not_high()
+    {
+        // M45 regression: the default 140 ms brake/entry corner was phase→High under the old bands; by magnitude
+        // it is Medium (100 ≤ 140 < 250), so the cap/cooldown + M32 dedup it once bypassed now bite.
+        var harness = new Harness(hasReference: true, new LlmResult.Failure(new LlmFailure.Timeout("slow")));
+
+        await RunToCompletionAsync(harness, DomainEvent.Corner(GoldTestData.Corner())); // delta_ms = 140
+
+        harness.Sink.Tips.Should().ContainSingle();
+        harness.Sink.Tips[0].Severity.Should().Be(CoachSeverity.Medium);
+    }
+
+    [Fact]
+    public async Task Cold_start_corner_without_a_reference_resolves_to_low_severity()
+    {
+        // M45: no reference → delta_ms dropped from Gold → loss 0 → Low (never never-silenced). The template
+        // fallback still emits because the materiality floor fails open on a zero loss.
+        var harness = new Harness(hasReference: false, new LlmResult.Failure(new LlmFailure.Timeout("slow")));
+
+        await RunToCompletionAsync(harness, DomainEvent.Corner(GoldTestData.Corner()));
+
+        harness.Sink.Tips.Should().ContainSingle();
+        harness.Sink.Tips[0].Severity.Should().Be(CoachSeverity.Low);
+    }
+
+    [Fact]
     public async Task Second_corner_within_cooldown_is_suppressed()
     {
         // First corner speaks (LLM fails → template), arming the cooldown; the second is suppressed (no LLM call).

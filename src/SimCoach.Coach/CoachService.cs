@@ -207,11 +207,16 @@ public sealed class CoachService : BackgroundService
         IReadOnlyList<CoachAction> subset = _registry.ValidSubset(view, _coachOptions);
 
         // Precompute the two cadence-governor scalars here (the pure RuleEngine takes no CoachOptions/severity
-        // dependency): the absolute measured time-loss for the materiality floor, and whether the lead action is
-        // High severity (the never-silent bypass). delta_ms is signed (self−ref), so |delta| is the magnitude;
-        // an absent delta_ms (e.g. a no-PB corner) yields 0, which the engine's floor treats as fail-open.
+        // dependency): the absolute measured time-loss for the materiality floor, and whether this tip is High
+        // severity (the never-silent bypass). delta_ms is signed (self−ref), so |delta| is the magnitude; an
+        // absent delta_ms (e.g. a no-PB corner) yields 0, which the engine's floor treats as fail-open.
         double timeLossMs = view.TryGetNumber("delta_ms", out double d) ? Math.Abs(d) : 0;
-        bool highSeverity = subset.Count > 0 && _coachOptions.SeverityFor(subset[0].Priority) == CoachSeverity.High;
+        // M45: severity is now the time-loss MAGNITUDE, not the lead action's corner phase — so "High" means
+        // "genuinely costly" and the cadence cap/cooldown + M32 dedup it bypasses actually bite. A cold-start /
+        // absent-loss tip (timeLossMs == 0) resolves to Low, never never-silenced. This single value drives both
+        // the governor's highSeverity bypass and the emitted tip's chip.
+        CoachSeverity severity = _coachOptions.SeverityForLoss(timeLossMs);
+        bool highSeverity = severity == CoachSeverity.High;
         // M32: the pre-LLM dedup gate reads the LEAD action (subset[0]) for this corner — suppressing the
         // obvious repeat saves the LLM call. The post-emit NoteTip below records the ACTUAL spoken action.
         var identity = new TipIdentity(CornerIdOf(gold), subset.Count > 0 ? subset[0].Id : null);
@@ -236,11 +241,11 @@ public sealed class CoachService : BackgroundService
         CoachConfidence confidence = CoachConfidence.High;
         if (overBudget)
         {
-            tip = ComposeRealtimeTip(cadence, gold, top, topRendered, topRendered.PhraseRu, TipSource.TemplateBudget, null, noPb, sessionId);
+            tip = ComposeRealtimeTip(cadence, gold, top, topRendered, topRendered.PhraseRu, TipSource.TemplateBudget, null, noPb, severity, sessionId);
         }
         else
         {
-            (tip, rejectionReason, confidence) = await CompleteRealtimeAsync(cadence, gold, view, subset, top, topRendered, noPb, sessionId, ct).ConfigureAwait(false);
+            (tip, rejectionReason, confidence) = await CompleteRealtimeAsync(cadence, gold, view, subset, top, topRendered, noPb, severity, sessionId, ct).ConfigureAwait(false);
         }
 
         // M7 abstain: a sanctioned "none" on a weak catch-all → silence (only reachable on the LLM path). No
@@ -272,7 +277,7 @@ public sealed class CoachService : BackgroundService
     // template fallback. Only ever returned when abstain was offered for this request (corner-only weak catch-all).
     private async Task<(CoachTip? Tip, string? RejectionReason, CoachConfidence Confidence)> CompleteRealtimeAsync<TEvent>(
         CoachCadence cadence, GoldArtifact<TEvent> gold, IGoldView view, IReadOnlyList<CoachAction> subset,
-        CoachAction top, RenderedAction topRendered, bool noPb, string sessionId, CancellationToken ct)
+        CoachAction top, RenderedAction topRendered, bool noPb, CoachSeverity severity, string sessionId, CancellationToken ct)
     {
         bool allowAbstain = _coachOptions.AllowsAbstain(cadence, top.Priority);
         LlmRequest request = _promptBuilder.Build(gold, cadence, subset);
@@ -285,7 +290,7 @@ public sealed class CoachService : BackgroundService
             TryAcceptRealtime(result, ids, maxWords, allowAbstain, out string actionId, out string phrase, out string? model, out string rejection, out CoachConfidence confidence);
         if (verdict == RealtimeTipVerdict.Accept)
         {
-            return (BuildChosenTip(cadence, gold, view, subset, actionId, phrase, model, noPb, sessionId), null, confidence);
+            return (BuildChosenTip(cadence, gold, view, subset, actionId, phrase, model, noPb, severity, sessionId), null, confidence);
         }
 
         if (verdict == RealtimeTipVerdict.Abstain)
@@ -301,7 +306,7 @@ public sealed class CoachService : BackgroundService
                 TryAcceptRealtime(second, ids, maxWords, allowAbstain, out actionId, out phrase, out model, out rejection, out confidence);
             if (retryVerdict == RealtimeTipVerdict.Accept)
             {
-                return (BuildChosenTip(cadence, gold, view, subset, actionId, phrase, model, noPb, sessionId), null, confidence);
+                return (BuildChosenTip(cadence, gold, view, subset, actionId, phrase, model, noPb, severity, sessionId), null, confidence);
             }
 
             if (retryVerdict == RealtimeTipVerdict.Abstain)
@@ -311,7 +316,7 @@ public sealed class CoachService : BackgroundService
         }
 
         // Template fallback: no accepted model answer, so confidence is the default High band (observe-only).
-        return (ComposeRealtimeTip(cadence, gold, top, topRendered, topRendered.PhraseRu, TipSource.Template, null, noPb, sessionId), rejection, CoachConfidence.High);
+        return (ComposeRealtimeTip(cadence, gold, top, topRendered, topRendered.PhraseRu, TipSource.Template, null, noPb, severity, sessionId), rejection, CoachConfidence.High);
     }
 
     // M23: one structured accept/fallback line per real-time tip so the LLM-vs-template mix and the reason a
@@ -337,16 +342,16 @@ public sealed class CoachService : BackgroundService
 
     private CoachTip BuildChosenTip<TEvent>(
         CoachCadence cadence, GoldArtifact<TEvent> gold, IGoldView view, IReadOnlyList<CoachAction> subset,
-        string actionId, string phraseRu, string? providerModelId, bool noPb, string sessionId)
+        string actionId, string phraseRu, string? providerModelId, bool noPb, CoachSeverity severity, string sessionId)
     {
         CoachAction chosen = subset.First(a => a.Id == actionId);
         RenderedAction rendered = PhraseRenderer.Render(chosen, view);
-        return ComposeRealtimeTip(cadence, gold, chosen, rendered, phraseRu, TipSource.Llm, providerModelId, noPb, sessionId);
+        return ComposeRealtimeTip(cadence, gold, chosen, rendered, phraseRu, TipSource.Llm, providerModelId, noPb, severity, sessionId);
     }
 
     private CoachTip ComposeRealtimeTip<TEvent>(
         CoachCadence cadence, GoldArtifact<TEvent> gold, CoachAction action, RenderedAction rendered,
-        string phraseRu, TipSource source, string? providerModelId, bool noPb, string sessionId)
+        string phraseRu, TipSource source, string? providerModelId, bool noPb, CoachSeverity severity, string sessionId)
     {
         (string? cornerId, string? cornerName, string? cornerNameShort, string? cornerNameSpoken) = CornerInfo(gold);
         return new CoachTip(
@@ -358,7 +363,7 @@ public sealed class CoachService : BackgroundService
             ActionLabelShort: rendered.ActionLabelShort,
             RenderedParam: rendered.RenderedParam.Length == 0 ? null : rendered.RenderedParam,
             Priority: action.Priority,
-            Severity: _coachOptions.SeverityFor(action.Priority),
+            Severity: severity,
             PhraseRu: phraseRu,
             CornerName: cornerName,
             CornerNameShort: cornerNameShort,
@@ -449,6 +454,8 @@ public sealed class CoachService : BackgroundService
     {
         var priority = new CoachPriority(CoachPhase.Exit, int.MaxValue); // debrief is the least-urgent band
         (string topPriority, string? topLossesJson, string? setupHint) = ParseDebrief(debriefJson);
+        // M45: the debrief carries no single measured time loss, so severity stays on the phase-based fallback —
+        // the Exit/least-urgent band resolves to Low (the terminal summary is never a High interrupt).
         return new CoachTip(
             SessionId: sessionId,
             Cadence: CoachCadence.Session,

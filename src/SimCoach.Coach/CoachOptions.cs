@@ -52,6 +52,22 @@ public sealed class CoachOptions
     /// </summary>
     public int MaxDebriefLosses { get; init; } = 5;
 
+    /// <summary>
+    /// M45 (dev-tier, NOT a user slider): a real-time tip is <see cref="CoachSeverity.High"/> when its absolute
+    /// measured time loss <c>|delta_ms|</c> is at or above this many milliseconds. High severity is what bypasses
+    /// the M10 cadence cap/cooldown and (for the shorter horizon) the M32 cross-lap dedup, so this is the floor
+    /// for "genuinely costly". See <see cref="SeverityForLoss"/>.
+    /// </summary>
+    public double HighSeverityLossMs { get; init; } = 250;
+
+    /// <summary>
+    /// M45 (dev-tier, NOT a user slider): a real-time tip is <see cref="CoachSeverity.Medium"/> when its absolute
+    /// measured time loss <c>|delta_ms|</c> is at or above this many milliseconds (and below
+    /// <see cref="HighSeverityLossMs"/>). Below this the tip is <see cref="CoachSeverity.Low"/>. See
+    /// <see cref="SeverityForLoss"/>.
+    /// </summary>
+    public double MediumSeverityLossMs { get; init; } = 100;
+
     /// <summary>Maps each coaching cadence to the opaque LLM route key the router resolves.</summary>
     public IReadOnlyDictionary<CoachCadence, string> RouteKeys { get; init; } =
         new Dictionary<CoachCadence, string>
@@ -75,7 +91,34 @@ public sealed class CoachOptions
     ];
 
     /// <summary>
-    /// Projects a priority to its display band: the first band (ascending) whose
+    /// M45: projects a real-time tip's measured time loss to its display severity by MAGNITUDE, not corner
+    /// phase — <see cref="CoachSeverity.High"/> when <c>|delta_ms|</c> ≥ <see cref="HighSeverityLossMs"/>,
+    /// <see cref="CoachSeverity.Medium"/> when ≥ <see cref="MediumSeverityLossMs"/>, else
+    /// <see cref="CoachSeverity.Low"/>. A cold-start / no-reference / absent-loss tip (0 or unknown) resolves to
+    /// Low — it is never never-silenced. This is the source of "High" for the cadence governor and the tip chip;
+    /// phase/rank still drive the valid-subset ORDERING, only severity changed. Future extension: an always-High
+    /// safety class (e.g. off-track) independent of magnitude.
+    /// </summary>
+    public CoachSeverity SeverityForLoss(double timeLossMs)
+    {
+        double magnitude = Math.Abs(timeLossMs);
+        if (magnitude >= HighSeverityLossMs)
+        {
+            return CoachSeverity.High;
+        }
+
+        if (magnitude >= MediumSeverityLossMs)
+        {
+            return CoachSeverity.Medium;
+        }
+
+        return CoachSeverity.Low;
+    }
+
+    /// <summary>
+    /// Phase-based severity fallback, kept only where no measured time loss is available (the session debrief and
+    /// the M7 abstain never-silent guard). Real-time tips derive severity from magnitude via
+    /// <see cref="SeverityForLoss"/>. Projects a priority to its display band: the first band (ascending) whose
     /// <see cref="SeverityBand.MaxInclusive"/> is not below <paramref name="priority"/>. Assumes the bands
     /// satisfy <see cref="EnsureValid"/> (covering catch-all last).
     /// </summary>
@@ -124,6 +167,12 @@ public sealed class CoachOptions
         if (MaxDebriefLosses <= 0)
         {
             throw new InvalidOperationException("CoachOptions.MaxDebriefLosses must be positive.");
+        }
+
+        if (MediumSeverityLossMs <= 0 || HighSeverityLossMs <= MediumSeverityLossMs)
+        {
+            throw new InvalidOperationException(
+                "CoachOptions severity loss thresholds must satisfy 0 < MediumSeverityLossMs < HighSeverityLossMs.");
         }
 
         foreach (CoachCadence cadence in Enum.GetValues<CoachCadence>())

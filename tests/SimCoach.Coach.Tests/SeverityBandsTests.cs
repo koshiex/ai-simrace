@@ -18,6 +18,21 @@ public sealed class SeverityBandsTests
         options.SeverityFor(new CoachPriority(phase, rank)).Should().Be(expected);
     }
 
+    [Theory]
+    [InlineData(0.0, CoachSeverity.Low)]        // cold start / no reference / absent loss → Low, not never-silent
+    [InlineData(99.9, CoachSeverity.Low)]
+    [InlineData(100.0, CoachSeverity.Medium)]   // Medium floor is inclusive
+    [InlineData(249.9, CoachSeverity.Medium)]
+    [InlineData(250.0, CoachSeverity.High)]     // High floor is inclusive
+    [InlineData(400.0, CoachSeverity.High)]
+    [InlineData(-300.0, CoachSeverity.High)]    // signed loss (self−ref) → severity is the magnitude
+    public void SeverityForLoss_projects_by_time_loss_magnitude(double lossMs, CoachSeverity expected)
+    {
+        var options = new CoachOptions();
+
+        options.SeverityForLoss(lossMs).Should().Be(expected);
+    }
+
     [Fact]
     public void EnsureValid_rejects_nonmonotonic_bands()
     {
