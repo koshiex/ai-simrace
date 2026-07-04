@@ -40,20 +40,35 @@ public sealed class GoldFieldNamesTests
         sector.Should().NotContain("top_losses");
     }
 
-    [Theory]
-    [InlineData(CoachCadence.Session)]
-    [InlineData(CoachCadence.Strategy)]
-    public void For_throws_for_cadences_without_a_set(CoachCadence cadence)
+    [Fact]
+    public void For_still_throws_for_strategy()
     {
-        Action act = () => GoldFieldNames.For(cadence);
+        Action act = () => GoldFieldNames.For(CoachCadence.Strategy);
 
         act.Should().Throw<NotSupportedException>();
+    }
+
+    [Fact]
+    public void Session_set_is_the_scalar_surface_of_the_session_payload()
+    {
+        IReadOnlySet<string> session = GoldFieldNames.For(CoachCadence.Session);
+
+        // Drift guard (M20): the exact flat scalar surface of GoldSessionPayload plus the header's has_reference,
+        // excluding the non-scalar aggregates. Adding/removing a session scalar must update this pin in lockstep.
+        session.Should().OnlyHaveUniqueItems();
+        session.Should().BeEquivalentTo(new[]
+        {
+            "lap_count", "clean_lap_count", "pb_time_ms", "average_lap_ms", "understeer_trend",
+            "consistency_stddev_ms", "theoretical_best_gap_ms", "has_reference",
+        });
+        session.Should().NotContain(["aggregated_losses", "sector_avg_delta_ms", "fuel_tyre", "stints", "top_losses"]);
     }
 
     [Theory]
     [InlineData(CoachCadence.Corner)]
     [InlineData(CoachCadence.Sector)]
     [InlineData(CoachCadence.Lap)]
+    [InlineData(CoachCadence.Session)]
     public void Each_set_is_collision_free(CoachCadence cadence)
     {
         IReadOnlySet<string> set = GoldFieldNames.For(cadence);

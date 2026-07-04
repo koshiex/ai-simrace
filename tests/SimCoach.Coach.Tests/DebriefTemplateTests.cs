@@ -51,6 +51,41 @@ public sealed class DebriefTemplateTests
         doc.RootElement.GetProperty("top_priority").GetString().Should().NotBeNullOrWhiteSpace();
     }
 
+    [Fact]
+    public void BuildJson_surfaces_session_metrics_with_resx_labels()
+    {
+        GoldArtifact<GoldSessionPayload> gold = Session([], consistencyStddevMs: 245.5, theoreticalBestGapMs: 380);
+
+        string json = DebriefTemplate.BuildJson(gold, 5);
+
+        using var doc = JsonDocument.Parse(json);
+        JsonElement metrics = doc.RootElement.GetProperty("session_metrics");
+        metrics.GetArrayLength().Should().Be(2);
+
+        metrics[0].GetProperty("label").GetString().Should().Be(CoachStrings.Get("Debrief_Metric_Consistency"));
+        metrics[0].GetProperty("value").GetDouble().Should().Be(245.5);
+        metrics[1].GetProperty("label").GetString().Should().Be(CoachStrings.Get("Debrief_Metric_TheoreticalBestGap"));
+        metrics[1].GetProperty("value").GetInt32().Should().Be(380);
+    }
+
+    [Fact]
+    public void BuildJson_drops_session_metrics_that_are_null()
+    {
+        // <2 clean laps → null consistency; no clean lap → null gap. Both drop, not zero-fill.
+        string json = DebriefTemplate.BuildJson(Session([], consistencyStddevMs: null, theoreticalBestGapMs: null), 5);
+
+        using var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("session_metrics").GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public void BuildJson_with_metrics_is_deterministic()
+    {
+        GoldArtifact<GoldSessionPayload> gold = Session(Losses(3), consistencyStddevMs: 200.5, theoreticalBestGapMs: 120);
+
+        DebriefTemplate.BuildJson(gold, 5).Should().Be(DebriefTemplate.BuildJson(gold, 5));
+    }
+
     private static IReadOnlyList<GoldAggregatedLoss> Losses(int count) =>
     [
         .. Enumerable.Range(0, count)
@@ -58,7 +93,10 @@ public sealed class DebriefTemplateTests
     ];
 
     private static GoldArtifact<GoldSessionPayload> Session(
-        IReadOnlyList<GoldAggregatedLoss> losses, string? setupHint = null)
+        IReadOnlyList<GoldAggregatedLoss> losses,
+        string? setupHint = null,
+        double? consistencyStddevMs = null,
+        int? theoreticalBestGapMs = null)
     {
         var payload = new GoldSessionPayload(
             LapCount: 10,
@@ -68,8 +106,8 @@ public sealed class DebriefTemplateTests
             UndersteerTrend: 0.1,
             AggregatedLosses: losses,
             SectorAvgDeltaMs: null,
-            ConsistencyStddevMs: null,
-            TheoreticalBestGapMs: null,
+            ConsistencyStddevMs: consistencyStddevMs,
+            TheoreticalBestGapMs: theoreticalBestGapMs,
             SetupHint: setupHint,
             FuelTyre: new GoldFuelTyreSummary(2.5, 0.0),
             Stints: []);
