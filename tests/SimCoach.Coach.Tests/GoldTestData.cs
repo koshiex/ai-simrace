@@ -38,6 +38,8 @@ internal static class GoldTestData
     {
         CornerId = cornerId,
         OffTrack = false,
+        // A neutral corner still trail-brakes; a proto-default 0 would trip the absolute low-trail-brake action.
+        TrailBrakePctSelf = 0.22f,
         Reason = "neutral",
     };
 

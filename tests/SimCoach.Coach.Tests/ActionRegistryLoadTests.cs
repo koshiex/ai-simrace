@@ -26,7 +26,7 @@ public sealed class ActionRegistryLoadTests
     {
         var registry = ActionRegistry.Load();
 
-        registry.Actions.Should().HaveCount(25);
+        registry.Actions.Should().HaveCount(27);
     }
 
     [Fact]

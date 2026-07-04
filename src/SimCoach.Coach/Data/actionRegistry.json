@@ -234,6 +234,39 @@
       "phrase_template_ru": "Раньше газ на выходе из {corner}."
     },
     {
+      "id": "ran_wide",
+      "label_short": "ran_wide",
+      "hint_en": "ran wide / off track (no reference)",
+      "hint_ru": "вышел за пределы трассы (без эталона)",
+      "cadence": "corner",
+      "priority": { "phase": "apex", "rank": 33 },
+      "requires_reference": false,
+      "when": [
+        { "field": "off_track", "op": "eq", "value": true }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Широко в {corner}, вышел за пределы — держи трассу."
+    },
+    {
+      "id": "trail_brake_absent",
+      "label_short": "no_trail",
+      "hint_en": "almost no trail braking (absolute, no reference)",
+      "hint_ru": "почти нет трейл-брейкинга (без эталона)",
+      "cadence": "corner",
+      "priority": { "phase": "brake", "rank": 14 },
+      "requires_reference": false,
+      "when": [
+        // provisional absolute threshold — owner ratifies the exact value later (M19)
+        { "field": "trail_brake_pct_self", "op": "lt", "value": 0.05 }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Мало трейл-брейкинга в {corner}, дольше держи тормоз к апексу."
+    },
+    {
       "id": "corner_catch_all",
       "label_short": "corner_loss",
       "hint_en": "notable corner time loss",
