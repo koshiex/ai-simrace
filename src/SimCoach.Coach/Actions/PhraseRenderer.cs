@@ -21,7 +21,7 @@ public static class PhraseRenderer
             string value = RenderValue(param, gold);
             phrase = phrase.Replace("{" + param.Name + "}", value, StringComparison.Ordinal);
 
-            if (renderedParam.Length == 0 && param.Transform != ParamTransform.None)
+            if (renderedParam.Length == 0 && IsQuantitative(param.Transform))
             {
                 renderedParam = value;
             }
@@ -29,6 +29,9 @@ public static class PhraseRenderer
 
         return new RenderedAction(action.Id, action.ActionLabelShort, phrase, renderedParam);
     }
+
+    private static bool IsQuantitative(ParamTransform transform) =>
+        transform is ParamTransform.AbsRound0 or ParamTransform.SignedRound0;
 
     private static string RenderValue(ParamBinding param, IGoldView gold)
     {
@@ -41,6 +44,13 @@ public static class PhraseRenderer
 
             return gold.TryGetNumber(param.From, out double raw)
                 ? Append(raw.ToString(CultureInfo.InvariantCulture), param.Unit)
+                : string.Empty;
+        }
+
+        if (param.Transform == ParamTransform.ReasonRu)
+        {
+            return gold.TryGetString(param.From, out string reason)
+                ? Append(ReasonGloss.ToRu(reason), param.Unit)
                 : string.Empty;
         }
 

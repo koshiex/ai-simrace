@@ -25,7 +25,7 @@ public static class DebriefTemplate
             {
                 ["corner"] = loss.Corner,
                 ["ms"] = loss.TotalLossMs,
-                ["why"] = ReasonRu(loss.Reason),
+                ["why"] = ReasonGloss.ToRu(loss.Reason),
             });
         }
 
@@ -48,9 +48,9 @@ public static class DebriefTemplate
 
         GoldAggregatedLoss top = losses[0];
         return string.Format(
-            CultureInfo.InvariantCulture, CoachStrings.Get("Debrief_TopPriority_Format"), top.Corner, ReasonRu(top.Reason));
+            CultureInfo.InvariantCulture,
+            CoachStrings.Get("Debrief_TopPriority_Format"),
+            top.Corner,
+            ReasonGloss.ToRu(top.Reason));
     }
-
-    private static string ReasonRu(string reason) =>
-        string.IsNullOrEmpty(reason) ? CoachStrings.Get("Reason_slower") : CoachStrings.Get("Reason_" + reason);
 }

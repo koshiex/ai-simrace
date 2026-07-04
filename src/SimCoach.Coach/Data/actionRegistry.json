@@ -274,14 +274,18 @@
       "cadence": "corner",
       "priority": { "phase": "exit", "rank": 900 },
       "requires_reference": true,
+      // M21: name the cause (glossed reason) instead of a bare millisecond count; the `reason neq slower`
+      // clause keeps the catch-all silent when the compute reason is empty/`slower` (a vague gloss adds
+      // nothing over silence).
       "when": [
-        { "field": "delta_ms", "op": "abs_gt", "value": 150.0 }
+        { "field": "delta_ms", "op": "abs_gt", "value": 150.0 },
+        { "field": "reason", "op": "neq", "value": "slower" }
       ],
       "params": [
         { "name": "corner", "from": "corner_name" },
-        { "name": "loss", "from": "delta_ms", "transform": "abs_round0", "unit": "мс" }
+        { "name": "reason", "from": "reason", "transform": "reason_ru" }
       ],
-      "phrase_template_ru": "В {corner} отклонение около {loss}."
+      "phrase_template_ru": "В {corner} теряешь: {reason}."
     },
     {
       "id": "sector_summary_loss",
