@@ -30,6 +30,12 @@ internal sealed class ComputeSession
     private readonly LapSegmenter _lapSegmenter = new();
     private readonly SectorSegmenter _sectorSegmenter = new();
     private readonly List<CornerContribution> _lapLosses = [];
+    // Emission-scoped per-lap corner attribution: filled whenever a corner tip is EMITTED
+    // (CurrentLapEmittable), independent of the stricter accumulation gate. Sources the live
+    // SectorEvent.TopLosses so a track-limits-invalid flying lap still carries a well-formed corner
+    // name in its sector tip, while _lapLosses/_sessionLosses (accumulation-gated) stay empty. On a
+    // clean lap emittable==accumulable, so its content equals _lapLosses and clean-lap tips are unchanged.
+    private readonly List<CornerContribution> _emitLosses = [];
     private readonly SessionLossAccumulator _sessionLosses = new();
     private readonly Dictionary<int, int> _bestSectorMs = [];        // clean-lap per-sector minima (best = min)
     private readonly Dictionary<int, List<int>> _sectorDeltaAccum = []; // per-sector coachable-crossing deltas (M25: median input)
@@ -252,6 +258,9 @@ internal sealed class ComputeSession
         // Accumulation is stricter: a track-limits-invalid lap emits the live tip but must not feed the
         // session losses or the balance trend, so the accumulation block is gated on CurrentLapAccumulable().
         _domain.Publish(DomainEvent.Corner(ev));
+        // Emission-scoped: the live sector tip's corner attribution must exist whenever the corner tip
+        // was voiced, so append here (outside the accumulation gate). Aggregates stay strictly gated below.
+        _emitLosses.Add(contribution);
         if (CurrentLapAccumulable())
         {
             _lapLosses.Add(contribution);
@@ -313,7 +322,7 @@ internal sealed class ComputeSession
                 DeltaMs = deltaMs,
             };
             ev.TopLosses.AddRange(TopLosses(
-                _lapLosses.Where(c => c.ApexPosition >= _prevSectorCrossPos && c.ApexPosition <= refEndPos)));
+                _emitLosses.Where(c => c.ApexPosition >= _prevSectorCrossPos && c.ApexPosition <= refEndPos)));
             _domain.Publish(DomainEvent.Sector(ev));
         }
 
@@ -614,6 +623,7 @@ internal sealed class ComputeSession
         }
 
         _lapLosses.Clear();
+        _emitLosses.Clear();
         _prevSectorCrossPos = 0f;
         _lapPoisoned = false; // re-arm the accumulation latch: a poisoned lap does not poison the session.
         _lapInPit = false;    // re-arm the emission latch: a pit lap does not silence later flying laps.

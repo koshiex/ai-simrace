@@ -234,6 +234,26 @@ public sealed class ComputeSessionTests
         dirtyEvents.OfType<SectorEvent>(DomainEventKind.Sector).Should().HaveCount(
             cleanEvents.OfType<SectorEvent>(DomainEventKind.Sector).Count(),
             "an invalid flying lap still emits every sector tip");
+
+        // Content pin (the emission-scoped attribution defect): a STRETCHED invalid lap carries a real,
+        // in-budget >100 ms S3 loss at t03. Its live SectorEvent.TopLosses must name that corner even
+        // though the accumulation-gated aggregate stays empty. Sourced from _lapLosses (empty on an
+        // invalid lap) TopLosses was empty and the Coach rendered a dangling "главное — ." phrase; sourced
+        // from the emission-scoped _emitLosses it is well-formed. This leg FAILS before the fix.
+        IReadOnlyList<TelemetryFrame> stretchedInvalid = WithSingleInvalidFrame(
+            StretchBand(clean, lapNumber: 3, from: 0.78f, to: 0.90f, extraMs: 1800),
+            lapNumber: 3, atLeastPos: 0.02f);
+
+        using var contentHarness = new ComputeTestHarness();
+        IReadOnlyList<DomainEvent> contentEvents = await contentHarness.RunAsync(stretchedInvalid, SessionId);
+
+        List<SectorEvent> attributed =
+            [.. contentEvents.OfType<SectorEvent>(DomainEventKind.Sector).Where(s => s.TopLosses.Any(l => l.CornerId == "spa_t03"))];
+        attributed.Should().NotBeEmpty(
+            "the invalid flying lap's live sector tip carries its corner attribution from the emission-scoped buffer");
+        CornerLoss top = attributed.SelectMany(s => s.TopLosses).First(l => l.CornerId == "spa_t03");
+        top.CornerId.Should().NotBeNullOrEmpty("the sector tip's top corner is populated, not a dangling phrase");
+        top.DeltaMs.Should().BeGreaterThan(0, "the attributed loss carries its real, non-zero delta");
     }
 
     [Fact]
