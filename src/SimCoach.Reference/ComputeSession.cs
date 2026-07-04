@@ -61,6 +61,7 @@ internal sealed class ComputeSession
     private int _balanceCornerCount;
     private float _prevSectorCrossPos;
     private bool _lapPoisoned;
+    private bool _lapInPit;
     private TelemetryFrame? _lastFrame;
 
     public ComputeSession(
@@ -85,9 +86,20 @@ internal sealed class ComputeSession
         _identity = identity;
     }
 
-    // A lap is coachable only when it is unpoisoned AND its start-line was observed — the latter drops
-    // out-lap frames before the first crossing, which have no bounded lap to attribute samples to.
-    private bool CurrentLapCoachable() => !_lapPoisoned && _lapSegmenter.HasStartedLap;
+    // M1 two-latch design (do NOT re-merge these): live coaching and aggregate/reference accumulation are
+    // gated separately so a track-limits-invalid FLYING lap is still coached live while never skewing stats.
+    //
+    // Emission gate: a lap is emittable only when it is NOT pit-associated AND its start-line was observed
+    // (the latter drops out-lap frames before the first crossing, which have no bounded lap to attribute
+    // samples to). An IsValidLap=false excursion does NOT block emission — a tiny track-limits cut is a
+    // normal lap the driver still wants coached corner-by-corner. Only the pit flag suppresses live tips
+    // (out/in-laps are genuinely not being driven for time).
+    private bool CurrentLapEmittable() => !_lapInPit && _lapSegmenter.HasStartedLap;
+
+    // Accumulation gate: stricter — a lap feeds session/sector aggregates and can seed the reference only
+    // when it is unpoisoned (valid AND out of pit) AND its start-line was observed. A track-limits-cut lap
+    // emits live tips but must not contaminate aggregates or become a PB, so accumulation stays gated here.
+    private bool CurrentLapAccumulable() => !_lapPoisoned && _lapSegmenter.HasStartedLap;
 
     /// <summary>Processes one frame: corner-exit events, then sector crosses, then lap completion.</summary>
     public void Accept(TelemetryFrame frame)
@@ -99,20 +111,28 @@ internal sealed class ComputeSession
             InitSession(frame);
         }
 
-        // M1 poison latch: the first pit/invalid frame poisons the whole accumulating lap. The latch is
-        // one-way and only re-armed at the next start-line crossing (ResetForNextLap), so events already
-        // published earlier on a lap that later dives into the pit are not un-emitted (frame-level latch
-        // limitation; a buffer-and-flush swap would localise here). Trackers still run unconditionally
-        // below so their per-lap window state re-arms; only the emit calls are gated.
+        // M1 two-latch. Both latches are one-way and only re-armed at the next start-line crossing
+        // (ResetForNextLap), so events already published earlier on a lap that later dives into the pit are
+        // not un-emitted (frame-level latch limitation; a buffer-and-flush swap would localise here).
+        //   _lapPoisoned (accumulation): the first pit OR invalid frame stops this lap feeding aggregates.
+        //   _lapInPit    (emission):     only a pit frame silences this lap's live tips — a track-limits
+        //                                (IsValidLap=false) excursion still gets coached corner-by-corner.
+        // Trackers still run unconditionally below so their per-lap window state re-arms; only the emit and
+        // accumulate steps are gated.
         if (!CoachableFramePredicate.IsCoachable(frame))
         {
             _lapPoisoned = true;
         }
 
+        if (frame.IsInPitLane)
+        {
+            _lapInPit = true;
+        }
+
         foreach (CornerTracker tracker in _cornerTrackers)
         {
             IReadOnlyList<TelemetryFrame>? window = tracker.Accept(frame);
-            if (window is not null && CurrentLapCoachable())
+            if (window is not null && CurrentLapEmittable())
             {
                 EmitCorner(tracker.Corner, window);
             }
@@ -228,12 +248,18 @@ internal sealed class ComputeSession
             contribution = contribution with { DeltaMs = 0 };
         }
 
+        // EmitCorner is only reached when CurrentLapEmittable(), so the corner tip always publishes here.
+        // Accumulation is stricter: a track-limits-invalid lap emits the live tip but must not feed the
+        // session losses or the balance trend, so the accumulation block is gated on CurrentLapAccumulable().
         _domain.Publish(DomainEvent.Corner(ev));
-        _lapLosses.Add(contribution);
-        _sessionLosses.Accept(contribution);
-        _understeerAccum += contribution.UndersteerScore;
-        _oversteerAccum += contribution.OversteerScore;
-        _balanceCornerCount++;
+        if (CurrentLapAccumulable())
+        {
+            _lapLosses.Add(contribution);
+            _sessionLosses.Accept(contribution);
+            _understeerAccum += contribution.UndersteerScore;
+            _oversteerAccum += contribution.OversteerScore;
+            _balanceCornerCount++;
+        }
     }
 
     private void EmitSector(SectorSplit split, TelemetryFrame frame)
@@ -242,10 +268,12 @@ internal sealed class ComputeSession
         bool wrapped = endPos < _prevSectorCrossPos;
         float refEndPos = wrapped ? 1f : endPos;
 
-        // A poisoned (pit/invalid/out-lap) crossing must not feed the sector-delta average or emit a tip,
-        // but _prevSectorCrossPos MUST keep advancing regardless so the next coachable crossing on the same
-        // lap measures its delta from the correct start position (M1: gate publish + accumulation only).
-        if (CurrentLapCoachable())
+        // A pit/out-lap crossing must not emit a tip, but a track-limits-invalid FLYING crossing still gets
+        // a live sector tip (emission gate = pit only). _prevSectorCrossPos MUST keep advancing regardless
+        // (outside the gated block below) so the next crossing on the same lap measures its delta from the
+        // correct start position. Feeding the sector-delta MEDIAN is stricter — a poisoned (invalid/pit)
+        // crossing is excluded from the accumulator so it cannot skew the session aggregate.
+        if (CurrentLapEmittable())
         {
             int deltaMs = 0;
             if (_reference is not null)
@@ -266,13 +294,16 @@ internal sealed class ComputeSession
                 deltaMs = 0;
             }
 
-            if (!_sectorDeltaAccum.TryGetValue(split.SectorIndex, out List<int>? deltas))
+            if (CurrentLapAccumulable())
             {
-                deltas = [];
-                _sectorDeltaAccum[split.SectorIndex] = deltas;
-            }
+                if (!_sectorDeltaAccum.TryGetValue(split.SectorIndex, out List<int>? deltas))
+                {
+                    deltas = [];
+                    _sectorDeltaAccum[split.SectorIndex] = deltas;
+                }
 
-            deltas.Add(deltaMs);
+                deltas.Add(deltaMs);
+            }
 
             var ev = new SectorEvent
             {
@@ -584,7 +615,8 @@ internal sealed class ComputeSession
 
         _lapLosses.Clear();
         _prevSectorCrossPos = 0f;
-        _lapPoisoned = false; // re-arm: a poisoned lap does not poison the whole session.
+        _lapPoisoned = false; // re-arm the accumulation latch: a poisoned lap does not poison the session.
+        _lapInPit = false;    // re-arm the emission latch: a pit lap does not silence later flying laps.
     }
 
     private static int? SectorTime(CompletedLap lap, int index) =>
