@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using FluentAssertions;
 using SimCoach.Coach.Gold;
 using Xunit;
@@ -79,11 +80,37 @@ public sealed class DebriefTemplateTests
     }
 
     [Fact]
-    public void BuildJson_with_metrics_is_deterministic()
+    public void BuildJson_surfaces_only_the_present_metric_in_the_partial_case()
+    {
+        // Partial case exercising the two independent `if` branches' ordering: <2 clean laps drops
+        // consistency, but a clean lap is present so the gap survives → a length-1 array holding only the
+        // gap (not a leading null slot, and the gap keeps its slot despite the earlier branch dropping).
+        string json = DebriefTemplate.BuildJson(Session([], consistencyStddevMs: null, theoreticalBestGapMs: 380), 5);
+
+        using var doc = JsonDocument.Parse(json);
+        JsonElement metrics = doc.RootElement.GetProperty("session_metrics");
+        metrics.GetArrayLength().Should().Be(1);
+        metrics[0].GetProperty("label").GetString().Should().Be(CoachStrings.Get("Debrief_Metric_TheoreticalBestGap"));
+        metrics[0].GetProperty("value").GetInt32().Should().Be(380);
+    }
+
+    [Fact]
+    public void BuildJson_session_metrics_is_a_byte_stable_golden()
     {
         GoldArtifact<GoldSessionPayload> gold = Session(Losses(3), consistencyStddevMs: 200.5, theoreticalBestGapMs: 120);
 
-        DebriefTemplate.BuildJson(gold, 5).Should().Be(DebriefTemplate.BuildJson(gold, 5));
+        string json = DebriefTemplate.BuildJson(gold, 5);
+
+        // Golden pin (replaces the former self-equality determinism check): the exact serialized bytes of the
+        // session_metrics array — field order (label before value), array order (consistency before gap) and
+        // numeric formatting. Labels are drawn from the same resx the template uses, escaped by the same
+        // default encoder, so this stays a byte-for-byte match without hard-coding Cyrillic escape sequences.
+        string consistencyLabel = JsonValue.Create(CoachStrings.Get("Debrief_Metric_Consistency"))!.ToJsonString();
+        string gapLabel = JsonValue.Create(CoachStrings.Get("Debrief_Metric_TheoreticalBestGap"))!.ToJsonString();
+        string expected = $"[{{\"label\":{consistencyLabel},\"value\":200.5}},{{\"label\":{gapLabel},\"value\":120}}]";
+
+        using var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("session_metrics").GetRawText().Should().Be(expected);
     }
 
     private static IReadOnlyList<GoldAggregatedLoss> Losses(int count) =>

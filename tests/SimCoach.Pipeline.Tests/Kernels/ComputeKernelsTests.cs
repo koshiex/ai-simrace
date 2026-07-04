@@ -104,14 +104,18 @@ public sealed class ComputeKernelsTests
     {
         // Steady-state frames (no brake, no long-g). Scores are the scale-free asymmetry ratio
         // |front − rear| / (front + rear): understeer front 0.4 / rear 0.1 → 0.3/0.5 = 0.6;
-        // oversteer front 0.1 / rear 0.5 → 0.4/0.6 ≈ 0.6667. Both land in [0,1].
+        // oversteer front 0.1 / rear 0.5 → 0.4/0.6 ≈ 0.6667. Both land in [0,1]. Each window carries
+        // MinSteadyStateFrames identical frames so it clears the min-sample guard; the mean is unchanged.
         TelemetryFrame[] understeer =
         [
+            FrameWithSlip(steer: 0.3f, fl: 0.4f, fr: 0.4f, rl: 0.1f, rr: 0.1f),
             FrameWithSlip(steer: 0.3f, fl: 0.4f, fr: 0.4f, rl: 0.1f, rr: 0.1f),
             FrameWithSlip(steer: 0.3f, fl: 0.4f, fr: 0.4f, rl: 0.1f, rr: 0.1f),
         ];
         TelemetryFrame[] oversteer =
         [
+            FrameWithSlip(steer: 0.3f, fl: 0.1f, fr: 0.1f, rl: 0.5f, rr: 0.5f),
+            FrameWithSlip(steer: 0.3f, fl: 0.1f, fr: 0.1f, rl: 0.5f, rr: 0.5f),
             FrameWithSlip(steer: 0.3f, fl: 0.1f, fr: 0.1f, rl: 0.5f, rr: 0.5f),
         ];
 
@@ -155,12 +159,52 @@ public sealed class ComputeKernelsTests
     }
 
     [Fact]
+    public void Balance_gated_frame_is_excluded_from_the_denominator_not_averaged_in()
+    {
+        // Denominator invariant: a gated (heavy-braking, front>rear) frame must be excluded from BOTH the
+        // numerator AND the running frame count — never counted as a zero-contribution sample that dilutes
+        // the mean. Three steady 0.4/0.1 frames (ratio 0.6 each) plus one gated braking frame → the score
+        // is the steady mean 0.6, not 1.8/4 = 0.45. A regression that keeps the gated frame in the
+        // denominator would halve toward 0.45 and fail here.
+        TelemetryFrame[] mixed =
+        [
+            FrameWithSlip(steer: 0.3f, fl: 0.4f, fr: 0.4f, rl: 0.1f, rr: 0.1f),
+            FrameWithSlip(steer: 0.3f, fl: 0.4f, fr: 0.4f, rl: 0.1f, rr: 0.1f),
+            FrameWithSlip(steer: 0.3f, fl: 0.9f, fr: 0.9f, rl: 0.1f, rr: 0.1f, brake: 0.8f, longG: 1.2f),
+            FrameWithSlip(steer: 0.3f, fl: 0.4f, fr: 0.4f, rl: 0.1f, rr: 0.1f),
+        ];
+
+        BalanceScores score = BalanceKernels.Analyze(mixed);
+
+        score.UndersteerScore.Should().BeApproximately(0.6f, 1e-4f);
+        score.OversteerScore.Should().Be(0f);
+    }
+
+    [Fact]
+    public void Balance_below_min_steady_frames_scores_zero_but_scores_at_the_threshold()
+    {
+        // Min-sample guard: one surviving steady-state frame rides on sampling noise, so the window is too
+        // sparse to score → {0,0}. The same fixture repeated to the guard threshold yields the real ratio,
+        // proving the guard damps single-frame noise without altering the ratio formula.
+        static TelemetryFrame OneFrame() => FrameWithSlip(steer: 0.3f, fl: 0.4f, fr: 0.4f, rl: 0.1f, rr: 0.1f);
+
+        BalanceKernels.Analyze([OneFrame()])
+            .Should().Be(new BalanceScores { UndersteerScore = 0f, OversteerScore = 0f });
+
+        BalanceKernels.Analyze([OneFrame(), OneFrame(), OneFrame()])
+            .UndersteerScore.Should().BeApproximately(0.6f, 1e-4f);
+    }
+
+    [Fact]
     public void Balance_score_is_bounded_by_one_for_an_extreme_raw_delta()
     {
         // Raw slip range is ~0..12.37; a pathological front 12 / rear 0 frame used to fold a huge raw
-        // delta into the score. The scale-free ratio caps it: |12 − 0| / (12 + 0) = 1.
+        // delta into the score. The scale-free ratio caps it: |12 − 0| / (12 + 0) = 1. Repeated to clear
+        // the min-sample guard without changing the ratio.
         TelemetryFrame[] extreme =
         [
+            FrameWithSlip(steer: 0.3f, fl: 12f, fr: 12f, rl: 0f, rr: 0f),
+            FrameWithSlip(steer: 0.3f, fl: 12f, fr: 12f, rl: 0f, rr: 0f),
             FrameWithSlip(steer: 0.3f, fl: 12f, fr: 12f, rl: 0f, rr: 0f),
         ];
 
@@ -173,10 +217,13 @@ public sealed class ComputeKernelsTests
     [Fact]
     public void Balance_long_g_gate_degrades_to_brake_only_when_g_force_absent()
     {
-        // ACC omits g-force (null vector). A steady-state (no-brake) frame must still score even
+        // ACC omits g-force (null vector). Steady-state (no-brake) frames must still score even
         // though the long-g clause has no data — the gate degrades to brake-only, not all-zero.
+        // MinSteadyStateFrames identical frames clear the min-sample guard; the mean is unchanged.
         TelemetryFrame[] noGForce =
         [
+            FrameWithSlip(steer: 0.3f, fl: 0.4f, fr: 0.4f, rl: 0.1f, rr: 0.1f),
+            FrameWithSlip(steer: 0.3f, fl: 0.4f, fr: 0.4f, rl: 0.1f, rr: 0.1f),
             FrameWithSlip(steer: 0.3f, fl: 0.4f, fr: 0.4f, rl: 0.1f, rr: 0.1f),
         ];
 

@@ -1,5 +1,8 @@
+using System.Reflection;
+using System.Text;
 using FluentAssertions;
 using SimCoach.Coach.Actions;
+using SimCoach.Coach.Gold;
 using Xunit;
 
 namespace SimCoach.Coach.Tests;
@@ -49,19 +52,49 @@ public sealed class GoldFieldNamesTests
     }
 
     [Fact]
-    public void Session_set_is_the_scalar_surface_of_the_session_payload()
+    public void Session_set_is_the_reflected_scalar_surface_of_the_session_payload()
     {
         IReadOnlySet<string> session = GoldFieldNames.For(CoachCadence.Session);
 
-        // Drift guard (M20): the exact flat scalar surface of GoldSessionPayload plus the header's has_reference,
-        // excluding the non-scalar aggregates. Adding/removing a session scalar must update this pin in lockstep.
+        // Real drift guard (M20): derive the expectation by reflecting GoldSessionPayload's scalar properties,
+        // applying the documented exclusions (SetupHint has no MVP source), snake-casing, and adding the
+        // header's has_reference — so adding a new payload scalar actually fails this test until the catalog is
+        // updated in lockstep, rather than the pin silently tracking whatever the code already produces.
+        string[] expected =
+        [
+            .. typeof(GoldSessionPayload)
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => IsScalar(p.PropertyType) && p.Name != nameof(GoldSessionPayload.SetupHint))
+                .Select(p => ToSnakeCase(p.Name)),
+            "has_reference",
+        ];
+
+        session.Should().BeEquivalentTo(expected);
         session.Should().OnlyHaveUniqueItems();
-        session.Should().BeEquivalentTo(new[]
-        {
-            "lap_count", "clean_lap_count", "pb_time_ms", "average_lap_ms", "understeer_trend",
-            "consistency_stddev_ms", "theoretical_best_gap_ms", "has_reference",
-        });
         session.Should().NotContain(["aggregated_losses", "sector_avg_delta_ms", "fuel_tyre", "stints", "top_losses"]);
+    }
+
+    private static bool IsScalar(Type type)
+    {
+        Type underlying = Nullable.GetUnderlyingType(type) ?? type;
+        return underlying.IsPrimitive || underlying == typeof(string) || underlying == typeof(decimal);
+    }
+
+    private static string ToSnakeCase(string name)
+    {
+        var builder = new StringBuilder(name.Length + 4);
+        for (int i = 0; i < name.Length; i++)
+        {
+            char c = name[i];
+            if (i > 0 && char.IsUpper(c))
+            {
+                builder.Append('_');
+            }
+
+            builder.Append(char.ToLowerInvariant(c));
+        }
+
+        return builder.ToString();
     }
 
     [Theory]

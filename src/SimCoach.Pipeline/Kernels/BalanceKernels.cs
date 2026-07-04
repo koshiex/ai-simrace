@@ -33,6 +33,14 @@ public static class BalanceKernels
     /// </summary>
     private const float LongGQuietMax = 0.15f;
 
+    /// <summary>
+    /// Minimum surviving steady-state frames required to score: a single mid-corner sample rides on
+    /// sensor/quantisation noise, and near the recalibrated understeer/oversteer trend thresholds one
+    /// frame can flip the advisory. Below this the window is too sparse — both scores return 0, the same
+    /// neutral result as an all-gated (zero steady-state) window, rather than voicing a one-sample artefact.
+    /// </summary>
+    private const int MinSteadyStateFrames = 3;
+
     public static BalanceScores Analyze(IReadOnlyList<TelemetryFrame> frames)
     {
         ArgumentNullException.ThrowIfNull(frames);
@@ -83,7 +91,7 @@ public static class BalanceKernels
             corneringFrames++;
         }
 
-        if (corneringFrames == 0)
+        if (corneringFrames < MinSteadyStateFrames)
         {
             return new BalanceScores { UndersteerScore = 0f, OversteerScore = 0f };
         }
