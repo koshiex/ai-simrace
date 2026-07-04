@@ -251,7 +251,8 @@ public sealed class CoachServiceTests
     public async Task Costly_corner_emits_a_high_severity_tip()
     {
         // M45: severity now tracks |delta_ms|, not the lead action's corner phase. A 300 ms loss is at/above the
-        // 250 ms High floor, so the emitted tip is High (and would bypass the cadence cap / M32 dedup).
+        // 250 ms High floor, so the emitted tip is High (which bypasses the cadence cap but, post M32-high-dedup,
+        // is still deduped over the longer High horizon).
         CornerEvent ev = GoldTestData.Corner();
         ev.DeltaMs = 300;
         var harness = new Harness(hasReference: true, new LlmResult.Failure(new LlmFailure.Timeout("slow")));

@@ -341,13 +341,14 @@ public sealed class RuleEngineTests
     // A dedup engine with every M10 timestamp lever disabled (all per-cadence cooldowns and the global cooldown
     // zeroed), so the ONLY thing that can silence a tip in these tests is the M32 dedup gate under test — never a
     // stray cooldown armed by the prior NoteTip.
-    private static RuleEngine DedupEngine(int horizon = 2) =>
+    private static RuleEngine DedupEngine(int horizon = 2, int highHorizon = 3) =>
         new(
             new RuleEngineOptions
             {
                 Cadence = new CadenceOptions
                 {
                     RepeatSuppressionLaps = horizon,
+                    HighSeverityRepeatSuppressionLaps = highHorizon,
                     GlobalCooldown = TimeSpan.Zero,
                     Cooldowns = ZeroCooldowns(),
                 },
@@ -358,17 +359,74 @@ public sealed class RuleEngineTests
         Enum.GetValues<CoachCadence>().ToDictionary(c => c, _ => TimeSpan.Zero);
 
     [Fact]
-    public void Repeat_action_for_same_corner_next_visit_is_suppressed_while_high_severity_still_speaks()
+    public void Repeat_action_for_same_corner_next_visit_is_suppressed_for_both_severities()
     {
+        // M32-high-dedup: a High-severity repeat is deduped too (no bypass) — both severities are suppressed one
+        // lap after the same (corner, action) was spoken, since 1 lap is inside both the non-High (2) and the
+        // High (3) horizons.
         RuleEngine engine = DedupEngine();
         engine.NoteTip(CoachCadence.Corner, DateTimeOffset.UtcNow, "cornerA", "actionX");
-        engine.ResetLap(); // one lap elapsed → still inside the default 2-lap horizon
+        engine.ResetLap(); // one lap elapsed → inside both horizons
 
         engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero, MaterialLossMs,
                 highSeverity: false, Identity("cornerA", "actionX"))
             .Should().Be(RuleDecision.Silent(QuietReason.RepeatSuppressed));
 
-        // The same repeat, but High severity, bypasses dedup (the explicit !highSeverity conjunct) and speaks.
+        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero, MaterialLossMs,
+                highSeverity: true, Identity("cornerA", "actionX"))
+            .Should().Be(RuleDecision.Silent(QuietReason.RepeatSuppressed),
+                "a High-severity repeat is deduped over its own longer horizon, not bypassed");
+    }
+
+    [Fact]
+    public void High_severity_repeat_uses_the_longer_horizon_after_the_non_high_horizon_elapses()
+    {
+        // RepeatSuppressionLaps = 2, HighSeverityRepeatSuppressionLaps = 3. Two laps after the tip, the non-High
+        // horizon has elapsed (lapsSince 2 is not < 2) so a non-High repeat speaks, but the longer High horizon
+        // (2 < 3) still suppresses the same repeat when it is High-severity.
+        RuleEngine engine = DedupEngine(horizon: 2, highHorizon: 3);
+        engine.NoteTip(CoachCadence.Corner, DateTimeOffset.UtcNow, "cornerA", "actionX");
+        engine.ResetLap();
+        engine.ResetLap(); // two laps since
+
+        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero, MaterialLossMs,
+                highSeverity: false, Identity("cornerA", "actionX"))
+            .Should().Be(RuleDecision.Speak, "the non-High horizon has elapsed");
+
+        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero, MaterialLossMs,
+                highSeverity: true, Identity("cornerA", "actionX"))
+            .Should().Be(RuleDecision.Silent(QuietReason.RepeatSuppressed),
+                "the longer High horizon still suppresses the same repeat");
+    }
+
+    [Fact]
+    public void High_severity_repeat_resurfaces_once_the_longer_horizon_elapses()
+    {
+        RuleEngine engine = DedupEngine(horizon: 2, highHorizon: 3);
+        engine.NoteTip(CoachCadence.Corner, DateTimeOffset.UtcNow, "cornerA", "actionX");
+        engine.ResetLap();
+        engine.ResetLap();
+        engine.ResetLap(); // three laps since → High horizon (3) elapsed
+
+        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero, MaterialLossMs,
+                highSeverity: true, Identity("cornerA", "actionX"))
+            .Should().Be(RuleDecision.Speak, "a genuinely costly recurring corner resurfaces after the longer horizon");
+    }
+
+    [Fact]
+    public void High_severity_within_lap_idempotency_holds_even_with_the_high_horizon_off()
+    {
+        // HighSeverityRepeatSuppressionLaps = 0 turns off the cross-lap High horizon, but the always-on within-lap
+        // idempotency clause still stops the same High (corner, action) speaking twice in one lap.
+        RuleEngine engine = DedupEngine(horizon: 2, highHorizon: 0);
+        engine.NoteTip(CoachCadence.Corner, DateTimeOffset.UtcNow, "cornerA", "actionX");
+
+        engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero, MaterialLossMs,
+                highSeverity: true, Identity("cornerA", "actionX"))
+            .Should().Be(RuleDecision.Silent(QuietReason.RepeatSuppressed));
+
+        // Next lap with the High horizon off lets the same High action speak again.
+        engine.ResetLap();
         engine.ShouldSpeak(_oneAction, CoachCadence.Corner, Frame(), BudgetState.Zero, MaterialLossMs,
                 highSeverity: true, Identity("cornerA", "actionX"))
             .Should().Be(RuleDecision.Speak);
@@ -500,6 +558,13 @@ public sealed class RuleEngineTests
     public void Cadence_options_reject_a_negative_repeat_suppression_horizon()
     {
         new CadenceOptions { RepeatSuppressionLaps = -1 }
+            .Invoking(o => o.EnsureValid()).Should().Throw<InvalidOperationException>();
+    }
+
+    [Fact]
+    public void Cadence_options_reject_a_negative_high_severity_repeat_suppression_horizon()
+    {
+        new CadenceOptions { HighSeverityRepeatSuppressionLaps = -1 }
             .Invoking(o => o.EnsureValid()).Should().Throw<InvalidOperationException>();
     }
 

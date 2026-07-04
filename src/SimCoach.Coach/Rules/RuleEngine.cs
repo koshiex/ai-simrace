@@ -16,10 +16,13 @@ namespace SimCoach.Coach.Rules;
 /// the cadences in <see cref="CadenceOptions.GovernedCadences"/> (Corner by default) — sector/lap summaries
 /// are exempt and stay subject only to the materiality floor; the floor applies to every cadence.
 /// M32 layers a cross-lap dedup gate on top: the same advice for the same corner is silenced
-/// (<see cref="QuietReason.RepeatSuppressed"/>) within <see cref="CadenceOptions.RepeatSuppressionLaps"/>
-/// laps, keyed by <c>corner_id</c> over a monotonic lap ordinal (bumped in <see cref="ResetLap"/>) and
-/// cleared only in <see cref="ResetSession"/>. That memory is orthogonal to the cadence-governor state and,
-/// like it, is single-consumer (no locking).
+/// (<see cref="QuietReason.RepeatSuppressed"/>) within a lap horizon, keyed by <c>corner_id</c> over a
+/// monotonic lap ordinal (bumped in <see cref="ResetLap"/>) and cleared only in <see cref="ResetSession"/>.
+/// Unlike the cadence-governor, this gate applies to High-severity tips too (M32-high-dedup): a non-High repeat
+/// uses <see cref="CadenceOptions.RepeatSuppressionLaps"/> while a High-severity repeat uses the longer
+/// <see cref="CadenceOptions.HighSeverityRepeatSuppressionLaps"/> so a genuinely costly recurring corner still
+/// resurfaces periodically; the within-lap idempotency clause holds for every severity. That memory is orthogonal
+/// to the cadence-governor state and, like it, is single-consumer (no locking).
 /// </summary>
 public sealed class RuleEngine
 {
@@ -104,11 +107,12 @@ public sealed class RuleEngine
         // Cross-lap dedup (M32) — a semantic silence orthogonal to the M10 cadence-governor below: suppress the
         // SAME advice (exact action_id) for the SAME corner within the recent-lap horizon, plus an always-on
         // within-lap idempotency clause, so a stateless CornerEvent stops re-saying a word-for-word repeat lap
-        // after lap. A High-severity lead BYPASSES it via the explicit !highSeverity conjunct (matches M10's
-        // never-silent design), and a blank corner_id fails it open. Checked before the cadence-governor so a
-        // repeat reports RepeatSuppressed regardless of cooldown timing; a suppressed repeat never reaches
-        // NoteTip, so it arms no cooldown and disturbs no M10 counter.
-        if (!highSeverity && IsRepeatSuppressed(identity))
+        // after lap. M32-high-dedup: unlike the M10 governor, a High-severity lead does NOT bypass this — it is
+        // deduped too, just over the longer HighSeverityRepeatSuppressionLaps horizon, so a genuinely costly
+        // recurring corner still resurfaces periodically instead of repeating every lap. A blank corner_id fails
+        // it open. Checked before the cadence-governor so a repeat reports RepeatSuppressed regardless of cooldown
+        // timing; a suppressed repeat never reaches NoteTip, so it arms no cooldown and disturbs no M10 counter.
+        if (IsRepeatSuppressed(identity, highSeverity))
         {
             return RuleDecision.Silent(QuietReason.RepeatSuppressed);
         }
@@ -200,9 +204,11 @@ public sealed class RuleEngine
     // M32 cross-lap dedup predicate. Fails OPEN (never suppresses) with no corner identity — sector/lap
     // summaries carry no corner_id, matching the frame-gate discipline. Suppresses only when the corner's last
     // recorded action equals this lead action AND it is either the same lap (always-on within-lap idempotency,
-    // independent of the horizon knob) or within RepeatSuppressionLaps of it. Keys on the exact action_id for
-    // now; aligns to M21's action-family key as a fast-follow.
-    private bool IsRepeatSuppressed(in TipIdentity identity)
+    // independent of the horizon knob and of severity) or within the applicable horizon of it. M32-high-dedup:
+    // a High-severity repeat uses the longer HighSeverityRepeatSuppressionLaps horizon, a non-High repeat the
+    // ordinary RepeatSuppressionLaps. Keys on the exact action_id for now; aligns to M21's action-family key as a
+    // fast-follow.
+    private bool IsRepeatSuppressed(in TipIdentity identity, bool highSeverity)
     {
         if (string.IsNullOrEmpty(identity.CornerId) || string.IsNullOrEmpty(identity.ActionId))
         {
@@ -221,7 +227,9 @@ public sealed class RuleEngine
             return true; // within-lap idempotency: never say the same thing twice in one lap, even with the horizon off
         }
 
-        int horizon = _options.Cadence.RepeatSuppressionLaps;
+        int horizon = highSeverity
+            ? _options.Cadence.HighSeverityRepeatSuppressionLaps
+            : _options.Cadence.RepeatSuppressionLaps;
         return horizon > 0 && lapsSince < horizon;
     }
 
