@@ -103,6 +103,31 @@ public sealed class SchemaTranslatorTests
     }
 
     [Fact]
+    public void Gemini_preserves_a_two_member_confidence_enum()
+    {
+        // M31: the confidence field is a 2-member string enum (like action_id) — verify it survives Gemini's
+        // constraint strip intact so the wire schema can carry it across families.
+        const string confidenceSchema =
+            """
+            { "type": "object", "additionalProperties": false,
+              "required": ["action_id", "phrase_ru", "confidence"],
+              "properties": {
+                "action_id": { "type": "string", "enum": ["wider_entry"] },
+                "phrase_ru": { "type": "string" },
+                "confidence": { "type": "string", "enum": ["high", "low"] } } }
+            """;
+
+        SchemaDirective directive = new GeminiSchemaTranslator().Translate(confidenceSchema, "coach_tip");
+
+        JsonObject schema = directive.ResponseFormat!["json_schema"]!["schema"]!.AsObject();
+        schema["required"]!.AsArray().Select(n => n!.GetValue<string>())
+            .Should().BeEquivalentTo("action_id", "phrase_ru", "confidence");
+        JsonObject confidence = schema["properties"]!["confidence"]!.AsObject();
+        confidence["type"]!.GetValue<string>().Should().Be("string");
+        confidence["enum"]!.AsArray().Select(n => n!.GetValue<string>()).Should().Equal("high", "low");
+    }
+
+    [Fact]
     public void Gemini_keeps_a_property_named_like_a_banned_keyword()
     {
         const string schema =

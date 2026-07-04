@@ -27,6 +27,15 @@ public sealed class CoachOptions
     public int MaxActionsInMenu { get; init; } = 5;
 
     /// <summary>
+    /// Tier-2 (internal/dev flag, NOT a user slider): when set, the real-time output schema requests a bounded
+    /// self-reported <see cref="CoachConfidence"/> (<c>high</c>/<c>low</c>) on the chosen action and the RU prompt
+    /// gains the high/low guidance. Observe-only (M31): the parsed value is logged for calibration and never
+    /// affects emit, silence, severity, or cost. Off by default — offline/replay runs (FakeProvider/template)
+    /// never emit it, so under CI every tip defaults to <c>high</c> and the field is a constant, not signal.
+    /// </summary>
+    public bool RequestConfidence { get; init; }
+
+    /// <summary>
     /// Tier-2 (internal/advanced — detection heuristic, NOT a user slider): the <see cref="CoachPriority.Rank"/>
     /// at or above which a real-time lead action counts as a *weak catch-all* eligible for abstain (M7). In
     /// today's registry every specific action ranks below 900 while the catch-alls are 900/905/910, so a

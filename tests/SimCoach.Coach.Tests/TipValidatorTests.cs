@@ -12,7 +12,7 @@ public sealed class TipValidatorTests
     {
         RealtimeTipVerdict verdict = TipValidator.TryValidateRealtime(
             """{"action_id":"wider_entry","phrase_ru":"Шире вход в поворот."}""",
-            _subset, maxWords: 8, allowAbstain: false, out string action, out string phrase, out _);
+            _subset, maxWords: 8, allowAbstain: false, out string action, out string phrase, out _, out _);
 
         verdict.Should().Be(RealtimeTipVerdict.Accept);
         action.Should().Be("wider_entry");
@@ -24,7 +24,7 @@ public sealed class TipValidatorTests
     {
         RealtimeTipVerdict verdict = TipValidator.TryValidateRealtime(
             """{"action_id":"tighten_apex","phrase_ru":"Позже апекс."}""",
-            _subset, maxWords: 8, allowAbstain: false, out _, out _, out string failure);
+            _subset, maxWords: 8, allowAbstain: false, out _, out _, out string failure, out _);
 
         verdict.Should().Be(RealtimeTipVerdict.Reject);
         failure.Should().Contain("not in subset");
@@ -35,7 +35,7 @@ public sealed class TipValidatorTests
     {
         RealtimeTipVerdict verdict = TipValidator.TryValidateRealtime(
             """{"action_id":"wider_entry","phrase_ru":"раз два три четыре пять"}""",
-            _subset, maxWords: 3, allowAbstain: false, out _, out _, out string failure);
+            _subset, maxWords: 3, allowAbstain: false, out _, out _, out string failure, out _);
 
         verdict.Should().Be(RealtimeTipVerdict.Reject);
         failure.Should().Contain("words");
@@ -46,7 +46,7 @@ public sealed class TipValidatorTests
     {
         RealtimeTipVerdict verdict = TipValidator.TryValidateRealtime(
             """{"action_id":"wider_entry","phrase_ru":"  "}""",
-            _subset, maxWords: 8, allowAbstain: false, out _, out _, out string failure);
+            _subset, maxWords: 8, allowAbstain: false, out _, out _, out string failure, out _);
 
         verdict.Should().Be(RealtimeTipVerdict.Reject);
         failure.Should().Contain("empty");
@@ -56,7 +56,7 @@ public sealed class TipValidatorTests
     public void Realtime_malformed_json_fails()
     {
         RealtimeTipVerdict verdict = TipValidator.TryValidateRealtime(
-            "{not json", _subset, maxWords: 8, allowAbstain: false, out _, out _, out string failure);
+            "{not json", _subset, maxWords: 8, allowAbstain: false, out _, out _, out string failure, out _);
 
         verdict.Should().Be(RealtimeTipVerdict.Reject);
         failure.Should().Contain("malformed");
@@ -67,7 +67,7 @@ public sealed class TipValidatorTests
     {
         RealtimeTipVerdict verdict = TipValidator.TryValidateRealtime(
             """{"action_id":"none","phrase_ru":"В повороте отклонение около 150."}""",
-            _subset, maxWords: 8, allowAbstain: true, out string action, out string phrase, out _);
+            _subset, maxWords: 8, allowAbstain: true, out string action, out string phrase, out _, out _);
 
         // Abstain even with a non-empty phrase (M7 none+phrase decision) — the phrase is ignored.
         verdict.Should().Be(RealtimeTipVerdict.Abstain);
@@ -80,10 +80,48 @@ public sealed class TipValidatorTests
     {
         RealtimeTipVerdict verdict = TipValidator.TryValidateRealtime(
             """{"action_id":"none","phrase_ru":"тишина"}""",
-            _subset, maxWords: 8, allowAbstain: false, out _, out _, out string failure);
+            _subset, maxWords: 8, allowAbstain: false, out _, out _, out string failure, out _);
 
         verdict.Should().Be(RealtimeTipVerdict.Reject);
         failure.Should().Contain("not in subset");
+    }
+
+    [Theory]
+    [InlineData("high", CoachConfidence.High)]
+    [InlineData("low", CoachConfidence.Low)]
+    [InlineData("HIGH", CoachConfidence.High)]
+    [InlineData("Low", CoachConfidence.Low)]
+    public void Realtime_parses_bounded_confidence_case_insensitively(string wire, CoachConfidence expected)
+    {
+        RealtimeTipVerdict verdict = TipValidator.TryValidateRealtime(
+            $$"""{"action_id":"wider_entry","phrase_ru":"Шире вход.","confidence":"{{wire}}"}""",
+            _subset, maxWords: 8, allowAbstain: false, out _, out _, out _, out CoachConfidence confidence);
+
+        // Observe-only: confidence never changes the verdict or the parsed fields.
+        verdict.Should().Be(RealtimeTipVerdict.Accept);
+        confidence.Should().Be(expected);
+    }
+
+    [Fact]
+    public void Realtime_missing_confidence_accepts_with_high_default()
+    {
+        RealtimeTipVerdict verdict = TipValidator.TryValidateRealtime(
+            """{"action_id":"wider_entry","phrase_ru":"Шире вход."}""",
+            _subset, maxWords: 8, allowAbstain: false, out _, out _, out _, out CoachConfidence confidence);
+
+        verdict.Should().Be(RealtimeTipVerdict.Accept);
+        confidence.Should().Be(CoachConfidence.High); // FakeProvider/template parity: absence → High
+    }
+
+    [Fact]
+    public void Realtime_unrecognised_confidence_defaults_to_high_not_reject()
+    {
+        RealtimeTipVerdict verdict = TipValidator.TryValidateRealtime(
+            """{"action_id":"wider_entry","phrase_ru":"Шире вход.","confidence":"medium"}""",
+            _subset, maxWords: 8, allowAbstain: false, out _, out _, out _, out CoachConfidence confidence);
+
+        verdict.Should().Be(RealtimeTipVerdict.Accept); // tolerant: an unknown band never rejects
+        confidence.Should().Be(CoachConfidence.High);
     }
 
     [Fact]

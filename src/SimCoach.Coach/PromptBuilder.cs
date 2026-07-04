@@ -48,8 +48,12 @@ public sealed class PromptBuilder
         // (CoachOptions.AllowsAbstain) shared with CoachService's post-parse interpretation — no drift.
         bool allowAbstain = isRealTime && _coachOptions.AllowsAbstain(cadence, validSubset[0].Priority);
 
+        // M31: confidence is a global dev-tier flag (not per-request-computed like abstain), requested on every
+        // real-time cadence when on. Observe-only — the schema field and prompt guidance never gate the tip.
+        bool requestConfidence = isRealTime && _coachOptions.RequestConfidence;
+
         PromptSelection selection = _promptOptions.For(cadence);
-        string systemPrompt = BuildSystemPrompt(cadence, selection, allowAbstain);
+        string systemPrompt = BuildSystemPrompt(cadence, selection, allowAbstain, requestConfidence);
         string userPrompt = BuildUserPrompt(gold, cadence, validSubset, isRealTime);
         string routeKey = _coachOptions.RouteKeys[cadence];
 
@@ -57,7 +61,7 @@ public sealed class PromptBuilder
         string schemaName;
         if (isRealTime)
         {
-            jsonSchema = OutputSchema.RealTime([.. validSubset.Select(a => a.Id)], allowAbstain);
+            jsonSchema = OutputSchema.RealTime([.. validSubset.Select(a => a.Id)], allowAbstain, requestConfidence);
             schemaName = OutputSchema.RealTimeSchemaName;
         }
         else
@@ -69,12 +73,18 @@ public sealed class PromptBuilder
         return new LlmRequest(routeKey, systemPrompt, userPrompt, jsonSchema, schemaName);
     }
 
-    private static string BuildSystemPrompt(CoachCadence cadence, PromptSelection selection, bool allowAbstain)
+    private static string BuildSystemPrompt(
+        CoachCadence cadence, PromptSelection selection, bool allowAbstain, bool requestConfidence)
     {
         string systemText = PromptResources.ReadSystemText(cadence, selection);
         if (allowAbstain)
         {
             systemText += "\n\n" + PromptResources.ReadAbstainGuidance(selection.SystemVersion);
+        }
+
+        if (requestConfidence)
+        {
+            systemText += "\n\n" + PromptResources.ReadConfidenceGuidance(selection.SystemVersion);
         }
 
         FewShotDocument fewShots = PromptResources.ReadFewShots(selection.FewShotVersion);

@@ -187,7 +187,7 @@ public sealed class AbHarnessTests
         }
 
         RealtimeTipVerdict verdict = TipValidator.TryValidateRealtime(
-            json, fixture.SubsetIds, coachOptions.InCornerMaxWords, allowAbstain: false, out _, out string phrase, out _);
+            json, fixture.SubsetIds, coachOptions.InCornerMaxWords, allowAbstain: false, out _, out string phrase, out _, out _);
         return verdict == RealtimeTipVerdict.Accept ? (true, phrase) : (false, string.Empty);
     }
 

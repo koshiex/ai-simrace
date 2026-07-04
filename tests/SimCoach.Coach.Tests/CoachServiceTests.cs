@@ -358,6 +358,36 @@ public sealed class CoachServiceTests
         harness.Llm.Calls.Should().Be(1); // corner never retries; a leaked none is a plain rejection
     }
 
+    [Fact]
+    public async Task Llm_accept_logs_the_parsed_confidence()
+    {
+        // M31: an accepted LLM tip that self-reports "low" surfaces confidence=Low on the M23 accept line.
+        // Confidence is parsed tolerantly regardless of RequestConfidence (which only shapes the schema/prompt).
+        IReadOnlyList<CoachAction> subset = CornerSubset(hasReference: true);
+        string chosen = subset[0].Id;
+        var harness = new Harness(
+            hasReference: true,
+            RawSuccess($$"""{"action_id":"{{chosen}}","phrase_ru":"Тормози позже.","confidence":"low"}"""));
+
+        await RunToCompletionAsync(harness, DomainEvent.Corner(GoldTestData.Corner()));
+
+        harness.Sink.Tips.Should().ContainSingle();
+        harness.Sink.Tips[0].Source.Should().Be(TipSource.Llm); // emit-vs-silent unchanged by confidence
+        TipOutcomeLine(harness).Should().Contain("confidence=Low");
+    }
+
+    [Fact]
+    public async Task Template_fallback_logs_the_high_confidence_default()
+    {
+        // A non-Success miss → template fallback; confidence defaults to High (no model self-report).
+        var harness = new Harness(hasReference: true, new LlmResult.Failure(new LlmFailure.Timeout("slow")));
+
+        await RunToCompletionAsync(harness, DomainEvent.Corner(GoldTestData.Corner()));
+
+        harness.Sink.Tips[0].Source.Should().Be(TipSource.Template);
+        TipOutcomeLine(harness).Should().Contain("confidence=High");
+    }
+
     private static string TipOutcomeLine(Harness harness) =>
         harness.Logger.Snapshot()
             .Single(e => e.Level == LogLevel.Information && e.Message.StartsWith("Coach tip", StringComparison.Ordinal))

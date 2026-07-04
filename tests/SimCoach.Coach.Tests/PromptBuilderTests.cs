@@ -81,6 +81,34 @@ public sealed class PromptBuilderTests
     }
 
     [Fact]
+    public void Request_confidence_off_by_default_omits_the_schema_field_and_prompt_guidance()
+    {
+        (GoldArtifact<GoldCornerEvent> gold, IReadOnlyList<CoachAction> subset) = CornerCase();
+
+        LlmRequest request = NewBuilder().Build(gold, CoachCadence.Corner, subset);
+
+        using var schema = JsonDocument.Parse(request.JsonSchema);
+        schema.RootElement.GetProperty("properties").TryGetProperty("confidence", out _).Should().BeFalse();
+        request.SystemPrompt.Should().NotContain("confidence");
+    }
+
+    [Fact]
+    public void Request_confidence_on_adds_the_schema_field_and_appends_prompt_guidance()
+    {
+        (GoldArtifact<GoldCornerEvent> gold, IReadOnlyList<CoachAction> subset) = CornerCase();
+        var options = new CoachOptions { RequestConfidence = true };
+
+        LlmRequest request = new PromptBuilder(options, new PromptOptions()).Build(gold, CoachCadence.Corner, subset);
+
+        using var schema = JsonDocument.Parse(request.JsonSchema);
+        schema.RootElement.GetProperty("properties").GetProperty("confidence").GetProperty("enum")
+            .EnumerateArray().Select(e => e.GetString()).Should().Equal("high", "low");
+        schema.RootElement.GetProperty("required").EnumerateArray().Select(e => e.GetString())
+            .Should().Contain("confidence");
+        request.SystemPrompt.Should().Contain("confidence"); // the RU confidence guidance is appended
+    }
+
+    [Fact]
     public void Session_builds_a_debrief_request_with_no_menu()
     {
         GoldArtifact<GoldSessionPayload> gold = GoldTestData.Builder().BuildSession(GoldTestData.Session(), GoldTestData.Ctx());

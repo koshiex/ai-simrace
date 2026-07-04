@@ -27,11 +27,16 @@ internal static class PromptResources
 
     internal static string AbstainGuidanceResourceName(string version) => $"{Prefix}coach.abstain.{version}.ru.txt";
 
+    internal static string ConfidenceGuidanceResourceName(string version) => $"{Prefix}coach.confidence.{version}.ru.txt";
+
     /// <summary>The stricter RU reminder appended to a retried prompt (sector/lap/debrief), embedded + versioned.</summary>
     internal static string ReadRetryReminder(string version) => ReadEmbeddedText(RetryReminderResourceName(version));
 
     /// <summary>The RU abstain rule (M7) appended to the corner system prompt only when abstain is offered.</summary>
     internal static string ReadAbstainGuidance(string version) => ReadEmbeddedText(AbstainGuidanceResourceName(version));
+
+    /// <summary>The RU confidence guidance (M31) appended to the real-time system prompt only when requested.</summary>
+    internal static string ReadConfidenceGuidance(string version) => ReadEmbeddedText(ConfidenceGuidanceResourceName(version));
 
     /// <summary>The system prompt text for a cadence: the on-disk override if set, else the embedded resource.</summary>
     internal static string ReadSystemText(CoachCadence cadence, PromptSelection selection) =>
@@ -85,6 +90,14 @@ internal static class PromptResources
             if (!manifest.Contains(abstainName))
             {
                 throw new InvalidOperationException($"Embedded prompt resource '{abstainName}' was not found.");
+            }
+
+            // The confidence guidance (M31) is versioned off the system version and appended only when
+            // RequestConfidence is on — probe it here so a stripped/typoed name fails the startup self-test.
+            string confidenceName = ConfidenceGuidanceResourceName(selection.SystemVersion);
+            if (!manifest.Contains(confidenceName))
+            {
+                throw new InvalidOperationException($"Embedded prompt resource '{confidenceName}' was not found.");
             }
 
             string fewShotName = FewShotResourceName(selection.FewShotVersion);

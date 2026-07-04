@@ -24,14 +24,23 @@ public static class OutputSchema
     /// </summary>
     public const string AbstainActionId = "none";
 
+    /// <summary>The confidence field's two-member enum (M31), proven safe across families like <c>action_id</c>.</summary>
+    public const string ConfidenceHigh = "high";
+
+    /// <summary>The low-confidence band value (M31).</summary>
+    public const string ConfidenceLow = "low";
+
     /// <summary>
     /// Real-time schema (corner/sector/lap). <paramref name="subsetIds"/> become the <c>action_id</c> enum.
     /// When <paramref name="allowAbstain"/> is set the <see cref="AbstainActionId"/> sentinel is appended once,
-    /// giving the model a first-class right to stay silent on a weak catch-all (M7). No <c>maxLength</c>/
-    /// <c>minLength</c>: those are unenforced value-constraints (the word limit is enforced post-parse) and
-    /// Gemini's <c>responseSchema</c> rejects them outright.
+    /// giving the model a first-class right to stay silent on a weak catch-all (M7). When
+    /// <paramref name="requestConfidence"/> is set a bounded <c>confidence</c> enum (<c>high</c>/<c>low</c>, M31)
+    /// is added to <em>both</em> <c>properties</c> and <c>required</c> so the strict
+    /// <c>required == keys(properties)</c> invariant holds; it is observe-only and never gates a tip. No
+    /// <c>maxLength</c>/<c>minLength</c>: those are unenforced value-constraints (the word limit is enforced
+    /// post-parse) and Gemini's <c>responseSchema</c> rejects them outright.
     /// </summary>
-    public static string RealTime(IReadOnlyList<string> subsetIds, bool allowAbstain)
+    public static string RealTime(IReadOnlyList<string> subsetIds, bool allowAbstain, bool requestConfidence = false)
     {
         var enumArray = new JsonArray();
         foreach (string id in subsetIds)
@@ -44,16 +53,29 @@ public static class OutputSchema
             enumArray.Add(AbstainActionId);
         }
 
+        var required = new JsonArray("action_id", "phrase_ru");
+        var properties = new JsonObject
+        {
+            ["action_id"] = new JsonObject { ["type"] = "string", ["enum"] = enumArray },
+            ["phrase_ru"] = new JsonObject { ["type"] = "string" },
+        };
+
+        if (requestConfidence)
+        {
+            properties["confidence"] = new JsonObject
+            {
+                ["type"] = "string",
+                ["enum"] = new JsonArray(ConfidenceHigh, ConfidenceLow),
+            };
+            required.Add("confidence");
+        }
+
         var schema = new JsonObject
         {
             ["type"] = "object",
             ["additionalProperties"] = false,
-            ["required"] = new JsonArray("action_id", "phrase_ru"),
-            ["properties"] = new JsonObject
-            {
-                ["action_id"] = new JsonObject { ["type"] = "string", ["enum"] = enumArray },
-                ["phrase_ru"] = new JsonObject { ["type"] = "string" },
-            },
+            ["required"] = required,
+            ["properties"] = properties,
         };
 
         return schema.ToJsonString();

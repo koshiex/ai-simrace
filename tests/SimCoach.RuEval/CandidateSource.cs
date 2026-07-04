@@ -44,7 +44,7 @@ public static class CandidateSource
 
         RealtimeTipVerdict verdict = TipValidator.TryValidateRealtime(
             success.Json, fixture.SubsetIds, coachOptions.InCornerMaxWords, allowAbstain: false,
-            out string actionId, out string phrase, out string realtimeFailure);
+            out string actionId, out string phrase, out string realtimeFailure, out _);
         return verdict == RealtimeTipVerdict.Accept
             ? new CandidateResult(phrase, true, $"action_id={actionId}")
             : new CandidateResult(success.Json, false, $"format {verdict}: {realtimeFailure}");

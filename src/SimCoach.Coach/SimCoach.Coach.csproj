@@ -50,6 +50,10 @@
       <WithCulture>false</WithCulture>
       <LogicalName>SimCoach.Coach.Prompts.coach.abstain.v1.ru.txt</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="Prompts\coach.confidence.v1.ru.txt">
+      <WithCulture>false</WithCulture>
+      <LogicalName>SimCoach.Coach.Prompts.coach.confidence.v1.ru.txt</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

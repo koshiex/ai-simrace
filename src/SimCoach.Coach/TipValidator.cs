@@ -25,13 +25,17 @@ public static class TipValidator
         bool allowAbstain,
         out string actionId,
         out string phraseRu,
-        out string failure)
+        out string failure,
+        out CoachConfidence confidence)
     {
         ArgumentNullException.ThrowIfNull(json);
         ArgumentNullException.ThrowIfNull(subsetIds);
         actionId = string.Empty;
         phraseRu = string.Empty;
         failure = string.Empty;
+        // Observe-only (M31): confidence never affects the verdict. Default High so a missing/unrecognised
+        // value (and every non-Success path) keeps template/FakeProvider tips out of the low bucket.
+        confidence = CoachConfidence.High;
 
         if (!TryParse(json, out JsonDocument? doc, out failure))
         {
@@ -48,6 +52,8 @@ public static class TipValidator
                 failure = "missing action_id/phrase_ru";
                 return RealtimeTipVerdict.Reject;
             }
+
+            confidence = ParseConfidence(root);
 
             if (allowAbstain && string.Equals(id, OutputSchema.AbstainActionId, StringComparison.Ordinal))
             {
@@ -143,6 +149,14 @@ public static class TipValidator
             return true;
         }
     }
+
+    // Tolerant M31 parse: the closed {high, low} band, case-insensitive. Missing or anything unrecognised →
+    // High (the default band). Never throws, never influences Accept/Reject/Abstain.
+    private static CoachConfidence ParseConfidence(JsonElement root) =>
+        TryGetString(root, "confidence", out string raw)
+        && string.Equals(raw, OutputSchema.ConfidenceLow, StringComparison.OrdinalIgnoreCase)
+            ? CoachConfidence.Low
+            : CoachConfidence.High;
 
     private static bool TryParse(string json, out JsonDocument? doc, out string failure)
     {

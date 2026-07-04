@@ -230,13 +230,14 @@ public sealed class CoachService : BackgroundService
         bool overBudget = decision.Outcome == RuleOutcome.TemplateOnly;
         CoachTip? tip;
         string? rejectionReason = null;
+        CoachConfidence confidence = CoachConfidence.High;
         if (overBudget)
         {
             tip = ComposeRealtimeTip(cadence, gold, top, topRendered, topRendered.PhraseRu, TipSource.TemplateBudget, null, noPb, sessionId);
         }
         else
         {
-            (tip, rejectionReason) = await CompleteRealtimeAsync(cadence, gold, view, subset, top, topRendered, noPb, sessionId, ct).ConfigureAwait(false);
+            (tip, rejectionReason, confidence) = await CompleteRealtimeAsync(cadence, gold, view, subset, top, topRendered, noPb, sessionId, ct).ConfigureAwait(false);
         }
 
         // M7 abstain: a sanctioned "none" on a weak catch-all → silence (only reachable on the LLM path). No
@@ -250,7 +251,7 @@ public sealed class CoachService : BackgroundService
 
         await _sink.EmitTipAsync(tip, ct).ConfigureAwait(false);
         _ruleEngine.NoteTip(cadence, _clock.GetUtcNow());
-        LogTipOutcome(cadence, tip, rejectionReason);
+        LogTipOutcome(cadence, tip, rejectionReason, confidence);
 
         if (overBudget)
         {
@@ -264,7 +265,7 @@ public sealed class CoachService : BackgroundService
 
     // A null Tip means abstain (M7): a sanctioned "none" — silence, distinct from an accepted tip and from the
     // template fallback. Only ever returned when abstain was offered for this request (corner-only weak catch-all).
-    private async Task<(CoachTip? Tip, string? RejectionReason)> CompleteRealtimeAsync<TEvent>(
+    private async Task<(CoachTip? Tip, string? RejectionReason, CoachConfidence Confidence)> CompleteRealtimeAsync<TEvent>(
         CoachCadence cadence, GoldArtifact<TEvent> gold, IGoldView view, IReadOnlyList<CoachAction> subset,
         CoachAction top, RenderedAction topRendered, bool noPb, string sessionId, CancellationToken ct)
     {
@@ -276,15 +277,15 @@ public sealed class CoachService : BackgroundService
 
         LlmResult result = await _llm.CompleteAsync(request, ct).ConfigureAwait(false);
         RealtimeTipVerdict verdict =
-            TryAcceptRealtime(result, ids, maxWords, allowAbstain, out string actionId, out string phrase, out string? model, out string rejection);
+            TryAcceptRealtime(result, ids, maxWords, allowAbstain, out string actionId, out string phrase, out string? model, out string rejection, out CoachConfidence confidence);
         if (verdict == RealtimeTipVerdict.Accept)
         {
-            return (BuildChosenTip(cadence, gold, view, subset, actionId, phrase, model, noPb, sessionId), null);
+            return (BuildChosenTip(cadence, gold, view, subset, actionId, phrase, model, noPb, sessionId), null, confidence);
         }
 
         if (verdict == RealtimeTipVerdict.Abstain)
         {
-            return (null, null);
+            return (null, null, CoachConfidence.High);
         }
 
         if (allowRetry && IsRetryable(result))
@@ -292,30 +293,34 @@ public sealed class CoachService : BackgroundService
             LlmRequest retry = request with { SystemPrompt = BuildRetryPrompt(request.SystemPrompt, rejection) };
             LlmResult second = await _llm.CompleteAsync(retry, ct).ConfigureAwait(false);
             RealtimeTipVerdict retryVerdict =
-                TryAcceptRealtime(second, ids, maxWords, allowAbstain, out actionId, out phrase, out model, out rejection);
+                TryAcceptRealtime(second, ids, maxWords, allowAbstain, out actionId, out phrase, out model, out rejection, out confidence);
             if (retryVerdict == RealtimeTipVerdict.Accept)
             {
-                return (BuildChosenTip(cadence, gold, view, subset, actionId, phrase, model, noPb, sessionId), null);
+                return (BuildChosenTip(cadence, gold, view, subset, actionId, phrase, model, noPb, sessionId), null, confidence);
             }
 
             if (retryVerdict == RealtimeTipVerdict.Abstain)
             {
-                return (null, null);
+                return (null, null, CoachConfidence.High);
             }
         }
 
-        return (ComposeRealtimeTip(cadence, gold, top, topRendered, topRendered.PhraseRu, TipSource.Template, null, noPb, sessionId), rejection);
+        // Template fallback: no accepted model answer, so confidence is the default High band (observe-only).
+        return (ComposeRealtimeTip(cadence, gold, top, topRendered, topRendered.PhraseRu, TipSource.Template, null, noPb, sessionId), rejection, CoachConfidence.High);
     }
 
     // M23: one structured accept/fallback line per real-time tip so the LLM-vs-template mix and the reason a
     // model answer was rejected stay observable in the logs — no DB columns. Hot-path safe: the reason is
     // already captured upstream, so this is a single pre-formatted log call.
-    private void LogTipOutcome(CoachCadence cadence, CoachTip tip, string? rejectionReason)
+    private void LogTipOutcome(CoachCadence cadence, CoachTip tip, string? rejectionReason, CoachConfidence confidence)
     {
         bool fellBackToTemplate = tip.Source is TipSource.Template or TipSource.TemplateBudget;
+        // M31: confidence is observe-only calibration data — logged here, never a DB column and never a gate.
+        // Under offline/replay it is a constant High (FakeProvider/template never emit it), so read it as signal
+        // only for live-LLM runs.
         _logger.LogInformation(
-            "Coach tip {Cadence} action={ActionId} source={Source} fellBack={FellBack} rejection={Rejection}",
-            cadence, tip.ActionId, tip.Source, fellBackToTemplate,
+            "Coach tip {Cadence} action={ActionId} source={Source} fellBack={FellBack} confidence={Confidence} rejection={Rejection}",
+            cadence, tip.ActionId, tip.Source, fellBackToTemplate, confidence,
             string.IsNullOrEmpty(rejectionReason) ? "none" : rejectionReason);
     }
 
@@ -457,11 +462,13 @@ public sealed class CoachService : BackgroundService
 
     private RealtimeTipVerdict TryAcceptRealtime(
         LlmResult result, IReadOnlyCollection<string> ids, int maxWords, bool allowAbstain,
-        out string actionId, out string phraseRu, out string? providerModelId, out string rejectionReason)
+        out string actionId, out string phraseRu, out string? providerModelId, out string rejectionReason,
+        out CoachConfidence confidence)
     {
         actionId = string.Empty;
         phraseRu = string.Empty;
         providerModelId = null;
+        confidence = CoachConfidence.High;
         if (result is not LlmResult.Success success)
         {
             rejectionReason = DescribeFailure(result);
@@ -469,7 +476,8 @@ public sealed class CoachService : BackgroundService
         }
 
         providerModelId = success.Info.ProviderModelId;
-        return TipValidator.TryValidateRealtime(success.Json, ids, maxWords, allowAbstain, out actionId, out phraseRu, out rejectionReason);
+        return TipValidator.TryValidateRealtime(
+            success.Json, ids, maxWords, allowAbstain, out actionId, out phraseRu, out rejectionReason, out confidence);
     }
 
     // A non-Success result never carries a validator reason; surface the failure variant so the accept/fallback
