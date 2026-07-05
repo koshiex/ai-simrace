@@ -32,6 +32,7 @@ internal static class CornerEventBuilder
         int gridLength,
         float brakeWindowUpstreamM,
         double apexWindowFraction,
+        float lineRelevanceMaxRadiusM = float.MaxValue,
         ResampledLap? lineReference = null)
     {
         // M2: every self-derived kernel and the self duration are measured over the geometric
@@ -146,6 +147,10 @@ internal static class CornerEventBuilder
         // turn direction (+ = wider, − = tighter) and neutralises a near-straight band to 0.
         (PhaseBand entryBand, PhaseBand apexBand, PhaseBand exitBand) = SignedLineDeviation.EntryApexExitBands(
             corner.StartPosition, corner.ApexPosition, corner.EndPosition, apexWindowFraction);
+        // M38 corner-type gate: a baked corner whose apex radius exceeds the relevance ceiling is a fast
+        // kink / near-straight where line shape is moot — neutralise the signed fields. A corner with no
+        // baked radius (0) is not gated here (the kernel's geometric neutralisation still applies).
+        bool lineRelevant = corner.ApexRadiusM <= 0f || corner.ApexRadiusM <= lineRelevanceMaxRadiusM;
 
         ev.DeltaMs = deltaMs;
         ev.BrakePointDiffM = brakePointDiffM;
@@ -153,9 +158,9 @@ internal static class CornerEventBuilder
         ev.ThrottleResumeDiffM = throttleResumeDiffM;
         ev.TrailBrakePctRef = brakeRef.TrailBrakePct;
         ev.RacingLineDeviationM = racingLineDeviationM;
-        ev.EntryLineDeviationM = SignedLineDeviation.MedianSignedOffset(selfSpan, lineRef, entryBand);
-        ev.ApexLineDeviationM = SignedLineDeviation.MedianSignedOffset(selfSpan, lineRef, apexBand);
-        ev.ExitLineDeviationM = SignedLineDeviation.MedianSignedOffset(selfSpan, lineRef, exitBand);
+        ev.EntryLineDeviationM = lineRelevant ? SignedLineDeviation.MedianSignedOffset(selfSpan, lineRef, entryBand) : 0f;
+        ev.ApexLineDeviationM = lineRelevant ? SignedLineDeviation.MedianSignedOffset(selfSpan, lineRef, apexBand) : 0f;
+        ev.ExitLineDeviationM = lineRelevant ? SignedLineDeviation.MedianSignedOffset(selfSpan, lineRef, exitBand) : 0f;
 
         string reason = ChooseReason(offTrack, throttleResumeDiffM, brakePointDiffM, minSpeedDiffKmh);
         ev.Reason = reason;

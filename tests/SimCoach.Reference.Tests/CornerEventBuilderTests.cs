@@ -215,6 +215,34 @@ public sealed class CornerEventBuilderTests
     }
 
     [Fact]
+    public void The_corner_type_gate_neutralises_signed_deviation_on_a_large_radius_corner()
+    {
+        // M38: a corner whose baked apex radius exceeds the relevance ceiling is a near-straight kink — its
+        // signed line deviations neutralise to 0 even when self runs wide of the (curved) reference line.
+        Corner flatCorner = new()
+        {
+            Id = "spa_t01",
+            StartPosition = 0.30f,
+            ApexPosition = 0.40f,
+            EndPosition = 0.50f,
+            ApexRadiusM = 500f,
+        };
+        List<TelemetryFrame> self = [];
+        for (int k = 0; k <= 20; k++)
+        {
+            self.Add(ArcFrame(0.30f + (0.01f * k), radius: 105f, tMs: 15 * k));
+        }
+
+        (CornerEvent ev, _) = CornerEventBuilder.Build(
+            flatCorner, self, CurvedReferenceGrid(), LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction,
+            lineRelevanceMaxRadiusM: 100f);
+
+        ev.EntryLineDeviationM.Should().Be(0f);
+        ev.ApexLineDeviationM.Should().Be(0f);
+        ev.ExitLineDeviationM.Should().Be(0f, "a large-radius corner is line-irrelevant → gated to 0");
+    }
+
+    [Fact]
     public void Signed_line_deviation_neutralises_to_zero_against_a_straight_reference()
     {
         // A straight reference world line has no defined inside/outside → per-phase signs neutralise to 0,

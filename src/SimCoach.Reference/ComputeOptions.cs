@@ -69,6 +69,14 @@ public sealed record ComputeOptions
     /// <summary>Top-N bound on the session-level <c>aggregated_losses</c> (mirrors the debrief schema cap).</summary>
     public int AggregatedLossesCap { get; init; } = 5;
 
+    /// <summary>
+    /// Tier-2 (internal): the largest apex radius (metres) for which line-shape coaching is meaningful. A
+    /// baked corner whose apex radius exceeds this is a fast kink / near-straight — its signed per-phase
+    /// line deviations (M34) are neutralised to 0 (M38 corner-type gate). A corner with no baked radius
+    /// (0) is never gated here (the kernel's geometric neutralisation still applies).
+    /// </summary>
+    public float LineRelevanceMaxRadiusM { get; init; } = 300f;
+
     public void EnsureValid()
     {
         if (ApexWindowFraction is <= 0 or > 0.5)
@@ -114,6 +122,11 @@ public sealed record ComputeOptions
         if (AggregatedLossesCap < 0)
         {
             throw new InvalidOperationException("ComputeOptions.AggregatedLossesCap must be non-negative.");
+        }
+
+        if (LineRelevanceMaxRadiusM <= 0f)
+        {
+            throw new InvalidOperationException("ComputeOptions.LineRelevanceMaxRadiusM must be positive.");
         }
     }
 }
