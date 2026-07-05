@@ -93,6 +93,30 @@ public sealed class CornerEventBuilderTests
     }
 
     [Fact]
+    public void Torn_or_missing_world_position_frames_are_skipped_and_do_not_inflate_line_deviation()
+    {
+        // M43: a frame whose WorldPos is null or the (0,0,0) honest-zero sentinel (slot out of range /
+        // torn frame) must be skipped in the racing-line RMS. On an otherwise on-line lap, folding a (0,0)
+        // origin in would add the car's full distance-to-track-origin (~hundreds of m) as a phantom line
+        // error. FlatFullThrottleCorner rides exactly the reference world line, so a clean deviation is ~0.
+        List<TelemetryFrame> self = [.. FlatFullThrottleCorner()];
+        self[5] = self[5].Clone();
+        self[5].WorldPos = new Vec3();   // (0,0,0) sentinel
+        self[7] = self[7].Clone();
+        self[7].WorldPos = null;          // missing world position
+
+        (CornerEvent torn, _) =
+            CornerEventBuilder.Build(_corner, self, ReferenceGrid(), LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction);
+        (CornerEvent clean, _) =
+            CornerEventBuilder.Build(_corner, FlatFullThrottleCorner(), ReferenceGrid(), LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction);
+
+        torn.RacingLineDeviationM.Should().BeLessThan(
+            1f, "the torn (0,0,0)/null frames are skipped, not folded into the RMS as a phantom origin distance");
+        torn.RacingLineDeviationM.Should().BeApproximately(
+            clean.RacingLineDeviationM, 0.01f, "skipping the torn frames leaves the deviation identical to the all-valid lap");
+    }
+
+    [Fact]
     public void Braking_upstream_of_the_start_is_captured_without_leaking_into_delta()
     {
         // M16: the real braking zone opens before the geometric corner start. With the tracker armed

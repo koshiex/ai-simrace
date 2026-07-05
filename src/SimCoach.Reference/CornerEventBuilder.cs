@@ -199,11 +199,19 @@ internal static class CornerEventBuilder
         int count = 0;
         foreach (TelemetryFrame frame in selfFrames)
         {
+            // Skip frames with no world position: null, or the (0,0,0) honest-zero sentinel the ACC mapper
+            // writes when the player slot is out of range (AccFrameMapper's `new Vec3()`). Folding a (0,0)
+            // origin into the RMS would inflate racing_line_deviation_m by the car's full distance from the
+            // track origin — a phantom line error on torn/slot-less frames.
+            Vec3? worldPos = frame.WorldPos;
+            if (worldPos is null || (worldPos.X == 0f && worldPos.Y == 0f && worldPos.Z == 0f))
+            {
+                continue;
+            }
+
             (float refX, float refZ) = GridMetrics.InterpWorldXZ(reference, frame.NormalizedCarPosition);
-            float selfX = frame.WorldPos?.X ?? 0f;
-            float selfZ = frame.WorldPos?.Z ?? 0f;
-            double dx = selfX - refX;
-            double dz = selfZ - refZ;
+            double dx = worldPos.X - refX;
+            double dz = worldPos.Z - refZ;
             sumSquares += (dx * dx) + (dz * dz);
             count++;
         }
