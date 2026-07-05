@@ -45,6 +45,38 @@ public sealed class CornerGeometryDatasetTests
         corners.Should().BeEmpty();
     }
 
+    [Fact]
+    public void Carries_apex_radius_and_trigger_into_the_corner_model()
+    {
+        var dataset = CornerGeometryDataset.FromDocuments([RadiusDocument()]);
+
+        dataset.TryGetCorners("test", 1000f, out IReadOnlyList<Corner> corners).Should().BeTrue();
+        corners.Should().ContainSingle();
+        corners[0].ApexRadiusM.Should().Be(42f);
+        corners[0].Trigger.Should().Be("LateralG");
+    }
+
+    private static CornerGeometryDocument RadiusDocument() => new()
+    {
+        SchemaVersion = CornerGeometryDocument.CurrentSchemaVersion,
+        TrackId = "test",
+        LapLengthM = 1000f,
+        LapCount = 5,
+        Corners =
+        [
+            new CornerGeometryEntry
+            {
+                Id = "test_t01",
+                StartPosition = 0.30f,
+                ApexPosition = 0.40f,
+                EndPosition = 0.50f,
+                ApexRadiusM = 42f,
+                PeakLateralG = 1.2f,
+                Trigger = "LateralG",
+            },
+        ],
+    };
+
     private static CornerGeometryDocument OutOfRangeDocument()
     {
         return new CornerGeometryDocument
