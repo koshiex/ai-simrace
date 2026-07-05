@@ -83,8 +83,8 @@ internal static class CornerEventBuilder
         }
 
         ResampledLap refLap = reference!;
-        int k0 = GridMetrics.Index(corner.StartPosition, gridLength);
-        int k1 = GridMetrics.Index(corner.EndPosition, gridLength);
+        int k0 = GridMetrics.Index(refLap, corner.StartPosition);
+        int k1 = GridMetrics.Index(refLap, corner.EndPosition);
         IReadOnlyList<TelemetryFrame> refFrames = GridMetrics.SliceToFrames(refLap, k0, k1);
         if (refFrames.Count == 0 || k1 <= k0 || selfSpanDegenerate)
         {

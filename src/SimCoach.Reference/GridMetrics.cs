@@ -11,21 +11,40 @@ namespace SimCoach.Reference;
 /// </summary>
 internal static class GridMetrics
 {
-    /// <summary>Nearest grid index for a normalized position, clamped to the grid.</summary>
-    public static int Index(float position, int gridLength)
+    /// <summary>
+    /// Fractional grid index for a normalized position, consistent with the resampler's own mapping.
+    /// <see cref="PositionResampler"/> writes <c>PositionNormalized[k] = k / lapLengthM</c> with
+    /// <c>gridLength = ceil(lapLengthM)</c>, so the inverse must divide by <c>lapLengthM</c>, NOT
+    /// <c>gridLength - 1</c> — the latter is smaller than <c>lapLengthM</c> and drifts the index by up to
+    /// one sample near the lap end. The effective length is recovered from the last stored sample
+    /// (<c>PositionNormalized[gridLength-1] = (gridLength-1)/lapLengthM</c>), so the round-trip
+    /// <c>Index(PositionNormalized[k]) == k</c> holds for the exact grid the resampler produced.
+    /// </summary>
+    public static double FracIndex(ResampledLap grid, float position)
     {
-        if (gridLength <= 1)
+        int last = grid.GridLength - 1;
+        if (last <= 0)
         {
-            return 0;
+            return 0d;
         }
 
-        int i = (int)MathF.Round(Math.Clamp(position, 0f, 1f) * (gridLength - 1));
-        return Math.Clamp(i, 0, gridLength - 1);
+        float lastPos = grid.PositionNormalized[last];
+        double effectiveLength = lastPos > 0f ? last / (double)lastPos : last;
+        double index = Math.Clamp(position, 0f, 1f) * effectiveLength;
+        return Math.Clamp(index, 0d, last);
     }
 
-    /// <summary>Cumulative lap time (ms from lap start) at a normalized position.</summary>
+    /// <summary>Nearest grid index for a normalized position, clamped to the grid.</summary>
+    public static int Index(ResampledLap grid, float position) => (int)Math.Round(FracIndex(grid, position));
+
+    /// <summary>
+    /// Cumulative lap time (ms from lap start) at a normalized position. Nearest-index lookup: the single
+    /// caller (sector delta, <c>ComputeSession</c>) reads a running cumulative that changes by ~1 ms per 1 m
+    /// sample, so sub-sample interpolation buys nothing measurable — the denominator unification (via
+    /// <see cref="Index"/>) is the correctness fix, not interpolation.
+    /// </summary>
     public static int TimeAt(ResampledLap grid, float position) =>
-        grid.GridLength == 0 ? 0 : grid.TMsFromLapStart[Index(position, grid.GridLength)];
+        grid.GridLength == 0 ? 0 : grid.TMsFromLapStart[Index(grid, position)];
 
     /// <summary>Linearly-interpolated world (X, Z) at a normalized position (Y is vertical, unused).</summary>
     public static (float X, float Z) InterpWorldXZ(ResampledLap grid, float position)
@@ -40,10 +59,10 @@ internal static class GridMetrics
             return (grid.WorldX[0], grid.WorldZ[0]);
         }
 
-        float f = Math.Clamp(position, 0f, 1f) * (grid.GridLength - 1);
-        int i0 = Math.Clamp((int)MathF.Floor(f), 0, grid.GridLength - 2);
+        double f = FracIndex(grid, position);
+        int i0 = Math.Clamp((int)Math.Floor(f), 0, grid.GridLength - 2);
         int i1 = i0 + 1;
-        float t = f - i0;
+        float t = (float)(f - i0);
         return (Lerp(grid.WorldX[i0], grid.WorldX[i1], t), Lerp(grid.WorldZ[i0], grid.WorldZ[i1], t));
     }
 
