@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Google.Protobuf.WellKnownTypes;
+using Microsoft.Extensions.Logging.Abstractions;
 using SimCoach.Contracts.V1;
 using SimCoach.Pipeline;
 using SimCoach.Pipeline.Segmentation;
@@ -123,6 +124,50 @@ public sealed class ReferenceStoreTests
         history.Should().Contain(
             s => s.LapTimeMs == 102_500 && s.ParquetPath == active.ParquetPath,
             "the active pointer resolves to the newest snapshot file");
+    }
+
+    [Fact]
+    public void Retention_prunes_the_oldest_snapshots_and_files_beyond_the_cap()
+    {
+        // ADR-0017: MaxSnapshotsPerTriple bounds disk. Three PBs with a cap of 2 → only the newest 2
+        // snapshots (rows + files) survive; the active pointer (newest) is never pruned.
+        using var harness = new ComputeTestHarness();
+        harness.SeedSession(_identity.SessionId, _triple);
+        var store = new ReferenceStore(
+            harness.References,
+            harness.Snapshots,
+            new ReferenceStorageOptions { Directory = harness.ReferencesDirectory, MaxSnapshotsPerTriple = 2 },
+            TimeProvider.System,
+            NullLogger<ReferenceStore>.Instance);
+
+        store.MaybeUpdate(_triple, CleanLap(105_000), Grid(), _identity);
+        store.MaybeUpdate(_triple, CleanLap(103_000), Grid(), _identity);
+        store.MaybeUpdate(_triple, CleanLap(101_000), Grid(), _identity);
+
+        IReadOnlyList<ReferenceSnapshotRow> history =
+            harness.Snapshots.ListByTriple("spa", "synthetic_gt3", "dry-warm");
+        history.Should().HaveCount(2, "the cap keeps only the newest 2 snapshots");
+        history.Select(s => s.LapTimeMs).Should().BeEquivalentTo(new[] { 103_000, 101_000 });
+        Directory.GetFiles(harness.ReferencesDirectory, "*.parquet").Should().HaveCount(
+            2, "the pruned snapshot file was deleted from disk, not orphaned");
+
+        ReferenceRow active = harness.References.GetByTriple("spa", "synthetic_gt3", "dry-warm")!;
+        active.LapTimeMs.Should().Be(101_000, "the active pointer is the newest PB and is never pruned");
+        File.Exists(active.ParquetPath).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_non_positive_snapshot_cap_is_rejected()
+    {
+        using var harness = new ComputeTestHarness();
+        Action act = () => new ReferenceStore(
+            harness.References,
+            harness.Snapshots,
+            new ReferenceStorageOptions { Directory = harness.ReferencesDirectory, MaxSnapshotsPerTriple = 0 },
+            TimeProvider.System,
+            NullLogger<ReferenceStore>.Instance);
+
+        act.Should().Throw<InvalidOperationException>();
     }
 
     private static CompletedLap CleanLap(int lapTimeMs) => Lap(lapTimeMs, isClean: true);

@@ -36,6 +36,13 @@ public sealed class ReferenceSnapshotRepository
             row);
     }
 
+    /// <summary>Deletes one snapshot row (retention pruning; the parquet file is removed by the caller).</summary>
+    public void Delete(string id)
+    {
+        using SqliteConnection connection = _factory.Create();
+        connection.Execute("DELETE FROM reference_snapshots WHERE id = @id", new { id });
+    }
+
     /// <summary>
     /// Every snapshot for the triple, oldest first — retention prunes the head, a future progress view
     /// reads the tail.

@@ -103,10 +103,52 @@ public sealed class ReferenceStore
             CreatedAtUtc = createdAtUtc,
         });
 
+        PruneOldSnapshots(triple);
+
         _logger.LogInformation(
             "Reference updated for {Track}/{Car}/{Weather}: {LapMs} ms (lap {Lap}, session {Session})",
             triple.TrackId, triple.CarId, triple.WeatherBucket, completed.LapTimeMs,
             completed.LapNumber, identity.SessionId);
         return true;
+    }
+
+    /// <summary>
+    /// Enforces <see cref="ReferenceStorageOptions.MaxSnapshotsPerTriple"/> by pruning the oldest
+    /// snapshots (row + file) beyond the cap. The list is oldest-first and the cap is positive, so the
+    /// newest snapshot — the one the active pointer was just repointed at — is always retained.
+    /// </summary>
+    private void PruneOldSnapshots(ReferenceTriple triple)
+    {
+        if (_options.MaxSnapshotsPerTriple is not int cap)
+        {
+            return; // keep-all (default)
+        }
+
+        IReadOnlyList<ReferenceSnapshotRow> history =
+            _snapshots.ListByTriple(triple.TrackId, triple.CarId, triple.WeatherBucket);
+        int excess = history.Count - cap;
+        for (int i = 0; i < excess; i++)
+        {
+            ReferenceSnapshotRow old = history[i];
+            _snapshots.Delete(old.Id);
+            TryDeleteFile(old.ParquetPath);
+        }
+    }
+
+    private void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (IOException ex)
+        {
+            // Non-fatal: the history row is already gone, so an undeleted file is a harmless orphan that
+            // no pointer resolves to. Log rather than fail the reference update.
+            _logger.LogWarning(ex, "Failed to prune reference snapshot file {Path}", path);
+        }
     }
 }

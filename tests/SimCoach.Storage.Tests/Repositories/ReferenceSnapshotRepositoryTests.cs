@@ -43,6 +43,20 @@ public sealed class ReferenceSnapshotRepositoryTests : RepositoryTestBase
         _snapshots.ListByTriple("monza", "x", "wet").Should().BeEmpty();
 
     [Fact]
+    public void Delete_removes_only_the_named_snapshot()
+    {
+        ReferenceSnapshotRow keep = Snapshot(104_900, "/references/keep.parquet", minute: 1);
+        ReferenceSnapshotRow drop = Snapshot(104_500, "/references/drop.parquet", minute: 5);
+        _snapshots.Insert(keep);
+        _snapshots.Insert(drop);
+
+        _snapshots.Delete(drop.Id);
+
+        IReadOnlyList<ReferenceSnapshotRow> all = _snapshots.ListByTriple("spa", "synthetic_gt3", "dry-warm");
+        all.Should().ContainSingle().Which.Id.Should().Be(keep.Id);
+    }
+
+    [Fact]
     public void Deleting_the_source_session_nulls_the_fk_but_keeps_the_snapshot()
     {
         // ADR-0017: a snapshot outlives the session that produced it (ON DELETE SET NULL); the parquet
