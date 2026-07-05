@@ -33,4 +33,13 @@ public sealed record GoldCornerEvent(
     string? Reason)
 {
     public string CornerNameRu { get; init; } = string.Empty;
+
+    // M34: signed per-phase line deviation (+ = wider than the reference line, − = tighter). Nullable
+    // reference-relative — null (omitted) with no reference, as separate init members so they never
+    // disturb the positional shape.
+    public double? EntryLineDeviationM { get; init; }
+
+    public double? ApexLineDeviationM { get; init; }
+
+    public double? ExitLineDeviationM { get; init; }
 }

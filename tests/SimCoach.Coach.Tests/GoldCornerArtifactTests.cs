@@ -50,6 +50,16 @@ public sealed class GoldCornerArtifactTests
     }
 
     [Fact]
+    public void Surfaces_signed_per_phase_line_deviation_rounded()
+    {
+        GoldCornerEvent e = GoldTestData.Builder().BuildCorner(GoldTestData.Corner(), GoldTestData.Ctx()).Event;
+
+        e.EntryLineDeviationM.Should().Be(0.6, "+ = wider than the reference line on entry");
+        e.ApexLineDeviationM.Should().Be(-0.4, "- = tighter than the reference line at the apex");
+        e.ExitLineDeviationM.Should().Be(1.2);
+    }
+
+    [Fact]
     public void Empty_reason_becomes_null()
     {
         CornerEvent ev = GoldTestData.Corner();

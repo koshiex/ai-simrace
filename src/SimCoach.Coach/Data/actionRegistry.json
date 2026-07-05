@@ -136,6 +136,38 @@
       "phrase_template_ru": "Плавнее руль в {corner}."
     },
     {
+      "id": "tighten_entry",
+      "label_short": "tighten_entry",
+      "hint_en": "entry line wider than the reference line",
+      "hint_ru": "вход шире эталонной линии",
+      "cadence": "corner",
+      "priority": { "phase": "entry", "rank": 24 },
+      "requires_reference": true,
+      "when": [
+        { "field": "entry_line_deviation_m", "op": "gt", "value": 0.5 }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Плотнее вход в {corner}."
+    },
+    {
+      "id": "open_entry",
+      "label_short": "open_entry",
+      "hint_en": "entry line tighter than the reference line",
+      "hint_ru": "вход уже эталонной линии",
+      "cadence": "corner",
+      "priority": { "phase": "entry", "rank": 25 },
+      "requires_reference": true,
+      "when": [
+        { "field": "entry_line_deviation_m", "op": "lt", "value": -0.5 }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Шире заход в {corner}."
+    },
+    {
       "id": "ease_understeer",
       "label_short": "ease_understeer",
       "hint_en": "strong understeer (no reference)",
@@ -200,6 +232,38 @@
         { "name": "corner", "from": "corner_name" }
       ],
       "phrase_template_ru": "Занос в {corner}: мягче газ, успокой машину."
+    },
+    {
+      "id": "tighten_exit",
+      "label_short": "tighten_exit",
+      "hint_en": "exit line wider than the reference line",
+      "hint_ru": "выход шире эталонной линии",
+      "cadence": "corner",
+      "priority": { "phase": "exit", "rank": 43 },
+      "requires_reference": true,
+      "when": [
+        { "field": "exit_line_deviation_m", "op": "gt", "value": 0.5 }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Плотнее выход из {corner}."
+    },
+    {
+      "id": "open_exit",
+      "label_short": "open_exit",
+      "hint_en": "not using the exit line width",
+      "hint_ru": "не добираешь ширину на выходе",
+      "cadence": "corner",
+      "priority": { "phase": "exit", "rank": 44 },
+      "requires_reference": true,
+      "when": [
+        { "field": "exit_line_deviation_m", "op": "lt", "value": -0.5 }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "Раскрывай выход из {corner}, шире."
     },
     {
       "id": "wheelspin_on_exit",
