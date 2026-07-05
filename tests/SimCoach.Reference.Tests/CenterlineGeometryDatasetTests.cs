@@ -7,6 +7,19 @@ namespace SimCoach.Reference.Tests;
 public sealed class CenterlineGeometryDatasetTests
 {
     [Fact]
+    public void Loads_the_embedded_monza_centerline()
+    {
+        // Guards the csproj EmbeddedResource glob + the vendored asset: without them Load() is empty and the
+        // whole M38 runtime LINE reference is silently inert (falls back to PB for every corner).
+        var dataset = CenterlineGeometryDataset.Load();
+
+        dataset.TryGetCenterline("monza", 5793f, out MedianCenterline? centerline).Should().BeTrue();
+        centerline.Should().NotBeNull();
+        centerline!.Bins.Should().NotBeEmpty();
+        centerline.LapCount.Should().BeGreaterThanOrEqualTo(MedianCenterlineBuilder.MinLapsForTrust);
+    }
+
+    [Fact]
     public void Resolves_a_trustworthy_centerline()
     {
         var dataset = CenterlineGeometryDataset.FromDocuments([Document("monza", 1000f, lapCount: 4)]);

@@ -22,6 +22,9 @@
   <ItemGroup>
     <!-- First-party baked corner geometry, one file per track: cornerGeometry.<trackId>.json (ADR-0014). -->
     <EmbeddedResource Include="Data\cornerGeometry.*.json" />
+    <!-- First-party baked median centerline, one file per track: centerline.<trackId>.json (ADR-0019, M38) —
+         the runtime LINE reference loaded by CenterlineGeometryDataset. -->
+    <EmbeddedResource Include="Data\centerline.*.json" />
   </ItemGroup>
 
 </Project>
