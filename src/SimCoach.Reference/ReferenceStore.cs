@@ -103,7 +103,7 @@ public sealed class ReferenceStore
             CreatedAtUtc = createdAtUtc,
         });
 
-        PruneOldSnapshots(triple);
+        PruneOldSnapshots(triple, snapshotId);
 
         _logger.LogInformation(
             "Reference updated for {Track}/{Car}/{Weather}: {LapMs} ms (lap {Lap}, session {Session})",
@@ -114,22 +114,27 @@ public sealed class ReferenceStore
 
     /// <summary>
     /// Enforces <see cref="ReferenceStorageOptions.MaxSnapshotsPerTriple"/> by pruning the oldest
-    /// snapshots (row + file) beyond the cap. The list is oldest-first and the cap is positive, so the
-    /// newest snapshot — the one the active pointer was just repointed at — is always retained.
+    /// snapshots (row + file) beyond the cap. The just-written active snapshot (which the
+    /// <c>[references]</c> pointer was repointed at) is EXCLUDED from the prune candidates, so a coarse or
+    /// tied <c>created_at_utc</c> — where oldest-first ordering falls back to a random id — can never delete
+    /// the live reference file. Keeps <paramref name="cap"/> total: the active plus the newest cap-1 others.
     /// </summary>
-    private void PruneOldSnapshots(ReferenceTriple triple)
+    private void PruneOldSnapshots(ReferenceTriple triple, string activeSnapshotId)
     {
         if (_options.MaxSnapshotsPerTriple is not int cap)
         {
             return; // keep-all (default)
         }
 
-        IReadOnlyList<ReferenceSnapshotRow> history =
-            _snapshots.ListByTriple(triple.TrackId, triple.CarId, triple.WeatherBucket);
-        int excess = history.Count - cap;
+        List<ReferenceSnapshotRow> prunable =
+        [
+            .. _snapshots.ListByTriple(triple.TrackId, triple.CarId, triple.WeatherBucket)
+                .Where(s => !string.Equals(s.Id, activeSnapshotId, StringComparison.Ordinal)),
+        ];
+        int excess = prunable.Count - (cap - 1); // reserve one slot for the always-kept active snapshot
         for (int i = 0; i < excess; i++)
         {
-            ReferenceSnapshotRow old = history[i];
+            ReferenceSnapshotRow old = prunable[i];
             _snapshots.Delete(old.Id);
             TryDeleteFile(old.ParquetPath);
         }
