@@ -125,7 +125,13 @@ foreach ((string trackId, List<IReadOnlyList<TelemetryFrame>> laps) in cleanLaps
     JsonSerializerOptions jsonOptions = new() { WriteIndented = true };
     File.WriteAllText(jsonPath, JsonSerializer.Serialize(document, jsonOptions));
     File.WriteAllText(Path.ChangeExtension(jsonPath, ".html"), CornerGeometryReviewPage.Render(document, centerline));
-    Console.WriteLine($"  baked {corners.Count} corner(s) -> {jsonPath} (+ review html)");
+
+    // ADR-0019 (M38): serialise the SAME aggregate centerline as the runtime LINE reference, next to the
+    // corner geometry — no second derivation.
+    string centerlinePath = Path.Combine(outputDir, $"centerline.{trackId}.json");
+    File.WriteAllText(
+        centerlinePath, JsonSerializer.Serialize(CenterlineGeometryDocument.FromCenterline(centerline), jsonOptions));
+    Console.WriteLine($"  baked {corners.Count} corner(s) -> {jsonPath} (+ review html, + centerline)");
     bakedTracks++;
 }
 
