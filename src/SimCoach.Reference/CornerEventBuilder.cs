@@ -135,12 +135,21 @@ internal static class CornerEventBuilder
             * lapLengthM;
         float racingLineDeviationM = RacingLineDeviation(selfSpan, refLap);
 
+        // M34: signed per-phase line deviation (entry/apex/exit) over the SAME [Start,End] self span the
+        // unsigned RMS (field 9) uses. The pure kernel folds each band's median offset by the reference
+        // turn direction (+ = wider, − = tighter) and neutralises a near-straight band to 0.
+        (PhaseBand entryBand, PhaseBand apexBand, PhaseBand exitBand) = SignedLineDeviation.EntryApexExitBands(
+            corner.StartPosition, corner.ApexPosition, corner.EndPosition, apexWindowFraction);
+
         ev.DeltaMs = deltaMs;
         ev.BrakePointDiffM = brakePointDiffM;
         ev.MinSpeedDiffKmh = minSpeedDiffKmh;
         ev.ThrottleResumeDiffM = throttleResumeDiffM;
         ev.TrailBrakePctRef = brakeRef.TrailBrakePct;
         ev.RacingLineDeviationM = racingLineDeviationM;
+        ev.EntryLineDeviationM = SignedLineDeviation.MedianSignedOffset(selfSpan, refLap, entryBand);
+        ev.ApexLineDeviationM = SignedLineDeviation.MedianSignedOffset(selfSpan, refLap, apexBand);
+        ev.ExitLineDeviationM = SignedLineDeviation.MedianSignedOffset(selfSpan, refLap, exitBand);
 
         string reason = ChooseReason(offTrack, throttleResumeDiffM, brakePointDiffM, minSpeedDiffKmh);
         ev.Reason = reason;
