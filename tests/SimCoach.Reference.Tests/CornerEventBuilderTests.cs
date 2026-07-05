@@ -243,6 +243,34 @@ public sealed class CornerEventBuilderTests
     }
 
     [Fact]
+    public void The_corner_type_gate_neutralises_a_lateral_g_triggered_corner()
+    {
+        // M38: a corner detected by sustained lateral load only (Trigger==LateralG — the flat/fast channel) is
+        // line-irrelevant even with a small apex radius → signed deviations neutralise to 0.
+        Corner sweepCorner = new()
+        {
+            Id = "spa_t01",
+            StartPosition = 0.30f,
+            ApexPosition = 0.40f,
+            EndPosition = 0.50f,
+            ApexRadiusM = 50f,
+            Trigger = "LateralG",
+        };
+        List<TelemetryFrame> self = [];
+        for (int k = 0; k <= 20; k++)
+        {
+            self.Add(ArcFrame(0.30f + (0.01f * k), radius: 105f, tMs: 15 * k));
+        }
+
+        (CornerEvent ev, _) = CornerEventBuilder.Build(
+            sweepCorner, self, CurvedReferenceGrid(), LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction,
+            lineRelevanceMaxRadiusM: 300f);
+
+        ev.EntryLineDeviationM.Should().Be(0f);
+        ev.ExitLineDeviationM.Should().Be(0f, "a LateralG-triggered corner is line-irrelevant → gated to 0");
+    }
+
+    [Fact]
     public void Signed_line_deviation_neutralises_to_zero_against_a_straight_reference()
     {
         // A straight reference world line has no defined inside/outside → per-phase signs neutralise to 0,

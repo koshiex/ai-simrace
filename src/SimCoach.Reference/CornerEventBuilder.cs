@@ -147,10 +147,14 @@ internal static class CornerEventBuilder
         // turn direction (+ = wider, − = tighter) and neutralises a near-straight band to 0.
         (PhaseBand entryBand, PhaseBand apexBand, PhaseBand exitBand) = SignedLineDeviation.EntryApexExitBands(
             corner.StartPosition, corner.ApexPosition, corner.EndPosition, apexWindowFraction);
-        // M38 corner-type gate: a baked corner whose apex radius exceeds the relevance ceiling is a fast
-        // kink / near-straight where line shape is moot — neutralise the signed fields. A corner with no
-        // baked radius (0) is not gated here (the kernel's geometric neutralisation still applies).
-        bool lineRelevant = corner.ApexRadiusM <= 0f || corner.ApexRadiusM <= lineRelevanceMaxRadiusM;
+        // M38 corner-type gate: a baked corner is line-irrelevant when its apex radius exceeds the relevance
+        // ceiling (a fast kink / near-straight) OR it was detected by sustained lateral load only
+        // (Trigger == LateralG, the flat/large-radius channel) — line shape is moot there, so neutralise the
+        // signed fields. A corner with no baked radius (0) is not radius-gated (the kernel's geometric
+        // neutralisation still applies).
+        bool lineRelevant =
+            (corner.ApexRadiusM <= 0f || corner.ApexRadiusM <= lineRelevanceMaxRadiusM)
+            && !string.Equals(corner.Trigger, "LateralG", StringComparison.Ordinal);
 
         ev.DeltaMs = deltaMs;
         ev.BrakePointDiffM = brakePointDiffM;
