@@ -27,6 +27,8 @@ Format: FR-### functional, NFR-### non-functional. Each row traces to the module
 | FR-013 | "Pin" prevents auto-replacement when a faster but pinned-comparison lap should remain. | Reference.Store |
 | FR-014 | If no reference is available for the current `(track, car, weather)` triple, fall back to "best of session so far" and label tips accordingly ("no PB yet"). | Coach.Engine |
 
+> **P3 divergence (planned, M34/M38):** an absolute **LINE** reference (runtime median centerline, trusted after ≥ 3 clean laps; PB-fallback until then) is added alongside the existing PB/best-of-session **TIME** reference. FR-014 cold-start ("no PB yet") still governs the TIME reference; line-shape tips fall back to the PB line until the centerline is trusted.
+
 ## 3. Compute / Derivations
 
 | ID | Requirement | Module |
@@ -78,9 +80,11 @@ Format: FR-### functional, NFR-### non-functional. Each row traces to the module
 | ID | Requirement | Module |
 |---|---|---|
 | FR-060 | At session end, build a session-level Gold artifact (sector dist, top time losses, top improvement area, U/O trend, fuel/tyre summary). | Coach.GoldArtifactBuilder |
-| FR-061 | Call OpenRouter `deepseek/deepseek-chat-v3.2` (or user-selected debrief model) with longer prompt. | LLM.OpenRouterClient |
+| FR-061 | Call OpenRouter for the debrief with a longer prompt. Shipped default `anthropic/claude-sonnet-4.6` (`Reasoning: Low`, `debrief` route), fallback `anthropic/claude-haiku-4.5` (`debrief_fallback`); user-selectable. DeepSeek is **not yet registered** — config-gated by absence (no route entry in `appsettings.json`). | LLM.OpenRouterClient |
 | FR-062 | Debrief window shows: per-sector chart, brake/throttle/steering traces overlaid on reference, TTS playback, written debrief, action checklist for next session. | App |
 | FR-063 | Export debrief to PDF or Markdown on demand. | App |
+
+> **P3 divergence:** the session Gold artifact is enriched beyond FR-060. **Shipped:** sector metrics + consistency (M20, P2). **Planned (M41):** grounded sector→corner membership, per-phase (entry/mid/exit) car-balance profile, per-corner loss trend, and a balance-grounded `setup_hint`.
 
 ## 8. Settings & UX
 
@@ -90,6 +94,8 @@ Format: FR-### functional, NFR-### non-functional. Each row traces to the module
 | FR-071 | Settings UI panels: General, Telemetry, Voice, LLM, Overlay, References, Hotkeys, Privacy, About. | App |
 | FR-072 | Cost meter UI panel showing per-session and rolling-30-day LLM spend; alert when monthly cap is exceeded. | App |
 | FR-073 | All settings live in `%APPDATA%/SimCoach/appsettings.json`; secrets live in `%APPDATA%/SimCoach/secrets.json` (excluded from any export/share feature). | App |
+
+> **P3 divergence:** the monthly budget cap named in FR-072 is now **enforced** (`MonthlyBudgetUsd`, M29) — not only an alert, but a Live-route gate. **Planned (M39):** prompt-prefix cache metering (a no-op on the current sub-2048-token Anthropic prefix).
 
 ---
 

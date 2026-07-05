@@ -48,3 +48,17 @@ The LLM picks an `action_id` and generates an ≤8-word Russian phrase. The voic
 - `LLM.OpenRouterClient` uses `response_format: json_schema, strict: true`.
 - Cost meter persists to SQLite; UI shows per-session and rolling 30-day spend.
 - Settings UI exposes model picker with cost estimates per cadence.
+
+## Addendum — 2026-07-05 (P3 doc reconciliation, M42)
+
+Append-only; the 2026-06-01 Decision above is retained as dated history. Shipped routing (`appsettings.json`) as of P3 diverged from the original defaults:
+
+| Cadence | Shipped model (OpenRouter slug) | Note |
+|---|---|---|
+| corner (real-time) | `google/gemini-3.1-flash-lite` | swapped from 2.5 Flash for tail-latency at the 2 s cap (M14) |
+| sector / lap / strategy | `google/gemini-2.5-flash-lite` | |
+| debrief | `anthropic/claude-sonnet-4.6` (`Reasoning: Low`) | promoted from premium opt-in to default; fallback `anthropic/claude-haiku-4.5` (`debrief_fallback` route) |
+
+- **DeepSeek is not registered.** The original default `deepseek/deepseek-chat-v3.2` has no route entry in `appsettings.json` — it is config-gated *by absence*, not by a flag. FR-061 updated to match.
+- **Slug, not canonical id.** The debrief model is the OpenRouter slug `anthropic/claude-sonnet-4.6` (with the dot). Do **not** "correct" it to the canonical Anthropic id `claude-sonnet-4-6` — that 404s on OpenRouter and breaks `FamilyOf`.
+- **Rationale for the debrief promotion:** RU quality on the long (≤ 200-word) post-session summary outweighs the per-call cost (one debrief per session), and cached-input pricing (`CachedInputPerMillion`) already sits in the cost table.
