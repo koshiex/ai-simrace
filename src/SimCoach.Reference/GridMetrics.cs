@@ -67,6 +67,28 @@ internal static class GridMetrics
     }
 
     /// <summary>
+    /// Unit tangent (direction of travel) of the reference world path at a normalized position — the
+    /// direction from the enclosing grid sample to the next. <c>(0, 0)</c> on a degenerate/zero-length
+    /// segment. Used by the signed line-deviation kernel (M34) to project the self offset perpendicular
+    /// to the reference line.
+    /// </summary>
+    public static (float X, float Z) InterpWorldTangent(ResampledLap grid, float position)
+    {
+        if (grid.GridLength <= 1)
+        {
+            return (0f, 0f);
+        }
+
+        double f = FracIndex(grid, position);
+        int i0 = Math.Clamp((int)Math.Floor(f), 0, grid.GridLength - 2);
+        int i1 = i0 + 1;
+        float dx = grid.WorldX[i1] - grid.WorldX[i0];
+        float dz = grid.WorldZ[i1] - grid.WorldZ[i0];
+        float length = MathF.Sqrt((dx * dx) + (dz * dz));
+        return length > 1e-6f ? (dx / length, dz / length) : (0f, 0f);
+    }
+
+    /// <summary>
     /// Reconstructs minimal frames over a grid index range so the C4 kernels (brake/throttle/min-speed)
     /// run on the reference. Balance is not reconstructed (no wheel-slip in the grid) — it is a
     /// self-only score on the <see cref="CornerEvent"/>.
