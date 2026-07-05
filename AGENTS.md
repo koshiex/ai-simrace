@@ -64,6 +64,19 @@ Read first: `docs/01-product/PRD.md`, `docs/02-architecture/architecture.md`, `d
   on a Windows device (live ACC in-game, or the built `SimCoach.App.exe` / a replay session) when the
   change is runtime-observable. If the change is **not** runtime-observable (e.g. a contract-only /
   dead-until-wired PR), say so explicitly and give the build + unit-test reproduction instead.
+- Write PR descriptions in an **impersonal, change-focused** register — headings like *"Что было
+  исправлено" / "Что изменилось" / "Зачем"*, in passive/neutral phrasing ("исправлено", "добавлено",
+  "теперь …"), like release notes. **Not** first person ("я/мы добавил"), **not** agent narration
+  ("the agent did …", "this workflow …").
+- **Never** put a Claude Code session link (`https://claude.ai/code/session_...`) — or any other
+  agent/session reference — in a PR description.
+- **Fix all PR/diff-review findings in the same session — must-fix, low, AND nits.** Do not defer
+  ("worth a follow-up", "leave as-is") unless the owner explicitly says so; fix them while the context
+  is loaded.
+- **Reserve heavy multi-agent Workflow / ultracode orchestration for a PR/pack with many tasks**,
+  where parallelism + adversarial Strict→Defence→Judge genuinely raise quality. Don't spin up a
+  Workflow/ultracode for a small/simple change. A **single agent / sub-agent is fine even for small
+  tasks** — only Workflows/ultracode are restricted, not sub-agents.
 
 ## Run-Throughs
 
