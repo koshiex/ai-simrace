@@ -7,9 +7,10 @@ proving the two headline lies are gone: the **3929 ms "Curva Grande"** corner lo
 **+14799 ms S1** sector loss.
 
 The revalidation xUnit is **env-gated** and skips cleanly when no local fixture is present, so CI
-stays green and the raw MCAP never enters the repo (privacy; `.gitignore *.mcap`). The committed
-pieces — dumper, oracle, this doc, and the hermetic M3 defence-in-depth fact — are the permanent
-regression net.
+stays green and the raw MCAP never enters the repo (privacy; `.gitignore *.mcap`). Because a skipped
+run is still green, a PR that mutates the certified line/delta math must instead run the gate as a
+**merge precondition** via `SIMCOACH_REQUIRE_GROUNDTRUTH` (see below). The committed pieces — dumper,
+oracle, this doc, and the hermetic M3 defence-in-depth fact — are the permanent regression net.
 
 ## Pieces
 
@@ -64,7 +65,31 @@ regression net.
    ```
 
    Without `SIMCOACH_GROUNDTRUTH_FIXTURE` the revalidation fact skips (returns green) and only the
-   hermetic M3 fact runs.
+   hermetic M3 fact runs — **unless** `SIMCOACH_REQUIRE_GROUNDTRUTH` is set (see below), in which case a
+   missing fixture **fails** instead of skipping.
+
+## Merge precondition (line/delta changes: M34-populate, M38-linedev)
+
+The revalidation fact is env-gated and cannot run in CI (the MCAP + `truth.json` are off-repo), so a
+green CI run **is not acceptance** — it only means the fact skipped. Any PR that mutates the
+NO-GO-certified line/delta math — chiefly **`M34-populate`** and **`M38-linedev`**, which rewrite
+`CornerEventBuilder`/`GridMetrics` — must therefore run the gate locally against the fixture and record
+the green result in the PR body:
+
+```bash
+"/mnt/c/Program Files/dotnet/dotnet.exe" test tests/SimCoach.Reference.Tests \
+  -e DOTNET_ROLL_FORWARD=LatestMajor \
+  -e "SIMCOACH_GROUNDTRUTH_FIXTURE=C:\Users\<you>\AppData\Local\SimCoach\recordings\20260701-171602-738" \
+  -e SIMCOACH_REQUIRE_GROUNDTRUTH=1 \
+  --filter GroundTruthRevalidation
+```
+
+`SIMCOACH_REQUIRE_GROUNDTRUTH=1` makes the fact **fail** rather than skip when the fixture is absent, so
+a forgotten `SIMCOACH_GROUNDTRUTH_FIXTURE` can never masquerade as a green precondition. The fixture
+(`truth.json` + the `20260701-171602-738` MCAP) is held **off-repo by the repo owner**; regenerate the
+oracle side after any change to the dumper/oracle. Note that M43-gridindex shifts the oracle-vs-emitted
+numbers sub-metre/sub-ms (the resampler-consistent index) — treat the post-M43 emitted values as the
+new baseline when reading the tolerance bands below.
 
 ## What the gate asserts (and why the numbers look the way they do)
 

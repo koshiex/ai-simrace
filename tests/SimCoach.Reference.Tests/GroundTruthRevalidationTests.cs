@@ -38,6 +38,7 @@ namespace SimCoach.Reference.Tests;
 public sealed class GroundTruthRevalidationTests
 {
     private const string FixtureEnvVar = "SIMCOACH_GROUNDTRUTH_FIXTURE";
+    private const string RequireEnvVar = "SIMCOACH_REQUIRE_GROUNDTRUTH";
     private const float MonzaLapLengthM = 5793f;
 
     // Q9 moderate tolerance bands for oracle-grounded self-only metrics.
@@ -59,7 +60,19 @@ public sealed class GroundTruthRevalidationTests
         string? fixtureDir = Environment.GetEnvironmentVariable(FixtureEnvVar);
         if (string.IsNullOrWhiteSpace(fixtureDir))
         {
-            return; // Env-gated: no local fixture, skip cleanly (CI path). See the class doc / run-book.
+            // No local fixture. A PR that mutates the NO-GO-certified line/delta math (M34-populate,
+            // M38-linedev) sets SIMCOACH_REQUIRE_GROUNDTRUTH so this FAILS loudly — a recorded merge
+            // precondition, not a green-because-skipped no-op. Bare CI (flag unset) still skips cleanly.
+            if (GroundTruthGate.IsRequired(Environment.GetEnvironmentVariable(RequireEnvVar)))
+            {
+                throw new InvalidOperationException(
+                    $"{RequireEnvVar} is set but {FixtureEnvVar} is not — the ground-truth revalidation gate is a "
+                    + "merge precondition for changes to the certified line/delta math (M34-populate, M38-linedev). "
+                    + "Point it at a local session dir (tools/SimCoach.GroundTruthDump + scripts/groundtruth_oracle.py); "
+                    + "see docs/05-implementation/ground-truth-revalidation.md.");
+            }
+
+            return; // Env-gated: no local fixture and not required, skip cleanly (CI path). See the run-book.
         }
 
         JsonElement truth = LoadTruth(fixtureDir);
