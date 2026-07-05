@@ -3,9 +3,9 @@ namespace SimCoach.Reference;
 /// <summary>
 /// The vendored <c>centerline.&lt;trackId&gt;.json</c> document for one track: schema-versioned,
 /// length-pinned, first-party baked median corridor centerline (ADR-0014 / ADR-0019). Written by the bake
-/// tool alongside <c>cornerGeometry.json</c>, read by the runtime <c>CenterlineStore</c> to serve as the
-/// LINE reference (M38) — distinct from the PB TIME reference. Wraps the same <see cref="MedianCenterline"/>
-/// the bake already builds; no second derivation.
+/// tool alongside <c>cornerGeometry.json</c>, read by the runtime <see cref="CenterlineGeometryDataset"/> to
+/// serve as the LINE reference (M38) — distinct from the PB TIME reference. Wraps the same
+/// <see cref="MedianCenterline"/> the bake already builds; no second derivation.
 /// </summary>
 public sealed record CenterlineGeometryDocument
 {
@@ -24,15 +24,11 @@ public sealed record CenterlineGeometryDocument
     /// <summary>Number of laps the bake aggregated (provenance; below <see cref="MedianCenterlineBuilder.MinLapsForTrust"/> is not trustworthy).</summary>
     public required int LapCount { get; init; }
 
-    /// <summary>Recording id the bake came from, if recorded (provenance only).</summary>
-    public string? SourceRecording { get; init; }
-
     /// <summary>The median centerline bins in ascending distance order.</summary>
     public required IReadOnlyList<CenterlineBin> Bins { get; init; }
 
     /// <summary>Wraps an in-memory <see cref="MedianCenterline"/> into a serializable document.</summary>
-    public static CenterlineGeometryDocument FromCenterline(
-        MedianCenterline centerline, string? sourceRecording = null)
+    public static CenterlineGeometryDocument FromCenterline(MedianCenterline centerline)
     {
         ArgumentNullException.ThrowIfNull(centerline);
         return new CenterlineGeometryDocument
@@ -41,7 +37,6 @@ public sealed record CenterlineGeometryDocument
             TrackId = centerline.TrackId,
             LapLengthM = centerline.LapLengthM,
             LapCount = centerline.LapCount,
-            SourceRecording = sourceRecording,
             Bins = centerline.Bins,
         };
     }

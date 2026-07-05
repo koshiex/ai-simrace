@@ -22,13 +22,12 @@ public sealed class CenterlineGeometryDocumentTests
             ],
         };
 
-        var doc = CenterlineGeometryDocument.FromCenterline(centerline, sourceRecording: "rec-1");
+        var doc = CenterlineGeometryDocument.FromCenterline(centerline);
         string json = JsonSerializer.Serialize(doc);
         CenterlineGeometryDocument? read = JsonSerializer.Deserialize<CenterlineGeometryDocument>(json);
 
         read.Should().NotBeNull();
         read!.SchemaVersion.Should().Be(CenterlineGeometryDocument.CurrentSchemaVersion);
-        read.SourceRecording.Should().Be("rec-1");
         read.ToCenterline().Should().BeEquivalentTo(centerline);
     }
 }
