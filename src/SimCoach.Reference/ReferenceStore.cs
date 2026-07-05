@@ -15,22 +15,26 @@ namespace SimCoach.Reference;
 public sealed class ReferenceStore
 {
     private readonly ReferenceRepository _repository;
+    private readonly ReferenceSnapshotRepository _snapshots;
     private readonly ReferenceStorageOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<ReferenceStore> _logger;
 
     public ReferenceStore(
         ReferenceRepository repository,
+        ReferenceSnapshotRepository snapshots,
         ReferenceStorageOptions options,
         TimeProvider timeProvider,
         ILogger<ReferenceStore> logger)
     {
         ArgumentNullException.ThrowIfNull(repository);
+        ArgumentNullException.ThrowIfNull(snapshots);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
         options.EnsureValid();
         _repository = repository;
+        _snapshots = snapshots;
         _options = options;
         _timeProvider = timeProvider;
         _logger = logger;
@@ -62,10 +66,28 @@ public sealed class ReferenceStore
             return false;
         }
 
-        // source_session_id has an FK to sessions(id). SessionManager (registered before ComputeService)
-        // inserts the row on frame #1, so by the time any lap completes the row exists — the FK holds.
-        string parquetPath = Path.Combine(_options.Directory, triple.ParquetFileName);
-        ReferenceParquetCodec.Write(resampled, parquetPath);
+        // ADR-0017: write a VERSIONED snapshot (never overwrite), record it in the append-only history,
+        // then point the active [references] row at the new file. source_session_id has an FK to
+        // sessions(id); SessionManager (registered before ComputeService) inserts the row on frame #1, so
+        // by the time any lap completes the row exists — the FK holds (ON DELETE SET NULL keeps history).
+        string snapshotId = Guid.NewGuid().ToString("N");
+        DateTimeOffset createdAtUtc = _timeProvider.GetUtcNow();
+        string snapshotPath =
+            Path.Combine(_options.Directory, triple.SnapshotFileName(completed.LapTimeMs, snapshotId));
+        ReferenceParquetCodec.Write(resampled, snapshotPath);
+
+        _snapshots.Insert(new ReferenceSnapshotRow
+        {
+            Id = snapshotId,
+            TrackId = triple.TrackId,
+            CarId = triple.CarId,
+            WeatherBucket = triple.WeatherBucket,
+            SourceSessionId = identity.SessionId,
+            SourceLapNumber = completed.LapNumber,
+            LapTimeMs = completed.LapTimeMs,
+            ParquetPath = snapshotPath,
+            CreatedAtUtc = createdAtUtc,
+        });
 
         _repository.Upsert(new ReferenceRow
         {
@@ -76,9 +98,9 @@ public sealed class ReferenceStore
             SourceSessionId = identity.SessionId,
             SourceLapNumber = completed.LapNumber,
             LapTimeMs = completed.LapTimeMs,
-            ParquetPath = parquetPath,
+            ParquetPath = snapshotPath,
             Pinned = false,
-            CreatedAtUtc = _timeProvider.GetUtcNow(),
+            CreatedAtUtc = createdAtUtc,
         });
 
         _logger.LogInformation(

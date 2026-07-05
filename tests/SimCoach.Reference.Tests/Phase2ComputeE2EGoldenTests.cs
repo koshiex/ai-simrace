@@ -138,6 +138,7 @@ public sealed class Phase2ComputeE2EGoldenTests : IDisposable
             NullLogger<TrackModelStore>.Instance);
         var referenceStore = new ReferenceStore(
             references,
+            new ReferenceSnapshotRepository(factory),
             new ReferenceStorageOptions { Directory = Path.Combine(_root, "references") },
             TimeProvider.System,
             NullLogger<ReferenceStore>.Instance);

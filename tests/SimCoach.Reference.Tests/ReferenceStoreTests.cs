@@ -100,6 +100,31 @@ public sealed class ReferenceStoreTests
         harness.Lookup.Get(_triple).Should().BeNull();
     }
 
+    [Fact]
+    public void Each_pb_improvement_appends_a_snapshot_and_repoints_the_active_reference()
+    {
+        // ADR-0017: PBs are snapshotted, never overwritten. Two improvements → two snapshot files + rows;
+        // the active pointer follows the newest, and every historical parquet survives on disk.
+        using var harness = new ComputeTestHarness();
+        harness.SeedSession(_identity.SessionId, _triple);
+
+        harness.ReferenceStore.MaybeUpdate(_triple, CleanLap(104_000), Grid(), _identity);
+        harness.ReferenceStore.MaybeUpdate(_triple, CleanLap(102_500), Grid(), _identity);
+
+        IReadOnlyList<ReferenceSnapshotRow> history =
+            harness.Snapshots.ListByTriple("spa", "synthetic_gt3", "dry-warm");
+        history.Should().HaveCount(2, "each PB improvement appends a snapshot, never overwrites");
+        history.Select(s => s.LapTimeMs).Should().BeEquivalentTo(new[] { 104_000, 102_500 });
+        history.Select(s => s.ParquetPath).Distinct().Should().HaveCount(2, "snapshots use versioned filenames");
+        history.Should().OnlyContain(s => File.Exists(s.ParquetPath), "every historical parquet survives");
+
+        ReferenceRow active = harness.References.GetByTriple("spa", "synthetic_gt3", "dry-warm")!;
+        active.LapTimeMs.Should().Be(102_500, "the active pointer follows the newest PB");
+        history.Should().Contain(
+            s => s.LapTimeMs == 102_500 && s.ParquetPath == active.ParquetPath,
+            "the active pointer resolves to the newest snapshot file");
+    }
+
     private static CompletedLap CleanLap(int lapTimeMs) => Lap(lapTimeMs, isClean: true);
 
     private static CompletedLap DirtyLap(int lapTimeMs) => Lap(lapTimeMs, isClean: false);

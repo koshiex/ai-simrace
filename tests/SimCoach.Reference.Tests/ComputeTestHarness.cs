@@ -27,6 +27,7 @@ internal sealed class ComputeTestHarness : IDisposable
         ITrackLengthProvider lengths = trackLengths ?? FakeTrackLengths.Spa();
         Laps = new LapRepository(Factory);
         References = new ReferenceRepository(Factory);
+        Snapshots = new ReferenceSnapshotRepository(Factory);
         Sessions = new SessionRepository(Factory);
         DomainFanOut = new DomainEventFanOut();
 
@@ -40,6 +41,7 @@ internal sealed class ComputeTestHarness : IDisposable
         Lookup = new ReferenceLookup(References);
         ReferenceStore = new ReferenceStore(
             References,
+            Snapshots,
             new ReferenceStorageOptions { Directory = Path.Combine(_root, "references") },
             TimeProvider.System,
             NullLogger<ReferenceStore>.Instance);
@@ -53,6 +55,8 @@ internal sealed class ComputeTestHarness : IDisposable
     public LapRepository Laps { get; }
 
     public ReferenceRepository References { get; }
+
+    public ReferenceSnapshotRepository Snapshots { get; }
 
     public SessionRepository Sessions { get; }
 

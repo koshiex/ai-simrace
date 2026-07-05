@@ -56,6 +56,7 @@ public sealed class CoachReplayE2ETests : IDisposable
         var trackModels = new TrackModelStore(BakedGeometryFixture.Spa(), lengths, NullLogger<TrackModelStore>.Instance);
         var referenceStore = new ReferenceStore(
             references,
+            new ReferenceSnapshotRepository(factory),
             new ReferenceStorageOptions { Directory = Path.Combine(_root, "references") },
             TimeProvider.System,
             NullLogger<ReferenceStore>.Instance);
