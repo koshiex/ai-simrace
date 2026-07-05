@@ -72,6 +72,29 @@
 
 ---
 
+## Прогресс имплементации (ветка `feat/phase-3-p3`, обновляется по мере коммитов)
+
+**PR-A «Правда + эталон»** — в работе. Каждая задача = один коммит (build+test+format зелёные).
+
+| Задача | Коммит | Статус |
+|---|---|---|
+| M42-docs / M42-test | `57c5b30` / `be2af1c` | ✅ |
+| M43-worldpos / M43-gridindex / M43-gate | `d68d683` / `536a38d` / `1200989` | ✅ |
+| M37: ADR-0017 / migration / snapshot / retention | `941296e` / `25bcda9` / `88f7de7` / `5b8d060` | ✅ |
+| M34: ADR-0018 / proto(18/19/20) / kernel / populate | `1b206d2` / `dc28a1a` / `b5f9057` / `e8cc4e5` | ✅ |
+| M34-coach (Gold + per-phase line-shape registry) | — | ⬜ |
+| M38: ADR-0019 → bake → cornermodel → store → linedev → gate | — | ⬜ |
+
+**Ground-truth gate (merge-precondition):** прогнан локально против реальной фикстуры
+`20260701-171602-738` с `SIMCOACH_REQUIRE_GROUNDTRUTH=1` — **2/2** после M43 и снова **2/2** после
+M34-populate (сертифицированная метрика не сдвинулась: «3929мс»/«+14799мс» мертвы). Владелец предоставил
+доступ к `%LOCALAPPDATA%` — precondition закрывается без ручного прогона.
+
+**Далее:** M34-coach → M38, затем весь дифф PR-A через независимый Strict→Defender→Judge, затем PR.
+**PR-B** (M33, M35, M36, M41, M39) — после мёрджа PR-A.
+
+---
+
 ## Назначение и охват
 
 P3 закрывает оставшиеся M-элементы Phase-3 — санкционированная фаза аддитивного изменения контракта
