@@ -31,7 +31,8 @@ internal static class CornerEventBuilder
         float lapLengthM,
         int gridLength,
         float brakeWindowUpstreamM,
-        double apexWindowFraction)
+        double apexWindowFraction,
+        ResampledLap? lineReference = null)
     {
         // M2: every self-derived kernel and the self duration are measured over the geometric
         // [StartPosition, EndPosition] sub-window — the same span the reference grid slice covers —
@@ -83,6 +84,11 @@ internal static class CornerEventBuilder
         }
 
         ResampledLap refLap = reference!;
+        // M38: the LINE reference (world path the line-deviation kernels measure against) is the median
+        // centerline when one is baked, else the PB itself — the TIME reference (delta/diffs) always stays
+        // the PB. A slow-consistent driver now sees line deviations vs the ideal corridor, not vs their own
+        // repeated line.
+        ResampledLap lineRef = lineReference ?? refLap;
         int k0 = GridMetrics.Index(refLap, corner.StartPosition);
         int k1 = GridMetrics.Index(refLap, corner.EndPosition);
         IReadOnlyList<TelemetryFrame> refFrames = GridMetrics.SliceToFrames(refLap, k0, k1);
@@ -133,7 +139,7 @@ internal static class CornerEventBuilder
         float throttleResumeDiffM =
             ((speedRef.ThrottleOnPosition ?? corner.EndPosition) - (speedSelf.ThrottleOnPosition ?? corner.EndPosition))
             * lapLengthM;
-        float racingLineDeviationM = RacingLineDeviation(selfSpan, refLap);
+        float racingLineDeviationM = RacingLineDeviation(selfSpan, lineRef);
 
         // M34: signed per-phase line deviation (entry/apex/exit) over the SAME [Start,End] self span the
         // unsigned RMS (field 9) uses. The pure kernel folds each band's median offset by the reference
@@ -147,9 +153,9 @@ internal static class CornerEventBuilder
         ev.ThrottleResumeDiffM = throttleResumeDiffM;
         ev.TrailBrakePctRef = brakeRef.TrailBrakePct;
         ev.RacingLineDeviationM = racingLineDeviationM;
-        ev.EntryLineDeviationM = SignedLineDeviation.MedianSignedOffset(selfSpan, refLap, entryBand);
-        ev.ApexLineDeviationM = SignedLineDeviation.MedianSignedOffset(selfSpan, refLap, apexBand);
-        ev.ExitLineDeviationM = SignedLineDeviation.MedianSignedOffset(selfSpan, refLap, exitBand);
+        ev.EntryLineDeviationM = SignedLineDeviation.MedianSignedOffset(selfSpan, lineRef, entryBand);
+        ev.ApexLineDeviationM = SignedLineDeviation.MedianSignedOffset(selfSpan, lineRef, apexBand);
+        ev.ExitLineDeviationM = SignedLineDeviation.MedianSignedOffset(selfSpan, lineRef, exitBand);
 
         string reason = ChooseReason(offTrack, throttleResumeDiffM, brakePointDiffM, minSpeedDiffKmh);
         ev.Reason = reason;

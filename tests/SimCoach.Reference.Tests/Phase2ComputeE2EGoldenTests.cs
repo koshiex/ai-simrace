@@ -154,7 +154,8 @@ public sealed class Phase2ComputeE2EGoldenTests : IDisposable
             fanOut, context, new RecordingOptions { BasePath = recordingsBase, SegmentDuration = TimeSpan.FromMinutes(5) },
             TimeProvider.System, NullLogger<McapRecorderService>.Instance);
         var compute = new ComputeService(
-            fanOut, domainFanOut, context, trackModels, new ReferenceLookup(references), referenceStore, laps, lengths,
+            fanOut, domainFanOut, context, trackModels, CenterlineGeometryDataset.Load(),
+            new ReferenceLookup(references), referenceStore, laps, lengths,
             new ComputeOptions(), NullLogger<ComputeService>.Instance);
 
         DomainEventSubscription events = domainFanOut.Subscribe("golden");

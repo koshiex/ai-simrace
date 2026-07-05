@@ -190,6 +190,31 @@ public sealed class CornerEventBuilderTests
     }
 
     [Fact]
+    public void Line_deviation_uses_the_supplied_centerline_reference_not_the_pb()
+    {
+        // M38: PB (TIME ref) and self both ride radius-100; the centerline (LINE ref) is radius-95 (a tighter
+        // ideal). vs the PB the self line is ~0, but vs the centerline it is ~5 m wider → the signed fields
+        // must read the CENTERLINE, and the PB-fallback (no lineReference) must read ~0.
+        ResampledLap pb = CurvedReferenceGrid(100f);
+        ResampledLap centerline = CurvedReferenceGrid(95f);
+        List<TelemetryFrame> self = [];
+        for (int k = 0; k <= 20; k++)
+        {
+            self.Add(ArcFrame(0.30f + (0.01f * k), radius: 100f, tMs: 15 * k));
+        }
+
+        (CornerEvent viaCenterline, _) = CornerEventBuilder.Build(
+            _corner, self, pb, LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction, lineReference: centerline);
+        (CornerEvent viaPb, _) = CornerEventBuilder.Build(
+            _corner, self, pb, LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction);
+
+        viaCenterline.ExitLineDeviationM.Should().BeApproximately(
+            5f, 1.5f, "self is ~5 m wider than the radius-95 centerline (the LINE reference)");
+        viaPb.ExitLineDeviationM.Should().BeApproximately(
+            0f, 1.0f, "with no centerline the LINE reference falls back to the PB the self rides");
+    }
+
+    [Fact]
     public void Signed_line_deviation_neutralises_to_zero_against_a_straight_reference()
     {
         // A straight reference world line has no defined inside/outside → per-phase signs neutralise to 0,
@@ -358,7 +383,7 @@ public sealed class CornerEventBuilderTests
     // Reference whose world path is a CCW quarter-circle arc (radius 100) over the whole grid, so the
     // corner window [0.30,0.50] traces a real turn — the signed line-deviation kernel needs a defined
     // inside/outside. Speed/brake/throttle are benign constants (the other kernels run but aren't asserted).
-    private static ResampledLap CurvedReferenceGrid()
+    private static ResampledLap CurvedReferenceGrid(float radius = 100f)
     {
         float[] position = new float[GridLength];
         int[] tMs = new int[GridLength];
@@ -372,8 +397,8 @@ public sealed class CornerEventBuilderTests
             position[k] = pos;
             tMs[k] = k * 10;
             speed[k] = 50f;
-            worldX[k] = 100f * MathF.Cos(theta);
-            worldZ[k] = 100f * MathF.Sin(theta);
+            worldX[k] = radius * MathF.Cos(theta);
+            worldZ[k] = radius * MathF.Sin(theta);
         }
 
         return new ResampledLap

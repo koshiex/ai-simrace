@@ -564,7 +564,7 @@ public sealed class ComputeSessionTests
 
         // A session that never starts (Complete without Accept) must still close the stream.
         var session = new ComputeSession(
-            harness.DomainFanOut, harness.TrackModels, harness.Lookup, harness.ReferenceStore, harness.Laps,
+            harness.DomainFanOut, harness.TrackModels, harness.Centerlines, harness.Lookup, harness.ReferenceStore, harness.Laps,
             FakeTrackLengths.Spa(), new ComputeOptions(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
             new SimCoach.Pipeline.SessionIdentity("empty", DateTimeOffset.UnixEpoch));
         session.Complete();

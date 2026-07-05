@@ -64,6 +64,8 @@ internal sealed class ComputeTestHarness : IDisposable
 
     public TrackModelStore TrackModels { get; }
 
+    public CenterlineGeometryDataset Centerlines { get; } = CenterlineGeometryDataset.Load();
+
     public ReferenceLookup Lookup { get; }
 
     public ReferenceStore ReferenceStore { get; }
@@ -92,7 +94,7 @@ internal sealed class ComputeTestHarness : IDisposable
         Sessions.Insert(NewSessionRow(identity, frames[0]));
 
         var session = new ComputeSession(
-            DomainFanOut, TrackModels, Lookup, ReferenceStore, Laps, _lengths,
+            DomainFanOut, TrackModels, Centerlines, Lookup, ReferenceStore, Laps, _lengths,
             options ?? new ComputeOptions(), NullLogger.Instance, identity);
         foreach (TelemetryFrame frame in frames)
         {
@@ -122,7 +124,7 @@ internal sealed class ComputeTestHarness : IDisposable
         var identity = new SessionIdentity(sessionId, new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero));
         Sessions.Insert(NewSessionRow(identity, frames[0]));
         var session = new ComputeSession(
-            new DomainEventFanOut(), TrackModels, Lookup, ReferenceStore, Laps, _lengths,
+            new DomainEventFanOut(), TrackModels, Centerlines, Lookup, ReferenceStore, Laps, _lengths,
             options ?? new ComputeOptions(), NullLogger.Instance, identity);
         foreach (TelemetryFrame frame in frames)
         {

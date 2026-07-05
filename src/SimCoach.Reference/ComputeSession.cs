@@ -19,6 +19,7 @@ internal sealed class ComputeSession
 {
     private readonly DomainEventFanOut _domain;
     private readonly TrackModelStore _trackModels;
+    private readonly CenterlineGeometryDataset _centerlines;
     private readonly ReferenceLookup _lookup;
     private readonly ReferenceStore _referenceStore;
     private readonly LapRepository _laps;
@@ -51,6 +52,7 @@ internal sealed class ComputeSession
     private bool _hasLength;
     private TrackModel _trackModel = new() { TrackId = string.Empty, Corners = [], Source = TrackModelSource.None };
     private ResampledLap? _reference;
+    private ResampledLap? _lineReference;
 
     private int _runningBestMs = int.MaxValue;
     private int _lapCount;
@@ -73,6 +75,7 @@ internal sealed class ComputeSession
     public ComputeSession(
         DomainEventFanOut domain,
         TrackModelStore trackModels,
+        CenterlineGeometryDataset centerlines,
         ReferenceLookup lookup,
         ReferenceStore referenceStore,
         LapRepository laps,
@@ -83,6 +86,7 @@ internal sealed class ComputeSession
     {
         _domain = domain;
         _trackModels = trackModels;
+        _centerlines = centerlines;
         _lookup = lookup;
         _referenceStore = referenceStore;
         _laps = laps;
@@ -228,17 +232,23 @@ internal sealed class ComputeSession
         _trackModel = _trackModels.Get(_trackId);
         RebuildCornerTrackers();
         _reference = _lookup.Get(_triple);
+        // M38: the LINE reference is the baked median centerline when one is vendored for this track (and
+        // trustworthy); otherwise null → CornerEventBuilder falls back to the PB line (ADR-0019).
+        _lineReference =
+            _hasLength && _centerlines.TryGetCenterline(_trackId, _lapLengthM, out MedianCenterline? centerline)
+                ? CenterlineLineReference.Build(centerline!)
+                : null;
         _logger.LogInformation(
-            "Compute started for {Session}: {Track}/{Car}/{Weather}, model {Source} ({Corners} corners), reference {HasRef}",
+            "Compute started for {Session}: {Track}/{Car}/{Weather}, model {Source} ({Corners} corners), reference {HasRef}, centerline {HasLine}",
             _identity.SessionId, _trackId, _carId, _weatherBucket, _trackModel.Source,
-            _trackModel.Corners.Count, _reference is not null);
+            _trackModel.Corners.Count, _reference is not null, _lineReference is not null);
     }
 
     private void EmitCorner(Corner corner, IReadOnlyList<TelemetryFrame> window)
     {
         (CornerEvent ev, CornerContribution contribution) = CornerEventBuilder.Build(
             corner, window, _reference, _lapLengthM, _reference?.GridLength ?? 0,
-            _options.BrakeWindowUpstreamM, _options.ApexWindowFraction);
+            _options.BrakeWindowUpstreamM, _options.ApexWindowFraction, _lineReference);
 
         // M3 Tier A: an implausibly large corner delta (either sign) is a detection artefact, not real
         // pace. corner_catch_all renders abs(delta_ms), so a -3929 ms gain would voice a fabricated

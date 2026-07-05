@@ -72,7 +72,8 @@ public sealed class CoachReplayE2ETests : IDisposable
             fanOut, context, new RecordingOptions { BasePath = recordingsBase, SegmentDuration = TimeSpan.FromMinutes(5) },
             TimeProvider.System, NullLogger<McapRecorderService>.Instance);
         var compute = new ComputeService(
-            fanOut, domainFanOut, context, trackModels, new ReferenceLookup(references), referenceStore, laps, lengths,
+            fanOut, domainFanOut, context, trackModels, CenterlineGeometryDataset.Load(),
+            new ReferenceLookup(references), referenceStore, laps, lengths,
             new ComputeOptions(), NullLogger<ComputeService>.Instance);
 
         // The LLM ring via the real public AddLlm (fake provider; Llm:Live=false), sharing the e2e's DB so

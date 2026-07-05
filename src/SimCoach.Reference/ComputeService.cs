@@ -21,6 +21,7 @@ public sealed class ComputeService : BackgroundService
     private readonly DomainEventFanOut _domainFanOut;
     private readonly SessionContext _sessionContext;
     private readonly TrackModelStore _trackModels;
+    private readonly CenterlineGeometryDataset _centerlines;
     private readonly ReferenceLookup _lookup;
     private readonly ReferenceStore _referenceStore;
     private readonly LapRepository _laps;
@@ -33,6 +34,7 @@ public sealed class ComputeService : BackgroundService
         DomainEventFanOut domainFanOut,
         SessionContext sessionContext,
         TrackModelStore trackModels,
+        CenterlineGeometryDataset centerlines,
         ReferenceLookup lookup,
         ReferenceStore referenceStore,
         LapRepository laps,
@@ -44,6 +46,7 @@ public sealed class ComputeService : BackgroundService
         ArgumentNullException.ThrowIfNull(domainFanOut);
         ArgumentNullException.ThrowIfNull(sessionContext);
         ArgumentNullException.ThrowIfNull(trackModels);
+        ArgumentNullException.ThrowIfNull(centerlines);
         ArgumentNullException.ThrowIfNull(lookup);
         ArgumentNullException.ThrowIfNull(referenceStore);
         ArgumentNullException.ThrowIfNull(laps);
@@ -54,6 +57,7 @@ public sealed class ComputeService : BackgroundService
         _domainFanOut = domainFanOut;
         _sessionContext = sessionContext;
         _trackModels = trackModels;
+        _centerlines = centerlines;
         _lookup = lookup;
         _referenceStore = referenceStore;
         _laps = laps;
@@ -87,7 +91,8 @@ public sealed class ComputeService : BackgroundService
         }
 
         var session = new ComputeSession(
-            _domainFanOut, _trackModels, _lookup, _referenceStore, _laps, _lengths, _options, _logger, identity);
+            _domainFanOut, _trackModels, _centerlines, _lookup, _referenceStore, _laps, _lengths, _options, _logger,
+            identity);
 
         // Backstop: a per-frame compute fault must never bubble out of ExecuteAsync, because the host's
         // default BackgroundServiceExceptionBehavior is StopHost — one bad frame would stop the recorder
