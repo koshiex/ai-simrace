@@ -91,6 +91,52 @@ public sealed class OutputSchemaTests
     }
 
     [Fact]
+    public void RealTime_adds_confidence_enum_and_required_when_requested()
+    {
+        using var doc = JsonDocument.Parse(
+            OutputSchema.RealTime(["wider_entry"], allowAbstain: false, requestConfidence: true));
+        JsonElement root = doc.RootElement;
+
+        var enumValues = root
+            .GetProperty("properties").GetProperty("confidence").GetProperty("enum")
+            .EnumerateArray().Select(e => e.GetString()).ToList();
+        enumValues.Should().Equal(OutputSchema.ConfidenceHigh, OutputSchema.ConfidenceLow);
+
+        root.GetProperty("required").EnumerateArray().Select(e => e.GetString())
+            .Should().Equal("action_id", "phrase_ru", "confidence");
+        root.GetProperty("additionalProperties").GetBoolean().Should().BeFalse();
+        // The strict invariant must hold when confidence is on.
+        AssertRequiredEqualsProperties(root);
+    }
+
+    [Fact]
+    public void RealTime_omits_confidence_when_not_requested()
+    {
+        using var doc = JsonDocument.Parse(
+            OutputSchema.RealTime(["wider_entry"], allowAbstain: false, requestConfidence: false));
+        JsonElement root = doc.RootElement;
+
+        root.GetProperty("properties").TryGetProperty("confidence", out _).Should().BeFalse();
+        root.GetProperty("required").EnumerateArray().Select(e => e.GetString())
+            .Should().Equal("action_id", "phrase_ru");
+        // The invariant still holds with confidence off.
+        AssertRequiredEqualsProperties(root);
+    }
+
+    [Fact]
+    public void RealTime_confidence_composes_with_abstain_and_keeps_the_invariant()
+    {
+        using var doc = JsonDocument.Parse(
+            OutputSchema.RealTime(["corner_catch_all"], allowAbstain: true, requestConfidence: true));
+        JsonElement root = doc.RootElement;
+
+        // Abstain sentinel rides the action_id enum; confidence rides its own — required still == keys(properties).
+        root.GetProperty("properties").GetProperty("action_id").GetProperty("enum")
+            .EnumerateArray().Select(e => e.GetString()).Should().Contain(OutputSchema.AbstainActionId);
+        AssertRequiredEqualsProperties(root);
+    }
+
+    [Fact]
     public void Debrief_bounds_top_losses_to_max_debrief_losses()
     {
         int cap = new CoachOptions().MaxDebriefLosses;

@@ -42,6 +42,7 @@ public sealed class CoachService : BackgroundService
     private readonly TimeProvider _clock;
     private readonly ILogger<CoachService> _logger;
     private readonly string _retryReminder;
+    private readonly IReadOnlyDictionary<string, string> _retryReasons;
 
     private int _currentLap = 1;
     private BudgetState _budget = BudgetState.Zero;
@@ -92,6 +93,7 @@ public sealed class CoachService : BackgroundService
         _clock = clock;
         _logger = logger;
         _retryReminder = PromptResources.ReadRetryReminder(RetryVersion);
+        _retryReasons = PromptResources.ReadRetryReasons(RetryVersion);
         _subscription = fanOut.Subscribe("coach");
     }
 
@@ -207,13 +209,21 @@ public sealed class CoachService : BackgroundService
         IReadOnlyList<CoachAction> subset = _registry.ValidSubset(view, _coachOptions);
 
         // Precompute the two cadence-governor scalars here (the pure RuleEngine takes no CoachOptions/severity
-        // dependency): the absolute measured time-loss for the materiality floor, and whether the lead action is
-        // High severity (the never-silent bypass). delta_ms is signed (self−ref), so |delta| is the magnitude;
-        // an absent delta_ms (e.g. a no-PB corner) yields 0, which the engine's floor treats as fail-open.
+        // dependency): the absolute measured time-loss for the materiality floor, and whether this tip is High
+        // severity (the never-silent bypass). delta_ms is signed (self−ref), so |delta| is the magnitude; an
+        // absent delta_ms (e.g. a no-PB corner) yields 0, which the engine's floor treats as fail-open.
         double timeLossMs = view.TryGetNumber("delta_ms", out double d) ? Math.Abs(d) : 0;
-        bool highSeverity = subset.Count > 0 && _coachOptions.SeverityFor(subset[0].Priority) == CoachSeverity.High;
+        // M45: severity is now the time-loss MAGNITUDE, not the lead action's corner phase — so "High" means
+        // "genuinely costly" and the cadence cap/cooldown + M32 dedup it bypasses actually bite. A cold-start /
+        // absent-loss tip (timeLossMs == 0) resolves to Low, never never-silenced. This single value drives both
+        // the governor's highSeverity bypass and the emitted tip's chip.
+        CoachSeverity severity = _coachOptions.SeverityForLoss(timeLossMs);
+        bool highSeverity = severity == CoachSeverity.High;
+        // M32: the pre-LLM dedup gate reads the LEAD action (subset[0]) for this corner — suppressing the
+        // obvious repeat saves the LLM call. The post-emit NoteTip below records the ACTUAL spoken action.
+        var identity = new TipIdentity(CornerIdOf(gold), subset.Count > 0 ? subset[0].Id : null);
         RuleDecision decision =
-            _ruleEngine.ShouldSpeak(subset, cadence, _ambient.LatestGate(), _budget, timeLossMs, highSeverity);
+            _ruleEngine.ShouldSpeak(subset, cadence, _ambient.LatestGate(), _budget, timeLossMs, highSeverity, identity);
 
         if (decision.Outcome == RuleOutcome.Silent)
         {
@@ -230,13 +240,14 @@ public sealed class CoachService : BackgroundService
         bool overBudget = decision.Outcome == RuleOutcome.TemplateOnly;
         CoachTip? tip;
         string? rejectionReason = null;
+        CoachConfidence confidence = CoachConfidence.High;
         if (overBudget)
         {
-            tip = ComposeRealtimeTip(cadence, gold, top, topRendered, topRendered.PhraseRu, TipSource.TemplateBudget, null, noPb, sessionId);
+            tip = ComposeRealtimeTip(cadence, gold, top, topRendered, topRendered.PhraseRu, TipSource.TemplateBudget, null, noPb, severity, sessionId);
         }
         else
         {
-            (tip, rejectionReason) = await CompleteRealtimeAsync(cadence, gold, view, subset, top, topRendered, noPb, sessionId, ct).ConfigureAwait(false);
+            (tip, rejectionReason, confidence) = await CompleteRealtimeAsync(cadence, gold, view, subset, top, topRendered, noPb, severity, sessionId, ct).ConfigureAwait(false);
         }
 
         // M7 abstain: a sanctioned "none" on a weak catch-all → silence (only reachable on the LLM path). No
@@ -248,9 +259,30 @@ public sealed class CoachService : BackgroundService
             return;
         }
 
+        // M32 post-LLM recheck: the pre-LLM gate keyed on the LEAD action (subset[0]) to save the call, but the
+        // model may deterministically pick a non-lead subset member (BuildChosenTip). Re-run the dedup against the
+        // ACTUAL chosen action so a stable non-lead pick still dedups lap-over-lap instead of re-speaking the same
+        // phrase every lap. On the over-budget path the chosen action IS the lead, so this merely re-affirms the
+        // pre-LLM decision. A suppressed repeat emits nothing and arms no cooldown (mirrors the M7 abstain path);
+        // the LLM call still happened on the non-budget path, so refresh the budget before going silent.
+        var chosenIdentity = new TipIdentity(tip.CornerId, tip.ActionId);
+        if (_ruleEngine.IsRepeatSuppressed(chosenIdentity, highSeverity))
+        {
+            _logger.LogDebug(
+                "Coach silent [{Reason}] for {Cadence} (post-LLM chosen-action dedup)", QuietReason.RepeatSuppressed, cadence);
+            if (!overBudget)
+            {
+                await RefreshBudgetAsync(sessionId, ct).ConfigureAwait(false);
+            }
+
+            return;
+        }
+
         await _sink.EmitTipAsync(tip, ct).ConfigureAwait(false);
-        _ruleEngine.NoteTip(cadence, _clock.GetUtcNow());
-        LogTipOutcome(cadence, tip, rejectionReason);
+        // M32: record the ACTUAL spoken action (BuildChosenTip may pick a non-lead subset member), so the
+        // cross-lap memory reflects what the driver heard, not the lead the pre-LLM gate read.
+        _ruleEngine.NoteTip(cadence, _clock.GetUtcNow(), tip.CornerId, tip.ActionId);
+        LogTipOutcome(cadence, tip, rejectionReason, confidence);
 
         if (overBudget)
         {
@@ -264,9 +296,9 @@ public sealed class CoachService : BackgroundService
 
     // A null Tip means abstain (M7): a sanctioned "none" — silence, distinct from an accepted tip and from the
     // template fallback. Only ever returned when abstain was offered for this request (corner-only weak catch-all).
-    private async Task<(CoachTip? Tip, string? RejectionReason)> CompleteRealtimeAsync<TEvent>(
+    private async Task<(CoachTip? Tip, string? RejectionReason, CoachConfidence Confidence)> CompleteRealtimeAsync<TEvent>(
         CoachCadence cadence, GoldArtifact<TEvent> gold, IGoldView view, IReadOnlyList<CoachAction> subset,
-        CoachAction top, RenderedAction topRendered, bool noPb, string sessionId, CancellationToken ct)
+        CoachAction top, RenderedAction topRendered, bool noPb, CoachSeverity severity, string sessionId, CancellationToken ct)
     {
         bool allowAbstain = _coachOptions.AllowsAbstain(cadence, top.Priority);
         LlmRequest request = _promptBuilder.Build(gold, cadence, subset);
@@ -276,46 +308,50 @@ public sealed class CoachService : BackgroundService
 
         LlmResult result = await _llm.CompleteAsync(request, ct).ConfigureAwait(false);
         RealtimeTipVerdict verdict =
-            TryAcceptRealtime(result, ids, maxWords, allowAbstain, out string actionId, out string phrase, out string? model, out string rejection);
+            TryAcceptRealtime(result, ids, maxWords, allowAbstain, out string actionId, out string phrase, out string? model, out string rejection, out CoachConfidence confidence);
         if (verdict == RealtimeTipVerdict.Accept)
         {
-            return (BuildChosenTip(cadence, gold, view, subset, actionId, phrase, model, noPb, sessionId), null);
+            return (BuildChosenTip(cadence, gold, view, subset, actionId, phrase, model, noPb, severity, sessionId), null, confidence);
         }
 
         if (verdict == RealtimeTipVerdict.Abstain)
         {
-            return (null, null);
+            return (null, null, CoachConfidence.High);
         }
 
         if (allowRetry && IsRetryable(result))
         {
-            LlmRequest retry = request with { SystemPrompt = request.SystemPrompt + "\n\n" + _retryReminder };
+            LlmRequest retry = request with { SystemPrompt = BuildRetryPrompt(request.SystemPrompt, rejection) };
             LlmResult second = await _llm.CompleteAsync(retry, ct).ConfigureAwait(false);
             RealtimeTipVerdict retryVerdict =
-                TryAcceptRealtime(second, ids, maxWords, allowAbstain, out actionId, out phrase, out model, out rejection);
+                TryAcceptRealtime(second, ids, maxWords, allowAbstain, out actionId, out phrase, out model, out rejection, out confidence);
             if (retryVerdict == RealtimeTipVerdict.Accept)
             {
-                return (BuildChosenTip(cadence, gold, view, subset, actionId, phrase, model, noPb, sessionId), null);
+                return (BuildChosenTip(cadence, gold, view, subset, actionId, phrase, model, noPb, severity, sessionId), null, confidence);
             }
 
             if (retryVerdict == RealtimeTipVerdict.Abstain)
             {
-                return (null, null);
+                return (null, null, CoachConfidence.High);
             }
         }
 
-        return (ComposeRealtimeTip(cadence, gold, top, topRendered, topRendered.PhraseRu, TipSource.Template, null, noPb, sessionId), rejection);
+        // Template fallback: no accepted model answer, so confidence is the default High band (observe-only).
+        return (ComposeRealtimeTip(cadence, gold, top, topRendered, topRendered.PhraseRu, TipSource.Template, null, noPb, severity, sessionId), rejection, CoachConfidence.High);
     }
 
     // M23: one structured accept/fallback line per real-time tip so the LLM-vs-template mix and the reason a
     // model answer was rejected stay observable in the logs — no DB columns. Hot-path safe: the reason is
     // already captured upstream, so this is a single pre-formatted log call.
-    private void LogTipOutcome(CoachCadence cadence, CoachTip tip, string? rejectionReason)
+    private void LogTipOutcome(CoachCadence cadence, CoachTip tip, string? rejectionReason, CoachConfidence confidence)
     {
         bool fellBackToTemplate = tip.Source is TipSource.Template or TipSource.TemplateBudget;
+        // M31: confidence is observe-only calibration data — logged here, never a DB column and never a gate.
+        // Under offline/replay it is a constant High (FakeProvider/template never emit it), so read it as signal
+        // only for live-LLM runs.
         _logger.LogInformation(
-            "Coach tip {Cadence} action={ActionId} source={Source} fellBack={FellBack} rejection={Rejection}",
-            cadence, tip.ActionId, tip.Source, fellBackToTemplate,
+            "Coach tip {Cadence} action={ActionId} source={Source} fellBack={FellBack} confidence={Confidence} rejection={Rejection}",
+            cadence, tip.ActionId, tip.Source, fellBackToTemplate, confidence,
             string.IsNullOrEmpty(rejectionReason) ? "none" : rejectionReason);
     }
 
@@ -327,16 +363,16 @@ public sealed class CoachService : BackgroundService
 
     private CoachTip BuildChosenTip<TEvent>(
         CoachCadence cadence, GoldArtifact<TEvent> gold, IGoldView view, IReadOnlyList<CoachAction> subset,
-        string actionId, string phraseRu, string? providerModelId, bool noPb, string sessionId)
+        string actionId, string phraseRu, string? providerModelId, bool noPb, CoachSeverity severity, string sessionId)
     {
         CoachAction chosen = subset.First(a => a.Id == actionId);
         RenderedAction rendered = PhraseRenderer.Render(chosen, view);
-        return ComposeRealtimeTip(cadence, gold, chosen, rendered, phraseRu, TipSource.Llm, providerModelId, noPb, sessionId);
+        return ComposeRealtimeTip(cadence, gold, chosen, rendered, phraseRu, TipSource.Llm, providerModelId, noPb, severity, sessionId);
     }
 
     private CoachTip ComposeRealtimeTip<TEvent>(
         CoachCadence cadence, GoldArtifact<TEvent> gold, CoachAction action, RenderedAction rendered,
-        string phraseRu, TipSource source, string? providerModelId, bool noPb, string sessionId)
+        string phraseRu, TipSource source, string? providerModelId, bool noPb, CoachSeverity severity, string sessionId)
     {
         (string? cornerId, string? cornerName, string? cornerNameShort, string? cornerNameSpoken) = CornerInfo(gold);
         return new CoachTip(
@@ -348,7 +384,7 @@ public sealed class CoachService : BackgroundService
             ActionLabelShort: rendered.ActionLabelShort,
             RenderedParam: rendered.RenderedParam.Length == 0 ? null : rendered.RenderedParam,
             Priority: action.Priority,
-            Severity: _coachOptions.SeverityFor(action.Priority),
+            Severity: severity,
             PhraseRu: phraseRu,
             CornerName: cornerName,
             CornerNameShort: cornerNameShort,
@@ -358,6 +394,12 @@ public sealed class CoachService : BackgroundService
             ProviderModelId: providerModelId,
             GeneratedAtUtc: _clock.GetUtcNow());
     }
+
+    // The dedup corner key (M32): only a corner event carries one; a sector/lap summary has no corner_id and so
+    // fails the dedup gate open. Mirrors the CornerInfo corner-id branch, so the pre-LLM gate key matches the
+    // tip.CornerId that NoteTip later records.
+    private static string? CornerIdOf<TEvent>(GoldArtifact<TEvent> gold) =>
+        gold.Event is GoldCornerEvent c && !string.IsNullOrWhiteSpace(c.CornerId) ? c.CornerId : null;
 
     private (string? CornerId, string? Name, string? Short, string? Spoken) CornerInfo<TEvent>(GoldArtifact<TEvent> gold)
     {
@@ -408,16 +450,18 @@ public sealed class CoachService : BackgroundService
         LlmRequest request = _promptBuilder.Build(gold, CoachCadence.Session, []);
 
         LlmResult result = await _llm.CompleteAsync(request, ct).ConfigureAwait(false);
-        if (TryAcceptDebrief(result, out string json, out string? model))
+        if (TryAcceptDebrief(result, out string json, out string? model, out string rejection))
         {
             return ComposeDebriefTip(gold, json, TipSource.Llm, model, sessionId);
         }
 
         if (IsRetryable(result))
         {
-            LlmRequest retry = request with { SystemPrompt = request.SystemPrompt + "\n\n" + _retryReminder };
+            // A retryable non-Success (SchemaViolation) carries no validator string; fall back to its variant name.
+            string reason = string.IsNullOrEmpty(rejection) ? DescribeFailure(result) : rejection;
+            LlmRequest retry = request with { SystemPrompt = BuildRetryPrompt(request.SystemPrompt, reason) };
             LlmResult second = await _llm.CompleteAsync(retry, ct).ConfigureAwait(false);
-            if (TryAcceptDebrief(second, out json, out model))
+            if (TryAcceptDebrief(second, out json, out model, out _))
             {
                 return ComposeDebriefTip(gold, json, TipSource.Llm, model, sessionId);
             }
@@ -431,6 +475,8 @@ public sealed class CoachService : BackgroundService
     {
         var priority = new CoachPriority(CoachPhase.Exit, int.MaxValue); // debrief is the least-urgent band
         (string topPriority, string? topLossesJson, string? setupHint) = ParseDebrief(debriefJson);
+        // M45: the debrief carries no single measured time loss, so severity stays on the phase-based fallback —
+        // the Exit/least-urgent band resolves to Low (the terminal summary is never a High interrupt).
         return new CoachTip(
             SessionId: sessionId,
             Cadence: CoachCadence.Session,
@@ -455,11 +501,13 @@ public sealed class CoachService : BackgroundService
 
     private RealtimeTipVerdict TryAcceptRealtime(
         LlmResult result, IReadOnlyCollection<string> ids, int maxWords, bool allowAbstain,
-        out string actionId, out string phraseRu, out string? providerModelId, out string rejectionReason)
+        out string actionId, out string phraseRu, out string? providerModelId, out string rejectionReason,
+        out CoachConfidence confidence)
     {
         actionId = string.Empty;
         phraseRu = string.Empty;
         providerModelId = null;
+        confidence = CoachConfidence.High;
         if (result is not LlmResult.Success success)
         {
             rejectionReason = DescribeFailure(result);
@@ -467,7 +515,8 @@ public sealed class CoachService : BackgroundService
         }
 
         providerModelId = success.Info.ProviderModelId;
-        return TipValidator.TryValidateRealtime(success.Json, ids, maxWords, allowAbstain, out actionId, out phraseRu, out rejectionReason);
+        return TipValidator.TryValidateRealtime(
+            success.Json, ids, maxWords, allowAbstain, out actionId, out phraseRu, out rejectionReason, out confidence);
     }
 
     // A non-Success result never carries a validator reason; surface the failure variant so the accept/fallback
@@ -475,17 +524,18 @@ public sealed class CoachService : BackgroundService
     private static string DescribeFailure(LlmResult result) =>
         result is LlmResult.Failure failure ? failure.Error.GetType().Name : "no result";
 
-    private bool TryAcceptDebrief(LlmResult result, out string json, out string? providerModelId)
+    private bool TryAcceptDebrief(LlmResult result, out string json, out string? providerModelId, out string failure)
     {
         json = string.Empty;
         providerModelId = null;
+        failure = string.Empty;
         if (result is not LlmResult.Success success)
         {
             return false;
         }
 
         providerModelId = success.Info.ProviderModelId;
-        if (TipValidator.TryValidateDebrief(success.Json, _coachOptions.MaxDebriefLosses, _coachOptions.DebriefMaxWords, out _, out _))
+        if (TipValidator.TryValidateDebrief(success.Json, _coachOptions.MaxDebriefLosses, _coachOptions.DebriefMaxWords, out _, out failure))
         {
             json = success.Json;
             return true;
@@ -502,6 +552,11 @@ public sealed class CoachService : BackgroundService
         LlmResult.Failure(LlmFailure.SchemaViolation) => true,
         _ => false,
     };
+
+    // Retry system prompt = original + the generic retry reminder + a terse RU echo of the specific refusal
+    // reason (M28), so the model corrects the exact miss rather than re-guessing the whole schema.
+    private string BuildRetryPrompt(string systemPrompt, string rejectionReason)
+        => systemPrompt + "\n\n" + _retryReminder + "\n\n" + RetryReasonRu.Line(_retryReasons, rejectionReason);
 
     private int RealtimeMaxWords(CoachCadence cadence) => cadence switch
     {

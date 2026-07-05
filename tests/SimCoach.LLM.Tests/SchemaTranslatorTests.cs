@@ -62,6 +62,23 @@ public sealed class SchemaTranslatorTests
     }
 
     [Fact]
+    public void Gemini_strips_maxItems_which_leaves_the_debrief_bound_to_the_post_parse_cap()
+    {
+        // M28 rationale pin: maxItems is intentionally in _bannedKeywords, so the debrief's top_losses array
+        // bound cannot ride on the wire — it survives only as the TipValidator cap. CoachStartupValidator
+        // hard-fails a Gemini debrief route for exactly this reason.
+        const string arraySchema =
+            """{ "type": "object", "properties": { "xs": { "type": "array", "maxItems": 3, "minItems": 1 } } }""";
+
+        SchemaDirective directive = new GeminiSchemaTranslator().Translate(arraySchema, "x");
+
+        JsonObject xs = directive.ResponseFormat!["json_schema"]!["schema"]!["properties"]!["xs"]!.AsObject();
+        xs.ContainsKey("maxItems").Should().BeFalse();
+        xs.ContainsKey("minItems").Should().BeFalse();
+        xs["type"]!.GetValue<string>().Should().Be("array");
+    }
+
+    [Fact]
     public void Gemini_rewrites_string_null_union_to_nullable()
     {
         SchemaDirective directive = new GeminiSchemaTranslator().Translate(DebriefSchema, "coach_debrief");
@@ -83,6 +100,31 @@ public sealed class SchemaTranslatorTests
         // Only the banned keyword went, not the property.
         schema["properties"]!["phrase_ru"]!.AsObject().ContainsKey("maxLength").Should().BeFalse();
         schema["properties"]!["phrase_ru"]!["type"]!.GetValue<string>().Should().Be("string");
+    }
+
+    [Fact]
+    public void Gemini_preserves_a_two_member_confidence_enum()
+    {
+        // M31: the confidence field is a 2-member string enum (like action_id) — verify it survives Gemini's
+        // constraint strip intact so the wire schema can carry it across families.
+        const string confidenceSchema =
+            """
+            { "type": "object", "additionalProperties": false,
+              "required": ["action_id", "phrase_ru", "confidence"],
+              "properties": {
+                "action_id": { "type": "string", "enum": ["wider_entry"] },
+                "phrase_ru": { "type": "string" },
+                "confidence": { "type": "string", "enum": ["high", "low"] } } }
+            """;
+
+        SchemaDirective directive = new GeminiSchemaTranslator().Translate(confidenceSchema, "coach_tip");
+
+        JsonObject schema = directive.ResponseFormat!["json_schema"]!["schema"]!.AsObject();
+        schema["required"]!.AsArray().Select(n => n!.GetValue<string>())
+            .Should().BeEquivalentTo("action_id", "phrase_ru", "confidence");
+        JsonObject confidence = schema["properties"]!["confidence"]!.AsObject();
+        confidence["type"]!.GetValue<string>().Should().Be("string");
+        confidence["enum"]!.AsArray().Select(n => n!.GetValue<string>()).Should().Equal("high", "low");
     }
 
     [Fact]

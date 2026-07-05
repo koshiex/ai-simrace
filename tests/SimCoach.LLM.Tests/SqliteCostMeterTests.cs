@@ -60,6 +60,30 @@ public sealed class SqliteCostMeterTests : IDisposable
     }
 
     [Fact]
+    public async Task Reasoning_tokens_persist_and_cost_math_is_unchanged()
+    {
+        // M28: the reasoning-token count now lands on the row. CostCalculator is untouched — reasoning already
+        // bills at the output rate — so cost_usd equals the same formula it produced before this column existed.
+        SqliteCostMeter meter = Meter();
+
+        await meter.RecordAsync(
+            new LlmCostEntry(
+                "openrouter-google",
+                "google/gemini-2.5-flash-lite",
+                "corner",
+                new LlmUsage(1000, 500, CachedInputTokens: 200, ReasoningTokens: 100),
+                TimeSpan.FromMilliseconds(250),
+                "success"),
+            CancellationToken.None);
+
+        using SqliteConnection connection = _factory.Create();
+        connection.QuerySingle<int>("SELECT reasoning_tokens FROM llm_usage").Should().Be(100);
+        // 800/1e6*0.1 + 200/1e6*0.05 + (500+100)/1e6*0.4 = 0.00033 (reasoning billed at the output rate).
+        double cost = connection.QuerySingle<double>("SELECT cost_usd FROM llm_usage");
+        cost.Should().BeApproximately(0.00033, 1e-9);
+    }
+
+    [Fact]
     public async Task Failure_entry_records_zero_cost_and_its_status()
     {
         SqliteCostMeter meter = Meter();

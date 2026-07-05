@@ -18,6 +18,9 @@ internal sealed class GeminiSchemaTranslator : ISchemaTranslator
         "minLength",
         "maxLength",
         "minItems",
+        // maxItems is intentionally stripped: Gemini's responseSchema rejects it, so the debrief's array bound
+        // survives only as the post-parse TipValidator cap (CoachStartupValidator hard-fails a Gemini debrief
+        // route for exactly this reason — see M28). Keep it here; the SchemaTranslatorTests pin the strip.
         "maxItems",
     };
 

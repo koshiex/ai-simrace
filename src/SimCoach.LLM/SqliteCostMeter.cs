@@ -52,6 +52,7 @@ public sealed class SqliteCostMeter : ICostMeter
             InputTokens = entry.Usage.InputTokens,
             OutputTokens = entry.Usage.OutputTokens,
             CachedInputTokens = entry.Usage.CachedInputTokens,
+            ReasoningTokens = entry.Usage.ReasoningTokens,
             CostUsd = (double)cost,
             LatencyMs = (int)entry.Latency.TotalMilliseconds,
             Status = entry.Status,

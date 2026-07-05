@@ -60,6 +60,28 @@ public sealed class CadenceOptions
     public IReadOnlySet<CoachCadence> GovernedCadences { get; init; } =
         new HashSet<CoachCadence> { CoachCadence.Corner };
 
+    /// <summary>
+    /// Cross-lap repeat suppression horizon (M32): stay quiet about the <em>same</em> advice (exact
+    /// <c>action_id</c>) for the <em>same</em> corner if it was already spoken within this many lap boundaries
+    /// — stops the coach re-saying a word-for-word repeat lap after lap ("не повторяй одно и то же в этом
+    /// повороте"). <c>0</c> = off, but an always-on within-lap idempotency clause still holds independently
+    /// (a given <c>(corner_id, action_id)</c> never speaks twice in one lap). Governs <em>non-High</em> repeats;
+    /// High-severity repeats use the longer <see cref="HighSeverityRepeatSuppressionLaps"/> horizon instead. A
+    /// summary with no <c>corner_id</c> fails it open. Valid range: ≥ 0 (0 = off). Owner default 2.
+    /// </summary>
+    public int RepeatSuppressionLaps { get; init; } = 2;
+
+    /// <summary>
+    /// Cross-lap repeat suppression horizon for <em>High-severity</em> tips (M32-high-dedup): the longer horizon
+    /// applied when a suppressed repeat is High-severity, so a genuinely costly recurring problem for the same
+    /// corner still resurfaces periodically instead of being muted like an ordinary repeat. Kept separate from —
+    /// and normally longer than — <see cref="RepeatSuppressionLaps"/> (which governs non-High repeats). <c>0</c> =
+    /// off for High repeats, but the always-on within-lap idempotency clause still holds independently (a given
+    /// <c>(corner_id, action_id)</c> never speaks twice in one lap, regardless of severity). Valid range: ≥ 0
+    /// (0 = off). Owner default 3.
+    /// </summary>
+    public int HighSeverityRepeatSuppressionLaps { get; init; } = 3;
+
     public void EnsureValid()
     {
         ArgumentNullException.ThrowIfNull(GovernedCadences);
@@ -86,6 +108,17 @@ public sealed class CadenceOptions
         if (MinTimeLossMs < 0)
         {
             throw new InvalidOperationException("CadenceOptions.MinTimeLossMs must be non-negative (0 = off).");
+        }
+
+        if (RepeatSuppressionLaps < 0)
+        {
+            throw new InvalidOperationException("CadenceOptions.RepeatSuppressionLaps must be non-negative (0 = off).");
+        }
+
+        if (HighSeverityRepeatSuppressionLaps < 0)
+        {
+            throw new InvalidOperationException(
+                "CadenceOptions.HighSeverityRepeatSuppressionLaps must be non-negative (0 = off).");
         }
     }
 }

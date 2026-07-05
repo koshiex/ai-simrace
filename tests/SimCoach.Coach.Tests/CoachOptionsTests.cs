@@ -70,6 +70,26 @@ public sealed class CoachOptionsTests
     }
 
     [Fact]
+    public void EnsureValid_throws_when_the_medium_loss_threshold_is_not_below_the_high_one()
+    {
+        var options = new CoachOptions { MediumSeverityLossMs = 250, HighSeverityLossMs = 250 };
+
+        Action act = options.EnsureValid;
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*severity loss thresholds*");
+    }
+
+    [Fact]
+    public void EnsureValid_throws_on_a_non_positive_medium_loss_threshold()
+    {
+        var options = new CoachOptions { MediumSeverityLossMs = 0 };
+
+        Action act = options.EnsureValid;
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*severity loss thresholds*");
+    }
+
+    [Fact]
     public void EnsureValid_throws_when_a_cadence_route_key_is_missing()
     {
         var options = new CoachOptions

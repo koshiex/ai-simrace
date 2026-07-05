@@ -35,7 +35,8 @@ public sealed record LapRow
 }
 
 /// <summary>Row of the <c>llm_usage</c> cost ledger. <c>Provider</c> and <c>CachedInputTokens</c> arrive in
-/// migration 002 (PR-F); <c>SessionId</c> is nullable (NULL in PR-F — Coach supplies it in a later phase).</summary>
+/// migration 002 (PR-F); <c>ReasoningTokens</c> in migration 005 (M28); <c>SessionId</c> is nullable (NULL in
+/// PR-F — Coach supplies it in a later phase).</summary>
 public sealed record LlmUsageRow
 {
     public string? SessionId { get; init; }
@@ -46,6 +47,7 @@ public sealed record LlmUsageRow
     public int InputTokens { get; init; }
     public int OutputTokens { get; init; }
     public int CachedInputTokens { get; init; }
+    public int ReasoningTokens { get; init; }
     public required double CostUsd { get; init; }
     public int LatencyMs { get; init; }
     public required string Status { get; init; }

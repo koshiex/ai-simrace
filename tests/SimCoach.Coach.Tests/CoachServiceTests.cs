@@ -77,6 +77,25 @@ public sealed class CoachServiceTests
     }
 
     [Fact]
+    public async Task Retry_prompt_carries_the_rejection_reason_in_russian()
+    {
+        // M28: a validation-failing first answer (action_id outside the menu) must make the retry system prompt
+        // echo a terse RU cause, so the model corrects the exact miss rather than re-guessing the schema.
+        IReadOnlyList<CoachAction> subset = LapSubset();
+        string chosen = subset[0].Id;
+        var harness = new Harness(
+            hasReference: true,
+            RawSuccess("""{"action_id":"totally_invalid","phrase_ru":"x"}"""),
+            Realtime(chosen, "Береги резину этот круг."));
+
+        await RunToCompletionAsync(harness, DomainEvent.Lap(GoldTestData.Lap()));
+
+        harness.Llm.Calls.Should().Be(2);
+        harness.Llm.Requests[1].SystemPrompt
+            .Should().Contain("Причина отказа: action_id не из разрешённого списка");
+    }
+
+    [Fact]
     public async Task Timeout_falls_back_to_template_without_retry()
     {
         var harness = new Harness(hasReference: true, new LlmResult.Failure(new LlmFailure.Timeout("slow")));
@@ -106,6 +125,26 @@ public sealed class CoachServiceTests
         tip.TopLossesJson.Should().Contain("Т1");
         tip.SetupHint.Should().Be("Снизь давление в шинах");
         harness.Llm.Calls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Debrief_retry_prompt_carries_the_rejection_reason_in_russian()
+    {
+        // M28: the widened TryAcceptDebrief surfaces the validator failure so the debrief retry echoes the RU
+        // cause. First answer has an empty top_priority (quality miss → retryable); the second is valid.
+        const string valid =
+            """{"top_losses":[{"corner":"Т1","ms":120,"why":"поздний тормоз"}],"top_priority":"Тормози раньше в Т1","setup_hint":"Снизь давление"}""";
+        var harness = new Harness(
+            hasReference: true,
+            RawSuccess("""{"top_losses":[],"top_priority":""}"""),
+            RawSuccess(valid));
+
+        await RunToCompletionAsync(harness, DomainEvent.Session(GoldTestData.Session()));
+
+        harness.Llm.Calls.Should().Be(2);
+        harness.Sink.Tips.Should().ContainSingle();
+        harness.Sink.Tips[0].Source.Should().Be(TipSource.Llm);
+        harness.Llm.Requests[1].SystemPrompt.Should().Contain("Причина отказа: пустое поле top_priority");
     }
 
     [Fact]
@@ -209,6 +248,48 @@ public sealed class CoachServiceTests
     }
 
     [Fact]
+    public async Task Costly_corner_emits_a_high_severity_tip()
+    {
+        // M45: severity now tracks |delta_ms|, not the lead action's corner phase. A 300 ms loss is at/above the
+        // 250 ms High floor, so the emitted tip is High (which bypasses the cadence cap but, post M32-high-dedup,
+        // is still deduped over the longer High horizon).
+        CornerEvent ev = GoldTestData.Corner();
+        ev.DeltaMs = 300;
+        var harness = new Harness(hasReference: true, new LlmResult.Failure(new LlmFailure.Timeout("slow")));
+
+        await RunToCompletionAsync(harness, DomainEvent.Corner(ev));
+
+        harness.Sink.Tips.Should().ContainSingle();
+        harness.Sink.Tips[0].Severity.Should().Be(CoachSeverity.High);
+    }
+
+    [Fact]
+    public async Task Modest_loss_brake_corner_is_medium_not_high()
+    {
+        // M45 regression: the default 140 ms brake/entry corner was phase→High under the old bands; by magnitude
+        // it is Medium (100 ≤ 140 < 250), so the cap/cooldown + M32 dedup it once bypassed now bite.
+        var harness = new Harness(hasReference: true, new LlmResult.Failure(new LlmFailure.Timeout("slow")));
+
+        await RunToCompletionAsync(harness, DomainEvent.Corner(GoldTestData.Corner())); // delta_ms = 140
+
+        harness.Sink.Tips.Should().ContainSingle();
+        harness.Sink.Tips[0].Severity.Should().Be(CoachSeverity.Medium);
+    }
+
+    [Fact]
+    public async Task Cold_start_corner_without_a_reference_resolves_to_low_severity()
+    {
+        // M45: no reference → delta_ms dropped from Gold → loss 0 → Low (never never-silenced). The template
+        // fallback still emits because the materiality floor fails open on a zero loss.
+        var harness = new Harness(hasReference: false, new LlmResult.Failure(new LlmFailure.Timeout("slow")));
+
+        await RunToCompletionAsync(harness, DomainEvent.Corner(GoldTestData.Corner()));
+
+        harness.Sink.Tips.Should().ContainSingle();
+        harness.Sink.Tips[0].Severity.Should().Be(CoachSeverity.Low);
+    }
+
+    [Fact]
     public async Task Second_corner_within_cooldown_is_suppressed()
     {
         // First corner speaks (LLM fails → template), arming the cooldown; the second is suppressed (no LLM call).
@@ -220,6 +301,123 @@ public sealed class CoachServiceTests
 
         harness.Sink.Tips.Should().ContainSingle();
         harness.Llm.Calls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Two_high_corners_inside_the_governor_cooldown_both_emit_proving_the_never_silent_bypass()
+    {
+        // M45 end-to-end: a magnitude-derived High (|delta_ms| >= 250) is never-silent — it bypasses every cadence
+        // silence lever, both the M10 governor (global cooldown + per-lap cap) AND the per-cadence Corner cooldown.
+        // Two High corners fired microseconds apart with a 30 s global cooldown AND the default 4 s Corner
+        // per-cadence cooldown both armed by the first, and DISTINCT corner_ids so M32 cross-lap dedup keys them
+        // apart and cannot confound. A Medium second corner here would be silenced by either cooldown; the High
+        // second corner bypasses both. Both High corners must emit and both reach the LLM, proving SeverityForLoss
+        // → tip → full bypass end to end (not just the unit seams). A regressed bypass (of either the global or the
+        // per-cadence cooldown) suppresses the second corner (one tip / one call).
+        var ruleOptions = new RuleEngineOptions
+        {
+            Cadence = new CadenceOptions { GlobalCooldown = TimeSpan.FromSeconds(30) },
+        };
+        var harness = new Harness(
+            hasReference: true,
+            ruleOptions,
+            new LlmResult.Failure(new LlmFailure.Timeout("slow")),   // corner 1 → template, arms the global cooldown
+            new LlmResult.Failure(new LlmFailure.Timeout("slow")));  // corner 2 → template, inside that cooldown
+
+        await RunToCompletionAsync(
+            harness, DomainEvent.Corner(HighCorner("spa_t02")), DomainEvent.Corner(HighCorner("spa_t05")));
+
+        harness.Sink.Tips.Should().HaveCount(2);
+        harness.Sink.Tips.Should().OnlyContain(t => t.Severity == CoachSeverity.High);
+        harness.Llm.Calls.Should().Be(2); // the second High corner bypassed both still-armed cooldowns
+    }
+
+    // A corner whose |delta_ms| clears the 250 ms High floor (never-silent), with a caller-chosen corner_id so a
+    // pair can carry distinct identities and dodge the M32 cross-lap dedup.
+    private static CornerEvent HighCorner(string cornerId)
+    {
+        CornerEvent ev = GoldTestData.Corner(cornerId);
+        ev.DeltaMs = 300;
+        return ev;
+    }
+
+    [Fact]
+    public async Task Repeated_corner_on_the_next_lap_is_deduped_and_never_reaches_the_llm()
+    {
+        // M32: two identical (non-High) corner tips on consecutive laps. Cooldowns are disabled so the ONLY
+        // thing that can silence the repeat is the cross-lap dedup gate. The first corner speaks (template) and
+        // records tip.ActionId; the intervening lap summary speaks; the repeat corner is suppressed pre-LLM, so
+        // it never reaches the LLM. Only two responses are scripted — a broken dedup would call a third and throw.
+        var ruleOptions = new RuleEngineOptions
+        {
+            Cadence = new CadenceOptions { GlobalCooldown = TimeSpan.Zero, Cooldowns = NoCooldowns() },
+        };
+        var harness = new Harness(
+            hasReference: true,
+            ruleOptions,
+            new LlmResult.Failure(new LlmFailure.Timeout("slow")),   // corner 1 → template, records the action
+            new LlmResult.Failure(new LlmFailure.Timeout("slow")));  // lap summary → template
+
+        await RunToCompletionAsync(
+            harness,
+            DomainEvent.Corner(UndersteerCorner()),
+            DomainEvent.Lap(GoldTestData.Lap()),
+            DomainEvent.Corner(UndersteerCorner()));
+
+        IReadOnlyList<CoachTip> corners = harness.Sink.Tips.Where(t => t.Cadence == CoachCadence.Corner).ToList();
+        corners.Should().ContainSingle();
+        corners[0].ActionId.Should().Be("ease_understeer"); // the recorded action the repeat was matched against
+        harness.Llm.Calls.Should().Be(2); // corner 1 + the lap summary; the repeat corner was deduped pre-LLM
+    }
+
+    [Fact]
+    public async Task Repeat_of_a_non_lead_chosen_action_dedups_across_laps_even_though_the_pre_llm_gate_misses_it()
+    {
+        // M32 regression: the pre-LLM dedup gate keys on the LEAD action (subset[0]) to save the call, but the
+        // model (Temperature:0) may deterministically pick a NON-lead subset member. If dedup only matched the
+        // lead, the identical chosen phrase would be re-spoken every lap — the exact behavior M32 exists to kill.
+        // Cooldowns are off so the ONLY thing that can silence the repeat is dedup; and because the lead never
+        // matches the recorded chosen action, the repeat corner DOES reach the LLM — it is the post-LLM recheck on
+        // the ACTUAL chosen action that suppresses the emit.
+        IReadOnlyList<CoachAction> subset = CornerSubset(hasReference: true);
+        subset.Count.Should().BeGreaterThan(1); // need a non-lead member for the model to pick
+        CoachAction nonLead = subset[^1];
+        nonLead.Id.Should().NotBe(subset[0].Id);
+
+        var ruleOptions = new RuleEngineOptions
+        {
+            Cadence = new CadenceOptions { GlobalCooldown = TimeSpan.Zero, Cooldowns = NoCooldowns() },
+        };
+        var harness = new Harness(
+            hasReference: true,
+            ruleOptions,
+            Realtime(nonLead.Id, "Позже тормози здесь."),          // corner 1 → LLM picks a non-lead action
+            new LlmResult.Failure(new LlmFailure.Timeout("slow")), // lap summary → template
+            Realtime(nonLead.Id, "Позже тормози здесь."));         // repeat corner → LLM picks the same action
+
+        await RunToCompletionAsync(
+            harness,
+            DomainEvent.Corner(GoldTestData.Corner()),
+            DomainEvent.Lap(GoldTestData.Lap()),
+            DomainEvent.Corner(GoldTestData.Corner()));
+
+        IReadOnlyList<CoachTip> corners = harness.Sink.Tips.Where(t => t.Cadence == CoachCadence.Corner).ToList();
+        corners.Should().ContainSingle();          // the repeat of the CHOSEN action was deduped, not re-spoken
+        corners[0].ActionId.Should().Be(nonLead.Id);
+        harness.Llm.Calls.Should().Be(3); // both corners reached the LLM (lead gate missed); post-LLM dedup silenced the repeat
+    }
+
+    private static IReadOnlyDictionary<CoachCadence, TimeSpan> NoCooldowns() =>
+        Enum.GetValues<CoachCadence>().ToDictionary(c => c, _ => TimeSpan.Zero);
+
+    // A corner whose lead action is the apex-phase ease_understeer (Medium severity, so the High-severity dedup
+    // bypass does NOT apply) — the neutral corner trips no brake/entry action, so understeer alone leads.
+    private static CornerEvent UndersteerCorner()
+    {
+        CornerEvent ev = GoldTestData.CornerNeutral();
+        ev.DeltaMs = 140;
+        ev.UndersteerScore = 0.71f;
+        return ev;
     }
 
     [Fact]
@@ -304,6 +502,36 @@ public sealed class CoachServiceTests
     }
 
     [Fact]
+    public async Task High_magnitude_catch_all_none_still_abstains_the_deliberate_phase_based_seam()
+    {
+        // M45/M7 PINNING TEST — this is NOT a defect, it anchors a deliberate owner decision. Severity for the
+        // never-silent guarantee is derived from |delta_ms| (300 → High), but the M7 AllowsAbstain guard is
+        // deliberately left keyed on the phase-based SeverityFor at no-measured-loss sites. corner_catch_all is a
+        // weak apex-phase lead, so abstain IS offered even at a High magnitude; given an LLM "none" the corner
+        // goes SILENT rather than being force-emitted by the never-silent bypass. If the owner later closes this
+        // seam (magnitude-gates abstain), invert this to expect a single emitted High tip.
+        IReadOnlyList<CoachAction> subset = CatchAllSubset(); // catch-all lead is delta-independent for a neutral corner
+        subset[0].Id.Should().Be("corner_catch_all");
+        var harness = new Harness(hasReference: true, Realtime("none", "В повороте отклонение около 300."));
+
+        await RunToCompletionAsync(harness, DomainEvent.Corner(HighCatchAllCorner()));
+
+        harness.Sink.Tips.Should().BeEmpty();
+        harness.Llm.Calls.Should().Be(1);
+        harness.Logger.Snapshot().Should().Contain(e =>
+            e.Level == LogLevel.Information && e.Message.StartsWith("Coach abstain", StringComparison.Ordinal));
+    }
+
+    // The catch-all corner escalated past the 250 ms High floor: still a neutral (no specific-action) corner so
+    // corner_catch_all leads and abstain is offered, but now High by magnitude — the phase-vs-magnitude seam.
+    private static CornerEvent HighCatchAllCorner()
+    {
+        CornerEvent ev = GoldTestData.CornerNeutral();
+        ev.DeltaMs = 300;
+        return ev;
+    }
+
+    [Fact]
     public async Task Leaked_none_when_abstain_not_offered_falls_back_to_template_not_silence()
     {
         // A specific action leads (abstain not offered), yet the model returns "none" → not in subset → template.
@@ -317,6 +545,36 @@ public sealed class CoachServiceTests
         harness.Sink.Tips[0].Source.Should().Be(TipSource.Template);
         harness.Sink.Tips[0].ActionId.Should().Be(subset[0].Id);
         harness.Llm.Calls.Should().Be(1); // corner never retries; a leaked none is a plain rejection
+    }
+
+    [Fact]
+    public async Task Llm_accept_logs_the_parsed_confidence()
+    {
+        // M31: an accepted LLM tip that self-reports "low" surfaces confidence=Low on the M23 accept line.
+        // Confidence is parsed tolerantly regardless of RequestConfidence (which only shapes the schema/prompt).
+        IReadOnlyList<CoachAction> subset = CornerSubset(hasReference: true);
+        string chosen = subset[0].Id;
+        var harness = new Harness(
+            hasReference: true,
+            RawSuccess($$"""{"action_id":"{{chosen}}","phrase_ru":"Тормози позже.","confidence":"low"}"""));
+
+        await RunToCompletionAsync(harness, DomainEvent.Corner(GoldTestData.Corner()));
+
+        harness.Sink.Tips.Should().ContainSingle();
+        harness.Sink.Tips[0].Source.Should().Be(TipSource.Llm); // emit-vs-silent unchanged by confidence
+        TipOutcomeLine(harness).Should().Contain("confidence=Low");
+    }
+
+    [Fact]
+    public async Task Template_fallback_logs_the_high_confidence_default()
+    {
+        // A non-Success miss → template fallback; confidence defaults to High (no model self-report).
+        var harness = new Harness(hasReference: true, new LlmResult.Failure(new LlmFailure.Timeout("slow")));
+
+        await RunToCompletionAsync(harness, DomainEvent.Corner(GoldTestData.Corner()));
+
+        harness.Sink.Tips[0].Source.Should().Be(TipSource.Template);
+        TipOutcomeLine(harness).Should().Contain("confidence=High");
     }
 
     private static string TipOutcomeLine(Harness harness) =>
@@ -387,16 +645,28 @@ public sealed class CoachServiceTests
     private sealed class Harness
     {
         public Harness(bool hasReference, params LlmResult[] responses)
-            : this(hasReference, null, null, responses)
+            : this(hasReference, null, null, null, responses)
         {
         }
 
         public Harness(bool hasReference, ICoachTipSink? sink, params LlmResult[] responses)
-            : this(hasReference, sink, null, responses)
+            : this(hasReference, sink, null, null, responses)
+        {
+        }
+
+        public Harness(bool hasReference, RuleEngineOptions ruleOptions, params LlmResult[] responses)
+            : this(hasReference, null, null, ruleOptions, responses)
         {
         }
 
         public Harness(bool hasReference, ICoachTipSink? sink, ICostQueryRepository? cost, params LlmResult[] responses)
+            : this(hasReference, sink, cost, null, responses)
+        {
+        }
+
+        public Harness(
+            bool hasReference, ICoachTipSink? sink, ICostQueryRepository? cost, RuleEngineOptions? ruleOptions,
+            params LlmResult[] responses)
         {
             Llm = new ScriptedLlm(responses);
             ICoachTipSink effectiveSink = sink ?? Sink;
@@ -411,7 +681,7 @@ public sealed class CoachServiceTests
                 ActionRegistry.Load(),
                 new PromptBuilder(coachOptions, new PromptOptions()),
                 Llm,
-                new RuleEngine(new RuleEngineOptions(), TimeProvider.System),
+                new RuleEngine(ruleOptions ?? new RuleEngineOptions(), TimeProvider.System),
                 effectiveSink,
                 ambient,
                 names,

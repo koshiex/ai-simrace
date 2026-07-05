@@ -13,7 +13,7 @@ public sealed class LlmUsageRepositoryTests : RepositoryTestBase
     public LlmUsageRepositoryTests() => _usage = new LlmUsageRepository(Factory);
 
     [Fact]
-    public async Task Insert_round_trips_all_columns_including_provider_and_cached()
+    public async Task Insert_round_trips_all_columns_including_provider_cached_and_reasoning()
     {
         var row = new LlmUsageRow
         {
@@ -25,6 +25,7 @@ public sealed class LlmUsageRepositoryTests : RepositoryTestBase
             InputTokens = 100,
             OutputTokens = 20,
             CachedInputTokens = 10,
+            ReasoningTokens = 40,
             CostUsd = 0.00029,
             LatencyMs = 250,
             Status = "success",
@@ -35,5 +36,6 @@ public sealed class LlmUsageRepositoryTests : RepositoryTestBase
         using SqliteConnection connection = Factory.Create();
         LlmUsageRow read = connection.QuerySingle<LlmUsageRow>("SELECT * FROM llm_usage");
         read.Should().BeEquivalentTo(row);
+        read.ReasoningTokens.Should().Be(40); // M28: the reasoning-token count survives the round-trip
     }
 }

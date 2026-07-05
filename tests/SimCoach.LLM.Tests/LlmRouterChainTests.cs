@@ -82,6 +82,116 @@ public sealed class LlmRouterChainTests
         result.Should().BeOfType<LlmResult.Failure>().Which.Error.Should().BeOfType<LlmFailure.CircuitOpen>();
     }
 
+    [Fact]
+    public async Task Timeout_failure_with_fallback_route_falls_back_once_and_yields_a_debrief()
+    {
+        var primary = new StubProvider(new LlmResult.Failure(new LlmFailure.Timeout("primary timed out")));
+        var fallback = new StubProvider(Success("DEBRIEF"));
+        var router = new LlmRouter(
+            OptionsWith(("debrief", Route("p", "m", "debrief_fallback")), ("debrief_fallback", Route("f", "m", null))),
+            new Dictionary<string, ILlmProvider> { ["p"] = primary, ["f"] = fallback });
+
+        LlmResult result = await router.CompleteAsync(new LlmRequest("debrief", "s", "u", "{}", "n"), CancellationToken.None);
+
+        result.Should().BeOfType<LlmResult.Success>().Which.Json.Should().Be("DEBRIEF");
+        primary.CallCount.Should().Be(1);
+        fallback.CallCount.Should().Be(1);   // single-shot: exactly one fallback hop
+    }
+
+    [Fact]
+    public async Task ServerError_503_falls_back()
+        => (await FallbackResult(new LlmFailure.ServerError("upstream 503", 503)))
+            .Should().BeOfType<LlmResult.Success>().Which.Json.Should().Be("FALLBACK");
+
+    [Fact]
+    public async Task RateLimited_failure_does_not_fall_back_and_is_returned_as_is()
+    {
+        // A 429 carries RetryAfter — an immediate same-provider retry can't fix it, so honour the delay, don't fall back.
+        var rateLimited = new LlmFailure.RateLimited("slow down", TimeSpan.FromSeconds(5));
+        LlmResult result = await FallbackResult(rateLimited, out StubProvider fallback);
+
+        result.Should().BeOfType<LlmResult.Failure>().Which.Error.Should().BeSameAs(rateLimited);
+        fallback.CallCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ServerError_400_does_not_fall_back()
+    {
+        var badRequest = new LlmFailure.ServerError("bad request", 400);
+        LlmResult result = await FallbackResult(badRequest, out StubProvider fallback);
+
+        result.Should().BeOfType<LlmResult.Failure>().Which.Error.Should().BeSameAs(badRequest);
+        fallback.CallCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task SchemaViolation_does_not_fall_back()
+    {
+        var violation = new LlmFailure.SchemaViolation("bad shape", "{}");
+        LlmResult result = await FallbackResult(violation, out StubProvider fallback);
+
+        result.Should().BeOfType<LlmResult.Failure>().Which.Error.Should().BeSameAs(violation);
+        fallback.CallCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Auth_failure_does_not_fall_back()
+    {
+        var auth = new LlmFailure.Auth("bad key");
+        LlmResult result = await FallbackResult(auth, out StubProvider fallback);
+
+        result.Should().BeOfType<LlmResult.Failure>().Which.Error.Should().BeSameAs(auth);
+        fallback.CallCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Primary_and_fallback_both_fallback_worthy_returns_the_fallback_error_without_recursing()
+    {
+        // M22: both hops fail with fallback-worthy errors (primary Timeout, fallback 503). Fallback is
+        // single-shot — the router does NOT recurse past the one hop chasing the fallback's own fallback. The
+        // returned failure is the fallback provider's error and each provider is hit exactly once.
+        var fallbackError = new LlmFailure.ServerError("fallback 503", 503);
+        var primary = new StubProvider(new LlmResult.Failure(new LlmFailure.Timeout("primary timed out")));
+        var fallback = new StubProvider(new LlmResult.Failure(fallbackError));
+        var router = new LlmRouter(
+            OptionsWith(("debrief", Route("p", "m", "debrief_fallback")), ("debrief_fallback", Route("f", "m", null))),
+            new Dictionary<string, ILlmProvider> { ["p"] = primary, ["f"] = fallback });
+
+        LlmResult result = await router.CompleteAsync(new LlmRequest("debrief", "s", "u", "{}", "n"), CancellationToken.None);
+
+        result.Should().BeOfType<LlmResult.Failure>().Which.Error.Should().BeSameAs(fallbackError);
+        primary.CallCount.Should().Be(1);
+        fallback.CallCount.Should().Be(1); // single-shot: exactly one fallback hop, no recursion
+    }
+
+    [Fact]
+    public async Task Fallback_worthy_failure_without_fallback_route_returns_the_original_failure()
+    {
+        var timeout = new LlmFailure.Timeout("timed out");
+        var primary = new StubProvider(new LlmResult.Failure(timeout));
+        var router = new LlmRouter(
+            OptionsWith(("debrief", Route("p", "m", null))),
+            new Dictionary<string, ILlmProvider> { ["p"] = primary });
+
+        LlmResult result = await router.CompleteAsync(new LlmRequest("debrief", "s", "u", "{}", "n"), CancellationToken.None);
+
+        result.Should().BeOfType<LlmResult.Failure>().Which.Error.Should().BeSameAs(timeout);
+    }
+
+    private static Task<LlmResult> FallbackResult(LlmFailure primaryError)
+        => FallbackResult(primaryError, out _);
+
+    private static Task<LlmResult> FallbackResult(LlmFailure primaryError, out StubProvider fallback)
+    {
+        var primary = new StubProvider(new LlmResult.Failure(primaryError));
+        fallback = new StubProvider(Success("FALLBACK"));
+        var router = new LlmRouter(
+            OptionsWith(("debrief", Route("p", "m", "debrief_fallback")), ("debrief_fallback", Route("f", "m", null))),
+            new Dictionary<string, ILlmProvider> { ["p"] = primary, ["f"] = fallback });
+
+        return router.CompleteAsync(new LlmRequest("debrief", "s", "u", "{}", "n"), CancellationToken.None);
+    }
+
     private static LlmResult Success(string json)
         => new LlmResult.Success(json, new LlmUsage(1, 1), new LlmCallInfo("p", "m", TimeSpan.Zero, "stop"));
 

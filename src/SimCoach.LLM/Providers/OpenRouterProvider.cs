@@ -185,16 +185,23 @@ internal sealed class OpenRouterProvider : ILlmProvider
             }
 
             JsonElement choice = choices[0];
-            string? json = ExtractContent(choice);
-            if (string.IsNullOrEmpty(json))
-            {
-                return new LlmResult.Failure(new LlmFailure.Transport("OpenRouter choice carried no content."));
-            }
-
             string? finishReason = choice.TryGetProperty("finish_reason", out JsonElement fr)
                 && fr.ValueKind == JsonValueKind.String
                     ? fr.GetString()
                     : null;
+
+            string? json = ExtractContent(choice);
+            if (string.IsNullOrEmpty(json))
+            {
+                // finish_reason (e.g. "length"/"content_filter") is the single most useful clue for a no-content
+                // response; fold it into the Transport message rather than injecting a logger into this Ring-2
+                // adapter. Degrades gracefully when the provider omits it.
+                string reasonSuffix = string.IsNullOrEmpty(finishReason)
+                    ? string.Empty
+                    : $" (finish_reason: {finishReason})";
+                return new LlmResult.Failure(
+                    new LlmFailure.Transport($"OpenRouter choice carried no content.{reasonSuffix}"));
+            }
 
             LlmUsage usage = ReadUsage(root);
             var info = new LlmCallInfo(route.ProviderId, route.ModelId, latency, finishReason);

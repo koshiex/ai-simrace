@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using SimCoach.LLM;
 using SimCoach.Storage.Database;
+using SimCoach.Storage.Repositories;
 
 namespace SimCoach.RuEval;
 
@@ -16,6 +17,8 @@ namespace SimCoach.RuEval;
 /// </summary>
 public sealed class RuEvalGraph : IDisposable
 {
+    private const string HermeticJudgeRoute = "ru_judge";
+
     private readonly ServiceProvider _provider;
     private readonly string _dbPath;
 
@@ -39,6 +42,23 @@ public sealed class RuEvalGraph : IDisposable
     }
 
     public ILlmClient Client => _provider.GetRequiredService<ILlmClient>();
+
+    /// <summary>Read side over the <c>llm_usage</c> ledger the meter writes on the hot path (M30 cost tabulation).</summary>
+    public ICostQueryRepository CostQuery => _provider.GetRequiredService<ICostQueryRepository>();
+
+    /// <summary>
+    /// Resolves a candidate route key to its configured model id off the SAME route table the graph builds from
+    /// — no DI graph, SQLite, or network needed, so the always-on hermetic A/B tests (M30) can assert distinct
+    /// candidate models on the offline lane without constructing the throwaway ring.
+    /// </summary>
+    public static string ModelIdFor(string routeKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(routeKey);
+        return Config(HermeticJudgeRoute).TryGetValue($"Llm:Routes:{routeKey}:ModelId", out string? modelId)
+                && !string.IsNullOrWhiteSpace(modelId)
+            ? modelId
+            : throw new InvalidOperationException($"No model id configured for route '{routeKey}'.");
+    }
 
     public void Dispose()
     {
@@ -81,6 +101,20 @@ public sealed class RuEvalGraph : IDisposable
         ["Llm:Routes:strategy:ModelId"] = "google/gemini-2.5-flash-lite",
         ["Llm:Routes:strategy:MaxOutputTokens"] = "192",
         ["Llm:Routes:strategy:Timeout"] = "00:00:05",
+
+        // M30 A/B candidate routes: identical knobs, model id is the ONLY variable so the shadow-harness
+        // isolates the gemini-2.5 vs gemini-3.1 one-liner quality/cost trade. Budget/timeout are sized for the
+        // widest fixture (the debrief), so any cadence's request can fan through either route unchanged.
+        ["Llm:Routes:ab_gemini_25:ProviderId"] = "openrouter-google",
+        ["Llm:Routes:ab_gemini_25:ModelId"] = "google/gemini-2.5-flash-lite",
+        ["Llm:Routes:ab_gemini_25:MaxOutputTokens"] = "2000",
+        ["Llm:Routes:ab_gemini_25:Timeout"] = "00:00:30",
+        ["Llm:Routes:ab_gemini_25:Temperature"] = "0",
+        ["Llm:Routes:ab_gemini_31:ProviderId"] = "openrouter-google",
+        ["Llm:Routes:ab_gemini_31:ModelId"] = "google/gemini-3.1-flash-lite",
+        ["Llm:Routes:ab_gemini_31:MaxOutputTokens"] = "2000",
+        ["Llm:Routes:ab_gemini_31:Timeout"] = "00:00:30",
+        ["Llm:Routes:ab_gemini_31:Temperature"] = "0",
 
         [$"Llm:Routes:{judgeRouteKey}:ProviderId"] = "openrouter-anthropic",
         [$"Llm:Routes:{judgeRouteKey}:ModelId"] = "anthropic/claude-sonnet-4.6",
