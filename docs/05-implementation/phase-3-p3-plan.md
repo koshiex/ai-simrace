@@ -84,7 +84,13 @@
 | M34: ADR-0018 / proto(18/19/20) / kernel / populate / coach | `1b206d2` / `dc28a1a` / `b5f9057` / `e8cc4e5` / `7bad9f5` | ✅ |
 | M38: ADR-0019 / bake / cornermodel / store / linedev / gate | 6 коммитов | ✅ |
 
-**PR-A код-комплит (26 коммитов).** Далее: весь дифф через независимый S→D→J → фиксы → PR-A.
+**PR-A код-комплит + ревью.** Весь дифф прогнан через независимый **Strict→Defender→Judge** (`wf_0851cbb0`).
+Вердикт — revise, 1 must-fix HIGH + 3 нита, **все закрыты** (4 fix-коммита):
+- **HIGH — M38 centerline был inert**: csproj embed-glob для `Data\centerline.*.json` отсутствовал → `Load()` всегда пуст → LINE-ref всегда падал в PB-fallback (потому gate и показывал «unchanged»). Пофикшено: добавлен glob + **завендорены запечённые centerline.monza.json (16 чистых кругов) / centerline.spa.json (5)** + embedded-Load тест. Gate re-run с **активным** centerline: 2/2 (TIME-метрики держатся). M38 теперь реально работает на живой Monza.
+- MEDIUM: `Trigger==LateralG` вживлён в corner-type гейт (был radius-only).
+- LOW: retention исключает активный snapshot; убрано неиспользуемое `SourceRecording`.
+
+Full solution зелёный (~1147 тестов). Далее — PR-A.
 
 **Ground-truth gate (merge-precondition):** прогнан локально против реальной фикстуры
 `20260701-171602-738` с `SIMCOACH_REQUIRE_GROUNDTRUTH=1` — **2/2** после M43 и снова **2/2** после
