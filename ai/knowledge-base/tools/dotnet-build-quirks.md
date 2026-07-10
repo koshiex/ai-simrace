@@ -15,6 +15,14 @@ DOTNET_ROLL_FORWARD=LatestMajor dotnet test SimCoach.sln
 
 `global.json` already uses `rollForward: latestMajor` so build/restore work without the env var.
 
+**A standalone tool/app exe is the opposite case — it DOES honour csproj `RollForward`.** The testhost
+ignores it (it ships its own runtimeconfig), but a plain `dotnet run`/`.exe` reads its own generated
+`*.runtimeconfig.json`, so `<RollForward>LatestMajor</RollForward>` in the tool's csproj lets it run on a
+newer-only box. `tools/SimCoach.Bake` and `tools/SimCoach.GroundTruthDump` set it for this reason — without
+it, `SimCoach.Bake.exe` on a .NET-10-only machine dies with "You must install .NET 9.0.0". The env-var
+prefix does NOT rescue a `dotnet run` (it doesn't cross WSL→Win32, same as the testhost case, and there is
+no `-e` flag for `run`) — fix it in the csproj, not the shell.
+
 ## Running the Windows .NET SDK from WSL
 
 There is **no `dotnet` on the WSL `PATH`** — the SDK is the Windows install. Drive it from WSL via
@@ -79,6 +87,12 @@ name names the type counts as apparent. So `DateTimeOffset t = frame.T.ToDateTim
 (must be `var t = ...`), even though the return type isn't visible at the call site. `csharp_style_var_for_built_in_types = false` exempts built-ins, so `int n = (int)x.TotalMilliseconds;`
 stays explicit. Rule of thumb here: `new`/`ToXxx()`/cast on a non-built-in ⇒ `var`; everything
 else ⇒ explicit.
+
+The apparent/non-apparent split is finer than "does the RHS name a type": a **factory method whose
+name is the type** counts as apparent (`var doc = CenterlineGeometryDocument.FromCenterline(x);` — IDE0007
+if you write it explicit), but a **generic method whose type is only in the type argument** does NOT
+(`CenterlineGeometryDocument? read = JsonSerializer.Deserialize<CenterlineGeometryDocument>(json);` must be
+explicit — `var` fails IDE0008). So `Type.FromX()` ⇒ `var`, `Method<Type>()` ⇒ explicit.
 
 ## Naming rule IDE1006 covers `private static readonly` fields too
 
@@ -162,6 +176,17 @@ negation after the `data/` block in `.gitignore`:
 
 Both lines are needed: the first re-includes the directory so git descends into it, the second
 re-includes its files.
+
+**Vendoring a NEW embedded-asset family needs its OWN csproj `<EmbeddedResource>` glob — three
+things, not two.** `SimCoach.Reference.csproj` embeds `Data\cornerGeometry.*.json`; adding a second
+family (`Data\centerline.*.json`) requires a *separate* `<EmbeddedResource Include="Data\centerline.*.json" />`
+line — the existing cornerGeometry glob does not match it. Miss the glob and the failure is **silent**:
+the loader scans `assembly.GetManifestResourceNames()` for `.Data.centerline`, finds nothing, and
+`CenterlineGeometryDataset.Load()` returns an empty dataset — no error, no test failure (unit tests use
+the in-memory `FromDocuments` seam, never the embedded `Load()` path), and the whole feature degrades to
+its fallback. The full checklist to vendor an embedded asset: (1) `.gitignore` negation (above),
+(2) DI/consumer wiring, (3) the csproj glob, **and** (4) a test over the real `Load()` embedded path so a
+missing glob fails CI. All three of (1)–(3) are independent; having two of them silently disables the feature.
 
 ## NuGet packages that do not exist (verified against nuget.org)
 
