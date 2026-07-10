@@ -46,6 +46,9 @@ public sealed class GoldArtifactBuilder
             Reason: string.IsNullOrEmpty(e.Reason) ? null : e.Reason)
         {
             CornerNameRu = _names.GetShort(ctx.TrackId, e.CornerId),
+            EntryLineDeviationM = hasRef ? Rounding.Meters(e.EntryLineDeviationM) : null,
+            ApexLineDeviationM = hasRef ? Rounding.Meters(e.ApexLineDeviationM) : null,
+            ExitLineDeviationM = hasRef ? Rounding.Meters(e.ExitLineDeviationM) : null,
         };
 
         return Envelope("corner", Header(ctx), payload, ctx.Locale);

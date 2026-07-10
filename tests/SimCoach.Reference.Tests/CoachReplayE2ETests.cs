@@ -56,6 +56,7 @@ public sealed class CoachReplayE2ETests : IDisposable
         var trackModels = new TrackModelStore(BakedGeometryFixture.Spa(), lengths, NullLogger<TrackModelStore>.Instance);
         var referenceStore = new ReferenceStore(
             references,
+            new ReferenceSnapshotRepository(factory),
             new ReferenceStorageOptions { Directory = Path.Combine(_root, "references") },
             TimeProvider.System,
             NullLogger<ReferenceStore>.Instance);
@@ -71,7 +72,8 @@ public sealed class CoachReplayE2ETests : IDisposable
             fanOut, context, new RecordingOptions { BasePath = recordingsBase, SegmentDuration = TimeSpan.FromMinutes(5) },
             TimeProvider.System, NullLogger<McapRecorderService>.Instance);
         var compute = new ComputeService(
-            fanOut, domainFanOut, context, trackModels, new ReferenceLookup(references), referenceStore, laps, lengths,
+            fanOut, domainFanOut, context, trackModels, CenterlineGeometryDataset.Load(),
+            new ReferenceLookup(references), referenceStore, laps, lengths,
             new ComputeOptions(), NullLogger<ComputeService>.Instance);
 
         // The LLM ring via the real public AddLlm (fake provider; Llm:Live=false), sharing the e2e's DB so

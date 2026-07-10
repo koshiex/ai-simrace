@@ -23,6 +23,13 @@ public sealed record Corner
     public required float StartPosition { get; init; }
     public required float ApexPosition { get; init; }
     public required float EndPosition { get; init; }
+
+    /// <summary>Apex radius in metres (M38 corner-type gate; 0 when unbaked). Larger = straighter.</summary>
+    public float ApexRadiusM { get; init; }
+
+    /// <summary>The channel that triggered detection (<c>CornerChannel</c> name; null when unbaked) — the
+    /// M38 gate treats a non-curvature trigger / large radius as a flat corner where line shape is moot.</summary>
+    public string? Trigger { get; init; }
 }
 
 /// <summary>

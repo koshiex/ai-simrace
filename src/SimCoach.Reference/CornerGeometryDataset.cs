@@ -68,6 +68,8 @@ public sealed class CornerGeometryDataset
                 StartPosition = entry.StartPosition,
                 ApexPosition = entry.ApexPosition,
                 EndPosition = entry.EndPosition,
+                ApexRadiusM = entry.ApexRadiusM,
+                Trigger = entry.Trigger,
             });
         }
 

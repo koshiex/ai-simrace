@@ -93,6 +93,30 @@ public sealed class CornerEventBuilderTests
     }
 
     [Fact]
+    public void Torn_or_missing_world_position_frames_are_skipped_and_do_not_inflate_line_deviation()
+    {
+        // M43: a frame whose WorldPos is null or the (0,0,0) honest-zero sentinel (slot out of range /
+        // torn frame) must be skipped in the racing-line RMS. On an otherwise on-line lap, folding a (0,0)
+        // origin in would add the car's full distance-to-track-origin (~hundreds of m) as a phantom line
+        // error. FlatFullThrottleCorner rides exactly the reference world line, so a clean deviation is ~0.
+        List<TelemetryFrame> self = [.. FlatFullThrottleCorner()];
+        self[5] = self[5].Clone();
+        self[5].WorldPos = new Vec3();   // (0,0,0) sentinel
+        self[7] = self[7].Clone();
+        self[7].WorldPos = null;          // missing world position
+
+        (CornerEvent torn, _) =
+            CornerEventBuilder.Build(_corner, self, ReferenceGrid(), LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction);
+        (CornerEvent clean, _) =
+            CornerEventBuilder.Build(_corner, FlatFullThrottleCorner(), ReferenceGrid(), LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction);
+
+        torn.RacingLineDeviationM.Should().BeLessThan(
+            1f, "the torn (0,0,0)/null frames are skipped, not folded into the RMS as a phantom origin distance");
+        torn.RacingLineDeviationM.Should().BeApproximately(
+            clean.RacingLineDeviationM, 0.01f, "skipping the torn frames leaves the deviation identical to the all-valid lap");
+    }
+
+    [Fact]
     public void Braking_upstream_of_the_start_is_captured_without_leaking_into_delta()
     {
         // M16: the real braking zone opens before the geometric corner start. With the tracker armed
@@ -143,6 +167,121 @@ public sealed class CornerEventBuilderTests
         ev.DeltaMs.Should().Be(
             0, "no self frame lands inside [Start,End] → self-only fallback, never an upstream-inflated delta");
         contribution.DeltaMs.Should().Be(0, "the degenerate window contributes nothing to top-losses");
+    }
+
+    [Fact]
+    public void Signed_per_phase_line_deviation_is_populated_from_a_curved_reference()
+    {
+        // M34: self rides ~5 m OUTSIDE a curved reference arc across the whole corner → every phase reads
+        // positive (wider). Proves Build wires the signed kernel end to end with the correct sign.
+        ResampledLap reference = CurvedReferenceGrid();
+        List<TelemetryFrame> self = [];
+        for (int k = 0; k <= 20; k++)
+        {
+            self.Add(ArcFrame(0.30f + (0.01f * k), radius: 105f, tMs: 15 * k));
+        }
+
+        (CornerEvent ev, _) =
+            CornerEventBuilder.Build(_corner, self, reference, LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction);
+
+        ev.EntryLineDeviationM.Should().BePositive("self runs wider than the reference line on entry");
+        ev.ApexLineDeviationM.Should().BePositive("self runs wider than the reference line at the apex");
+        ev.ExitLineDeviationM.Should().BeApproximately(5f, 1.5f, "self runs ~5 m wider than the reference line on exit");
+    }
+
+    [Fact]
+    public void Line_deviation_uses_the_supplied_centerline_reference_not_the_pb()
+    {
+        // M38: PB (TIME ref) and self both ride radius-100; the centerline (LINE ref) is radius-95 (a tighter
+        // ideal). vs the PB the self line is ~0, but vs the centerline it is ~5 m wider → the signed fields
+        // must read the CENTERLINE, and the PB-fallback (no lineReference) must read ~0.
+        ResampledLap pb = CurvedReferenceGrid(100f);
+        ResampledLap centerline = CurvedReferenceGrid(95f);
+        List<TelemetryFrame> self = [];
+        for (int k = 0; k <= 20; k++)
+        {
+            self.Add(ArcFrame(0.30f + (0.01f * k), radius: 100f, tMs: 15 * k));
+        }
+
+        (CornerEvent viaCenterline, _) = CornerEventBuilder.Build(
+            _corner, self, pb, LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction, lineReference: centerline);
+        (CornerEvent viaPb, _) = CornerEventBuilder.Build(
+            _corner, self, pb, LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction);
+
+        viaCenterline.ExitLineDeviationM.Should().BeApproximately(
+            5f, 1.5f, "self is ~5 m wider than the radius-95 centerline (the LINE reference)");
+        viaPb.ExitLineDeviationM.Should().BeApproximately(
+            0f, 1.0f, "with no centerline the LINE reference falls back to the PB the self rides");
+    }
+
+    [Fact]
+    public void The_corner_type_gate_neutralises_signed_deviation_on_a_large_radius_corner()
+    {
+        // M38: a corner whose baked apex radius exceeds the relevance ceiling is a near-straight kink — its
+        // signed line deviations neutralise to 0 even when self runs wide of the (curved) reference line.
+        Corner flatCorner = new()
+        {
+            Id = "spa_t01",
+            StartPosition = 0.30f,
+            ApexPosition = 0.40f,
+            EndPosition = 0.50f,
+            ApexRadiusM = 500f,
+        };
+        List<TelemetryFrame> self = [];
+        for (int k = 0; k <= 20; k++)
+        {
+            self.Add(ArcFrame(0.30f + (0.01f * k), radius: 105f, tMs: 15 * k));
+        }
+
+        (CornerEvent ev, _) = CornerEventBuilder.Build(
+            flatCorner, self, CurvedReferenceGrid(), LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction,
+            lineRelevanceMaxRadiusM: 100f);
+
+        ev.EntryLineDeviationM.Should().Be(0f);
+        ev.ApexLineDeviationM.Should().Be(0f);
+        ev.ExitLineDeviationM.Should().Be(0f, "a large-radius corner is line-irrelevant → gated to 0");
+    }
+
+    [Fact]
+    public void The_corner_type_gate_neutralises_a_lateral_g_triggered_corner()
+    {
+        // M38: a corner detected by sustained lateral load only (Trigger==LateralG — the flat/fast channel) is
+        // line-irrelevant even with a small apex radius → signed deviations neutralise to 0.
+        Corner sweepCorner = new()
+        {
+            Id = "spa_t01",
+            StartPosition = 0.30f,
+            ApexPosition = 0.40f,
+            EndPosition = 0.50f,
+            ApexRadiusM = 50f,
+            Trigger = "LateralG",
+        };
+        List<TelemetryFrame> self = [];
+        for (int k = 0; k <= 20; k++)
+        {
+            self.Add(ArcFrame(0.30f + (0.01f * k), radius: 105f, tMs: 15 * k));
+        }
+
+        (CornerEvent ev, _) = CornerEventBuilder.Build(
+            sweepCorner, self, CurvedReferenceGrid(), LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction,
+            lineRelevanceMaxRadiusM: 300f);
+
+        ev.EntryLineDeviationM.Should().Be(0f);
+        ev.ExitLineDeviationM.Should().Be(0f, "a LateralG-triggered corner is line-irrelevant → gated to 0");
+    }
+
+    [Fact]
+    public void Signed_line_deviation_neutralises_to_zero_against_a_straight_reference()
+    {
+        // A straight reference world line has no defined inside/outside → per-phase signs neutralise to 0,
+        // even though the unsigned RMS (field 9) still reads the offset.
+        (CornerEvent ev, _) = CornerEventBuilder.Build(
+            _corner, [.. SlowerSelfCorner()], ReferenceGrid(), LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction);
+
+        ev.EntryLineDeviationM.Should().Be(0f);
+        ev.ApexLineDeviationM.Should().Be(0f);
+        ev.ExitLineDeviationM.Should().Be(0f);
+        ev.RacingLineDeviationM.Should().BePositive("the unsigned RMS still captures the offset");
     }
 
     [Fact]
@@ -294,6 +433,67 @@ public sealed class CornerEventBuilderTests
             WorldX = worldX,
             WorldY = new float[GridLength],
             WorldZ = new float[GridLength],
+        };
+    }
+
+    // Reference whose world path is a CCW quarter-circle arc (radius 100) over the whole grid, so the
+    // corner window [0.30,0.50] traces a real turn — the signed line-deviation kernel needs a defined
+    // inside/outside. Speed/brake/throttle are benign constants (the other kernels run but aren't asserted).
+    private static ResampledLap CurvedReferenceGrid(float radius = 100f)
+    {
+        float[] position = new float[GridLength];
+        int[] tMs = new int[GridLength];
+        float[] speed = new float[GridLength];
+        float[] worldX = new float[GridLength];
+        float[] worldZ = new float[GridLength];
+        for (int k = 0; k < GridLength; k++)
+        {
+            float pos = k / 100f;
+            float theta = MathF.PI / 2f * pos;
+            position[k] = pos;
+            tMs[k] = k * 10;
+            speed[k] = 50f;
+            worldX[k] = radius * MathF.Cos(theta);
+            worldZ[k] = radius * MathF.Sin(theta);
+        }
+
+        return new ResampledLap
+        {
+            LapNumber = 1,
+            GridLength = GridLength,
+            PositionNormalized = position,
+            TMsFromLapStart = tMs,
+            SpeedMps = speed,
+            ThrottlePct = new float[GridLength],
+            BrakePct = new float[GridLength],
+            SteerRad = new float[GridLength],
+            Gear = new int[GridLength],
+            TyreTempFl = new float[GridLength],
+            TyreTempFr = new float[GridLength],
+            TyreTempRl = new float[GridLength],
+            TyreTempRr = new float[GridLength],
+            GLat = new float[GridLength],
+            GLong = new float[GridLength],
+            WorldX = worldX,
+            WorldY = new float[GridLength],
+            WorldZ = worldZ,
+        };
+    }
+
+    // A self frame on the arc at the given radius (radius > 100 → outside the reference line).
+    private static TelemetryFrame ArcFrame(float pos, float radius, int tMs)
+    {
+        float theta = MathF.PI / 2f * pos;
+        return new TelemetryFrame
+        {
+            T = Timestamp.FromDateTimeOffset(DateTimeOffset.UnixEpoch.AddMilliseconds(tMs)),
+            NormalizedCarPosition = pos,
+            SpeedMps = 50f,
+            BrakePct = 0.3f,
+            ThrottlePct = 0.3f,
+            SteerRad = 0.3f,
+            WorldPos = new Vec3 { X = radius * MathF.Cos(theta), Y = 0f, Z = radius * MathF.Sin(theta) },
+            IsValidLap = true,
         };
     }
 

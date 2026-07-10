@@ -73,6 +73,14 @@ speaking sink. See [mvp-deferrals.md](./mvp-deferrals.md) → "Carried from Phas
 - [ ] `PriorityAudioQueue` preemption + fade-out
 - [ ] `NAudioPlayer` WASAPI shared
 - [ ] Hotkey to mute
+- [ ] **M40 — streaming debrief:** stream the debrief LLM response token-by-token (`StreamAsync` /
+      `RouteOptions.Stream`, `OpenRouterProvider.cs:73-74`) so TTS can begin speaking before the full
+      text arrives — cuts perceived latency on the long (≤200-word) post-session summary. Deferred out
+      of Phase 3 (no P3 win — nothing consumes the stream until a speaking sink exists); it is pure
+      TTS-prep, so it lands with Voice. Note the existing seams: `StreamAsync` is already declared and
+      "streaming deferred to Phase 6" is noted for structured-output routes above — coordinate M40 with
+      the **Phase 6** debrief *delivery* + `StreamAsync` consumption so the two don't drift. Origin: P3
+      master-backlog M40 `[LLM n25]`; owner scoped it to the TTS phase 2026-07-05.
 - [ ] Tests: cancellation latency, fade-out continuity
 
 ## Phase 5 — Overlay (week 6)

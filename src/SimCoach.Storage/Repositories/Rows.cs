@@ -95,3 +95,18 @@ public sealed record ReferenceRow
     public bool Pinned { get; init; }
     public required DateTimeOffset CreatedAtUtc { get; init; }
 }
+
+/// <summary>Row of the <c>reference_snapshots</c> history table — one per PB parquet ever written for a
+/// triple (many per triple; the active pointer is <see cref="ReferenceRow"/>). ADR-0017.</summary>
+public sealed record ReferenceSnapshotRow
+{
+    public required string Id { get; init; }
+    public required string TrackId { get; init; }
+    public required string CarId { get; init; }
+    public required string WeatherBucket { get; init; }
+    public string? SourceSessionId { get; init; }
+    public int? SourceLapNumber { get; init; }
+    public required int LapTimeMs { get; init; }
+    public required string ParquetPath { get; init; }
+    public required DateTimeOffset CreatedAtUtc { get; init; }
+}

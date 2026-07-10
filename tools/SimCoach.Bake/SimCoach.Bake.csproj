@@ -2,6 +2,9 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <!-- Dev tool: run on whatever shared runtime the box has (mirrors SimCoach.GroundTruthDump) so a
+         machine with only a newer major (e.g. .NET 10) can still bake without a 9.0 install. -->
+    <RollForward>LatestMajor</RollForward>
   </PropertyGroup>
 
   <ItemGroup>

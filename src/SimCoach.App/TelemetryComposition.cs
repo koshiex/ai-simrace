@@ -80,6 +80,7 @@ public static class TelemetryComposition
         builder.Services.AddSingleton<SessionRepository>();
         builder.Services.AddSingleton<LapRepository>();
         builder.Services.AddSingleton<ReferenceRepository>();
+        builder.Services.AddSingleton<ReferenceSnapshotRepository>();
         // Sim-agnostic seam (Storage) bridged to the ACC catalog at the composition edge; consumed by
         // SessionManager's laps.parquet conversion and the compute track model + resampler.
         builder.Services.AddSingleton<ITrackLengthProvider, AccTrackLengthProvider>();
@@ -111,6 +112,7 @@ public static class TelemetryComposition
         builder.Services.AddSingleton(computeOptions);
 
         builder.Services.AddSingleton(CornerGeometryDataset.Load());
+        builder.Services.AddSingleton(CenterlineGeometryDataset.Load());
         builder.Services.AddSingleton<TrackModelStore>();
 
         builder.Services.AddSingleton(new ReferenceStorageOptions

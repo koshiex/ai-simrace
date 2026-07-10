@@ -156,7 +156,12 @@ public sealed class CoachStartupValidator : IValidateOptions<CoachOptions>
         CoachCadence.Corner => GoldView.For(new GoldArtifact<GoldCornerEvent>(
             "gold/1", "corner", "ru-RU",
             SampleSession(),
-            new GoldCornerEvent("spa_t1", "Eau Rouge", 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, false, "low_min_speed"))),
+            new GoldCornerEvent("spa_t1", "Eau Rouge", 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, false, "low_min_speed")
+            {
+                EntryLineDeviationM = 1,
+                ApexLineDeviationM = 1,
+                ExitLineDeviationM = 1,
+            })),
         CoachCadence.Sector => GoldView.For(new GoldArtifact<GoldSectorEvent>(
             "gold/1", "sector", "ru-RU",
             SampleSession(),

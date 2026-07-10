@@ -107,6 +107,15 @@ message CornerEvent {
   // Peak brake pressure over the corner window (0..1). Self-derived; gates the reference-free
   // trail_brake_absent action so it cannot fire on a flat/lift-only corner where the driver never braked.
   float peak_brake_pct = 17;               // 0..1
+
+  // Phase-segmented SIGNED line deviation vs the reference line (M34, ADR-0018). Splits the unsigned RMS
+  // field 9 into entry/apex/exit so early- vs late-apex and wide- vs tight-exit are distinguishable.
+  // Signed: positive = self runs WIDER (outside) the reference line, negative = TIGHTER (inside); the
+  // sign is folded by corner turn direction, and neutralised to 0 on an ambiguous (flat/kink) corner.
+  // Deviation from the LINE reference, NOT the track edge — off-limits stays with off_track/ran_wide.
+  float entry_line_deviation_m = 18;
+  float apex_line_deviation_m = 19;
+  float exit_line_deviation_m = 20;        // + = wider exit line, - = tighter (carries the former track_width intent)
 }
 
 // Per-sector summary emitted at sector cross.

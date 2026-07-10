@@ -15,22 +15,26 @@ namespace SimCoach.Reference;
 public sealed class ReferenceStore
 {
     private readonly ReferenceRepository _repository;
+    private readonly ReferenceSnapshotRepository _snapshots;
     private readonly ReferenceStorageOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<ReferenceStore> _logger;
 
     public ReferenceStore(
         ReferenceRepository repository,
+        ReferenceSnapshotRepository snapshots,
         ReferenceStorageOptions options,
         TimeProvider timeProvider,
         ILogger<ReferenceStore> logger)
     {
         ArgumentNullException.ThrowIfNull(repository);
+        ArgumentNullException.ThrowIfNull(snapshots);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
         options.EnsureValid();
         _repository = repository;
+        _snapshots = snapshots;
         _options = options;
         _timeProvider = timeProvider;
         _logger = logger;
@@ -62,10 +66,28 @@ public sealed class ReferenceStore
             return false;
         }
 
-        // source_session_id has an FK to sessions(id). SessionManager (registered before ComputeService)
-        // inserts the row on frame #1, so by the time any lap completes the row exists — the FK holds.
-        string parquetPath = Path.Combine(_options.Directory, triple.ParquetFileName);
-        ReferenceParquetCodec.Write(resampled, parquetPath);
+        // ADR-0017: write a VERSIONED snapshot (never overwrite), record it in the append-only history,
+        // then point the active [references] row at the new file. source_session_id has an FK to
+        // sessions(id); SessionManager (registered before ComputeService) inserts the row on frame #1, so
+        // by the time any lap completes the row exists — the FK holds (ON DELETE SET NULL keeps history).
+        string snapshotId = Guid.NewGuid().ToString("N");
+        DateTimeOffset createdAtUtc = _timeProvider.GetUtcNow();
+        string snapshotPath =
+            Path.Combine(_options.Directory, triple.SnapshotFileName(completed.LapTimeMs, snapshotId));
+        ReferenceParquetCodec.Write(resampled, snapshotPath);
+
+        _snapshots.Insert(new ReferenceSnapshotRow
+        {
+            Id = snapshotId,
+            TrackId = triple.TrackId,
+            CarId = triple.CarId,
+            WeatherBucket = triple.WeatherBucket,
+            SourceSessionId = identity.SessionId,
+            SourceLapNumber = completed.LapNumber,
+            LapTimeMs = completed.LapTimeMs,
+            ParquetPath = snapshotPath,
+            CreatedAtUtc = createdAtUtc,
+        });
 
         _repository.Upsert(new ReferenceRow
         {
@@ -76,15 +98,62 @@ public sealed class ReferenceStore
             SourceSessionId = identity.SessionId,
             SourceLapNumber = completed.LapNumber,
             LapTimeMs = completed.LapTimeMs,
-            ParquetPath = parquetPath,
+            ParquetPath = snapshotPath,
             Pinned = false,
-            CreatedAtUtc = _timeProvider.GetUtcNow(),
+            CreatedAtUtc = createdAtUtc,
         });
+
+        PruneOldSnapshots(triple, snapshotId);
 
         _logger.LogInformation(
             "Reference updated for {Track}/{Car}/{Weather}: {LapMs} ms (lap {Lap}, session {Session})",
             triple.TrackId, triple.CarId, triple.WeatherBucket, completed.LapTimeMs,
             completed.LapNumber, identity.SessionId);
         return true;
+    }
+
+    /// <summary>
+    /// Enforces <see cref="ReferenceStorageOptions.MaxSnapshotsPerTriple"/> by pruning the oldest
+    /// snapshots (row + file) beyond the cap. The just-written active snapshot (which the
+    /// <c>[references]</c> pointer was repointed at) is EXCLUDED from the prune candidates, so a coarse or
+    /// tied <c>created_at_utc</c> — where oldest-first ordering falls back to a random id — can never delete
+    /// the live reference file. Keeps <paramref name="cap"/> total: the active plus the newest cap-1 others.
+    /// </summary>
+    private void PruneOldSnapshots(ReferenceTriple triple, string activeSnapshotId)
+    {
+        if (_options.MaxSnapshotsPerTriple is not int cap)
+        {
+            return; // keep-all (default)
+        }
+
+        List<ReferenceSnapshotRow> prunable =
+        [
+            .. _snapshots.ListByTriple(triple.TrackId, triple.CarId, triple.WeatherBucket)
+                .Where(s => !string.Equals(s.Id, activeSnapshotId, StringComparison.Ordinal)),
+        ];
+        int excess = prunable.Count - (cap - 1); // reserve one slot for the always-kept active snapshot
+        for (int i = 0; i < excess; i++)
+        {
+            ReferenceSnapshotRow old = prunable[i];
+            _snapshots.Delete(old.Id);
+            TryDeleteFile(old.ParquetPath);
+        }
+    }
+
+    private void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (IOException ex)
+        {
+            // Non-fatal: the history row is already gone, so an undeleted file is a harmless orphan that
+            // no pointer resolves to. Log rather than fail the reference update.
+            _logger.LogWarning(ex, "Failed to prune reference snapshot file {Path}", path);
+        }
     }
 }

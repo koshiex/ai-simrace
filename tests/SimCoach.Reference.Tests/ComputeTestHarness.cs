@@ -27,6 +27,7 @@ internal sealed class ComputeTestHarness : IDisposable
         ITrackLengthProvider lengths = trackLengths ?? FakeTrackLengths.Spa();
         Laps = new LapRepository(Factory);
         References = new ReferenceRepository(Factory);
+        Snapshots = new ReferenceSnapshotRepository(Factory);
         Sessions = new SessionRepository(Factory);
         DomainFanOut = new DomainEventFanOut();
 
@@ -40,6 +41,7 @@ internal sealed class ComputeTestHarness : IDisposable
         Lookup = new ReferenceLookup(References);
         ReferenceStore = new ReferenceStore(
             References,
+            Snapshots,
             new ReferenceStorageOptions { Directory = Path.Combine(_root, "references") },
             TimeProvider.System,
             NullLogger<ReferenceStore>.Instance);
@@ -54,11 +56,15 @@ internal sealed class ComputeTestHarness : IDisposable
 
     public ReferenceRepository References { get; }
 
+    public ReferenceSnapshotRepository Snapshots { get; }
+
     public SessionRepository Sessions { get; }
 
     public DomainEventFanOut DomainFanOut { get; }
 
     public TrackModelStore TrackModels { get; }
+
+    public CenterlineGeometryDataset Centerlines { get; } = CenterlineGeometryDataset.Load();
 
     public ReferenceLookup Lookup { get; }
 
@@ -88,7 +94,7 @@ internal sealed class ComputeTestHarness : IDisposable
         Sessions.Insert(NewSessionRow(identity, frames[0]));
 
         var session = new ComputeSession(
-            DomainFanOut, TrackModels, Lookup, ReferenceStore, Laps, _lengths,
+            DomainFanOut, TrackModels, Centerlines, Lookup, ReferenceStore, Laps, _lengths,
             options ?? new ComputeOptions(), NullLogger.Instance, identity);
         foreach (TelemetryFrame frame in frames)
         {
@@ -118,7 +124,7 @@ internal sealed class ComputeTestHarness : IDisposable
         var identity = new SessionIdentity(sessionId, new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero));
         Sessions.Insert(NewSessionRow(identity, frames[0]));
         var session = new ComputeSession(
-            new DomainEventFanOut(), TrackModels, Lookup, ReferenceStore, Laps, _lengths,
+            new DomainEventFanOut(), TrackModels, Centerlines, Lookup, ReferenceStore, Laps, _lengths,
             options ?? new ComputeOptions(), NullLogger.Instance, identity);
         foreach (TelemetryFrame frame in frames)
         {

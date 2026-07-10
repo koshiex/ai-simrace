@@ -31,7 +31,9 @@ internal static class CornerEventBuilder
         float lapLengthM,
         int gridLength,
         float brakeWindowUpstreamM,
-        double apexWindowFraction)
+        double apexWindowFraction,
+        float lineRelevanceMaxRadiusM = float.MaxValue,
+        ResampledLap? lineReference = null)
     {
         // M2: every self-derived kernel and the self duration are measured over the geometric
         // [StartPosition, EndPosition] sub-window — the same span the reference grid slice covers —
@@ -83,8 +85,13 @@ internal static class CornerEventBuilder
         }
 
         ResampledLap refLap = reference!;
-        int k0 = GridMetrics.Index(corner.StartPosition, gridLength);
-        int k1 = GridMetrics.Index(corner.EndPosition, gridLength);
+        // M38: the LINE reference (world path the line-deviation kernels measure against) is the median
+        // centerline when one is baked, else the PB itself — the TIME reference (delta/diffs) always stays
+        // the PB. A slow-consistent driver now sees line deviations vs the ideal corridor, not vs their own
+        // repeated line.
+        ResampledLap lineRef = lineReference ?? refLap;
+        int k0 = GridMetrics.Index(refLap, corner.StartPosition);
+        int k1 = GridMetrics.Index(refLap, corner.EndPosition);
         IReadOnlyList<TelemetryFrame> refFrames = GridMetrics.SliceToFrames(refLap, k0, k1);
         if (refFrames.Count == 0 || k1 <= k0 || selfSpanDegenerate)
         {
@@ -133,7 +140,21 @@ internal static class CornerEventBuilder
         float throttleResumeDiffM =
             ((speedRef.ThrottleOnPosition ?? corner.EndPosition) - (speedSelf.ThrottleOnPosition ?? corner.EndPosition))
             * lapLengthM;
-        float racingLineDeviationM = RacingLineDeviation(selfSpan, refLap);
+        float racingLineDeviationM = RacingLineDeviation(selfSpan, lineRef);
+
+        // M34: signed per-phase line deviation (entry/apex/exit) over the SAME [Start,End] self span the
+        // unsigned RMS (field 9) uses. The pure kernel folds each band's median offset by the reference
+        // turn direction (+ = wider, − = tighter) and neutralises a near-straight band to 0.
+        (PhaseBand entryBand, PhaseBand apexBand, PhaseBand exitBand) = SignedLineDeviation.EntryApexExitBands(
+            corner.StartPosition, corner.ApexPosition, corner.EndPosition, apexWindowFraction);
+        // M38 corner-type gate: a baked corner is line-irrelevant when its apex radius exceeds the relevance
+        // ceiling (a fast kink / near-straight) OR it was detected by sustained lateral load only
+        // (Trigger == LateralG, the flat/large-radius channel) — line shape is moot there, so neutralise the
+        // signed fields. A corner with no baked radius (0) is not radius-gated (the kernel's geometric
+        // neutralisation still applies).
+        bool lineRelevant =
+            (corner.ApexRadiusM <= 0f || corner.ApexRadiusM <= lineRelevanceMaxRadiusM)
+            && !string.Equals(corner.Trigger, "LateralG", StringComparison.Ordinal);
 
         ev.DeltaMs = deltaMs;
         ev.BrakePointDiffM = brakePointDiffM;
@@ -141,6 +162,9 @@ internal static class CornerEventBuilder
         ev.ThrottleResumeDiffM = throttleResumeDiffM;
         ev.TrailBrakePctRef = brakeRef.TrailBrakePct;
         ev.RacingLineDeviationM = racingLineDeviationM;
+        ev.EntryLineDeviationM = lineRelevant ? SignedLineDeviation.MedianSignedOffset(selfSpan, lineRef, entryBand) : 0f;
+        ev.ApexLineDeviationM = lineRelevant ? SignedLineDeviation.MedianSignedOffset(selfSpan, lineRef, apexBand) : 0f;
+        ev.ExitLineDeviationM = lineRelevant ? SignedLineDeviation.MedianSignedOffset(selfSpan, lineRef, exitBand) : 0f;
 
         string reason = ChooseReason(offTrack, throttleResumeDiffM, brakePointDiffM, minSpeedDiffKmh);
         ev.Reason = reason;
@@ -199,11 +223,19 @@ internal static class CornerEventBuilder
         int count = 0;
         foreach (TelemetryFrame frame in selfFrames)
         {
+            // Skip frames with no world position: null, or the (0,0,0) honest-zero sentinel the ACC mapper
+            // writes when the player slot is out of range (AccFrameMapper's `new Vec3()`). Folding a (0,0)
+            // origin into the RMS would inflate racing_line_deviation_m by the car's full distance from the
+            // track origin — a phantom line error on torn/slot-less frames.
+            Vec3? worldPos = frame.WorldPos;
+            if (worldPos is null || (worldPos.X == 0f && worldPos.Y == 0f && worldPos.Z == 0f))
+            {
+                continue;
+            }
+
             (float refX, float refZ) = GridMetrics.InterpWorldXZ(reference, frame.NormalizedCarPosition);
-            float selfX = frame.WorldPos?.X ?? 0f;
-            float selfZ = frame.WorldPos?.Z ?? 0f;
-            double dx = selfX - refX;
-            double dz = selfZ - refZ;
+            double dx = worldPos.X - refX;
+            double dz = worldPos.Z - refZ;
             sumSquares += (dx * dx) + (dz * dz);
             count++;
         }
