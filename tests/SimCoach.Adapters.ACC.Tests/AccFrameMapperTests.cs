@@ -217,6 +217,38 @@ public sealed class AccFrameMapperTests
     }
 
     [Theory]
+    [InlineData(2, true)]   // LIVE stays recordable
+    [InlineData(1, true)]   // REPLAY now recordable — opt-in reference capture
+    [InlineData(0, false)]  // OFF never
+    [InlineData(3, false)]  // PAUSE never
+    public void Recordable_with_replay_capture_also_records_replay_status(int status, bool expectedRecordable)
+    {
+        // Arrange — same identity as the live case; only allowReplay flips REPLAY (=1) to recordable
+        AccTelemetrySnapshot snapshot = AccSnapshotFixture.Build(
+            graphics: page => page.WithInt32(4, status),
+            @static: page => page
+                .WithUtf16(68, "bmw_m4_gt3", 33)
+                .WithUtf16(134, "spa", 33));
+
+        // Act / Assert
+        AccFrameMapper.IsRecordable(snapshot, allowReplay: true).Should().Be(expectedRecordable);
+    }
+
+    [Fact]
+    public void Recordable_with_replay_capture_still_requires_identity()
+    {
+        // Arrange — REPLAY with an empty car id is a menu/loading frame, not a lap to capture
+        AccTelemetrySnapshot snapshot = AccSnapshotFixture.Build(
+            graphics: page => page.WithInt32(4, 1),
+            @static: page => page
+                .WithUtf16(68, "", 33)
+                .WithUtf16(134, "spa", 33));
+
+        // Act / Assert
+        AccFrameMapper.IsRecordable(snapshot, allowReplay: true).Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData("Spa", "spa")]
     [InlineData("  Brands_Hatch ", "brands_hatch")]
     [InlineData("Mount Panorama", "mount_panorama")] // spaces become underscores
