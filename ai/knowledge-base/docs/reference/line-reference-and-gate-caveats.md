@@ -18,6 +18,29 @@ not the self-median. This is the residual half of the "slow-but-consistent drive
 The **TIME** reference (`delta_ms`, brake/throttle/min-speed diffs) is separate — it stays the driver's PB
 (`ReferenceLookup`). Only the LINE reference became the centerline.
 
+## A beyond-PB *absolute* speed target cannot be synthesised from the driver's own data — falsified twice
+
+The "physics ideal line" idea (option A: build a friction-envelope QSS speed profile from the driver's
+telemetry and coach "carry more speed here") was empirically falsified **twice** — see
+`docs/05-implementation/ideal-line-reference-research.md` §6. First naively (µ inferred from one corner's
+apex speed just reproduces that corner's ceiling). Then again after extending the ground-truth dumper with
+**measured** `g_lat`/`g_long` + `world_x`/`world_z`, on the belief that measured grip would break the
+circularity. It did not. The decisive signature: **`v_target > v_actual` at every corner identically for a
+p95 / p98 / p99 grip envelope** — the ~26 km/h "budget" is envelope-*independent*, i.e. it is fixed
+point-mass-QSS + median-line geometric optimism, not imported grip. The only genuinely non-circular term
+(grip imported from *other* corners) was mean-negative and buried under the 3.6–8.9 km/h lap-to-lap noise
+floor; and at half the corners the driver's own instantaneous apex g already met/exceeded the global
+envelope, so "you're under-using grip" inverts into a crash tip. Takeaways for anyone revisiting this:
+
+- Self-data → absolute apex-speed target is self-referential **by construction**. Don't retry it without an
+  **external anchor**: track-boundary-constrained optimal line (vendor per car/track), or an external/replay
+  reference lap (replay capture is now opt-in via `AccReaderOptions.AllowReplayCapture`).
+- Measured `g_lat`/`g_long` carry curb/vertical transients that survive the `tyres_out` filter (raw abs-max
+  ~3.1 g lat / ~7 g long persist); use a robust percentile **and** a sustained-window gate (≥0.3 s), not
+  `max()` or `tyres_out` alone. p95 (~1.53 g) is more physical than p98 for a GT3.
+- The safe, non-circular signal measured g *does* give is **relative** coaching (brake-release point,
+  throttle-timing deltas vs PB), not an absolute apex-speed number.
+
 ## The corner-type gate silences fast corners by design
 
 The M38 gate (`CornerEventBuilder`, `ComputeOptions.LineRelevanceMaxRadiusM` default 300 m) neutralises the
