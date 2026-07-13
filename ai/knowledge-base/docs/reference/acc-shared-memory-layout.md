@@ -96,3 +96,23 @@ Corollary (a live-only opportunity): during **live** driving the graphics page h
 position (`CarCoordinates`, indexed by `CarId`, count = `ActiveCars`), updated in real time — so a faster
 opponent's *line* (world XZ → speed via Δpos/Δt) is capturable **live** from a race, though their pedals/g are
 not (physics page is player-only).
+
+## MoTeC `.ld`/`.ldx` export — rich channels, but NO world position (can't anchor a line to our grid)
+
+ACC's file-based telemetry export (evaluated as an external reference-lap source) is **off by default** —
+enable in-session via car setup → **ELECTRONICS → TELEMETRY LAPS → N**; it then writes the last N laps
+per session to `Documents/Assetto Corsa Competizione/MoTeC/` (paired `.ld` channel data + `.ldx` XML lap
+markers, `Time` in µs), with no invalid-lap filtering. Format: little-endian, magic `0x40`, channels are a
+doubly-linked list of contiguous per-channel blocks (`datatype_a`+`datatype` codes, `scale/mul/shift`).
+Portable references: `gotzl/ldparser` (Python, **GPL — use as layout spec only, do not port the code**),
+`t-babin/ACC-Telemetry-Tracker` (C#, MIT — structural starting point).
+
+Channels present: `Ground Speed`, `Throttle Pos`, `Brake Pos`, `Steering Angle`, `Gear`, `Engine RPM`,
+`CG Accel Lateral/Longitudinal` (gLat/gLon), wheel speeds, suspension, tyres. **NOT present: world XYZ, a
+lap-distance channel, or normalized/spline position.** MoTeC i2 dead-reckons the track map — distance
+`s=Σ(v·dt)`, heading `θ=Σ(a_lat/v·dt)`, `x=Σ v·cosθ·dt`, `y=Σ v·sinθ·dt`, then a loop-closure correction —
+so the map is an **arbitrary, drift-corrected local frame, not world coordinates**. Consequence: a `.ld`
+**cannot anchor a reference LINE** to our `carCoordinates` grid; only **distance-axis** channels align (via
+`Σspeed` ↔ `normalizedCarPosition`). Grid-anchored lines must come from live SHM `carCoordinates`, not `.ld`.
+And a foreign "alien" `.ld` is not a shippable beyond-PB source: no redistributable public corpus; the good
+ones are paid, personal-license (Coach Dave Delta, Driver61) — can't be bundled.
