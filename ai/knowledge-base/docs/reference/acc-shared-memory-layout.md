@@ -70,3 +70,29 @@ odd-length: the four consecutive `wchar_t[15]` at the top of graphics end at 132
   (**"Not used in ACC" → always 0 live**, honest passthrough only), `graphics.IsValidLap`
   (ACC `int`, `!= 0 → true`). Phase 2 maps these to `world_pos` / `current_sector_index` /
   `sector_count` / `tyres_out` / `is_valid_lap` — mapper-only, no marshalling work.
+
+## SHM validity by AC_STATUS — telemetry is only real when LIVE (replay yields nothing usable)
+
+Measured with `tools/SimCoach.ShmProbe` (reads the raw pages, bypassing the new-frame gate). Three
+distinct regimes — **replay capture from shared memory is not possible**:
+
+| Context | AC_STATUS | physics packetId | physics channels | graphics `CarCoordinates` | Static (Track/CarModel) |
+|---|---|---|---|---|---|
+| **Live driving** | `2 LIVE` | advances ~333 Hz | real (speed/gas/brake/gear/AccG) | real, moving (all active cars) | populated |
+| **Menu-loaded `.rpy`** (standalone viewer) | `0 OFF` | **frozen** | all zero | all zero | **empty** — no session |
+| **In-session replay** (ESC→replay in a live session) | `1 REPLAY` | **advances** (heartbeat) | **all zero** | **frozen** at entry position | populated |
+
+A menu replay leaves the SHM entirely dormant (the `Local\acpmf_*` map exists — `TryConnect` succeeds — but
+every page is zeroed; the empty Static page is the tell). An in-session replay is more deceptive: it keeps
+the packetId **ticking** and reports `AC_STATUS=1`, so `AccFrameMapper.IsRecordable(…, allowReplay: true)`
+admits the frames and `AccFrameAcquisition` sees "new frames" — but the physics page is **blanked to zero**
+(not the last live value — actively zeroed) and the graphics car coordinates are **frozen** at the position
+where the replay was entered. Recording it yields a stream of zero-speed, fixed-position frames.
+**Conclusion: the `AccReaderOptions.AllowReplayCapture` gate is mechanically correct but has no usable data
+behind it — ACC does not expose telemetry via shared memory during replay.** An external fast lap must come
+from a non-SHM source (MoTeC `.ld` export) or be reconstructed from a **live** race.
+
+Corollary (a live-only opportunity): during **live** driving the graphics page holds every active car's world
+position (`CarCoordinates`, indexed by `CarId`, count = `ActiveCars`), updated in real time — so a faster
+opponent's *line* (world XZ → speed via Δpos/Δt) is capturable **live** from a race, though their pedals/g are
+not (physics page is player-only).
