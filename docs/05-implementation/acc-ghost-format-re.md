@@ -77,9 +77,38 @@ verified-straight section. Random/misaligned data would be off by hundreds of me
 4. **Single-specimen field order** — layout verified on 2 files, both Ferrari 296 / Monza; treat field order
    as provisional until a different car/track confirms it.
 
+## Validated on ALIEN laps (accreplay.com) — beyond-PB LINE confirmed
+
+Source found: **accreplay.com** serves ghosts publicly, no login. Angular SPA backed by a REST API —
+leaderboard `GET /api/leaderboards/laps?trackId=3&group=GT3` (Monza = trackId 3), download
+`GET /api/laps/{lapId}/download-ghost` (returns a ZIP containing the inner `.ghost`). Downloaded 9 alien GT3
+laps (01:45–01:47, top of board) to `C:\Users\koba9\Desktop\ghosts\`. Filenames encode car + laptime + driver,
+so **every ghost has a KNOWN laptime** — the clock-calibration anchor we lacked.
+
+**Decisive test — alien BMW M4 GT3 (01:46.037 = 106.037 s, ~7 s faster than our 113.000 s PB, same car/track)
+vs OUR OWN recorded BMW line** (`references/monza_bmw_m4_gt3_dry-warm.parquet`, nearest-point):
+- deviation **median 0.98 m, mean 1.43 m, p95 4.0 m, max 5.95 m**; 49% of points >1 m, 24% >2 m, 12% >3 m.
+- concentrated at specific corners: **pn 0.55–0.60 ≈ 2.4 m, pn 0.90–1.00 ≈ 3.5 m** — the alien runs a
+  materially different line there.
+
+This is exactly what the M38 self-median could NOT deliver (a consistent driver deviates ~0 from their own
+median): a **real, non-zero, faster line** with per-corner "take a different line here" signal, decoded in our
+own world frame. **The ghost path is validated as a beyond-PB LINE source.** (median 0.98 m also re-confirms
+the decode: the alien line sits ON the Monza racing surface.)
+
+## Clock: partially pinned (per-car offset issue)
+
+Per-file `scale = knownLaptime / timestamp_span` is **consistent (~10 s per raw unit) for 6 of 9 cars**
+(Aston/Bentley/Ford/Lambo/Nissan/Porsche, all full-lap ~5748 m paths). But **BMW (scale 19.3 ≈ 2×) and
+Ferrari/McLaren (~68 ≈ 7×) are outliers**, and BMW's derived speed blew up (an 18.8 s dt gap) — i.e. the
+`+126` timestamp offset is NOT universal; the record layout (wheel/aux block sizes) likely shifts the clock
+field per car. So: the LINE (positions) is solid for all 9; a trustworthy SPEED profile needs the per-car
+timestamp offset re-found (tractable RE — anchor each car's clock against its known laptime). Pedals/gear
+(the 6 bytes at +24) remain undecoded.
+
 ## Verdict for the feature
 
-The `.ghost` decode pipeline is **ready** and gives a real, grid-alignable world LINE (in OUR coordinate
-frame, unlike MoTeC `.ld`). It becomes a **beyond-PB** reference only with (a) a ghost harvested from a
-replay **focused on a genuinely fast alien**, and (b) the clock pinned. It is a LINE (+derived speed) source,
-never pedals. Kept OFF the M46 critical path — M46 (own-optimal, own data) ships first.
+The `.ghost` decode gives a real, grid-alignable, beyond-PB world **LINE** (in OUR frame, unlike MoTeC `.ld`)
+— **validated** against a 7-s-faster same-car alien. Open before it ships: (1) finish the per-car timestamp
+offset for a trustworthy speed profile, (2) decode pedals (or accept line+speed only). Kept OFF the M46
+critical path — M46 (own-optimal, own data) ships first; the alien-LINE is the complementary next feature.
