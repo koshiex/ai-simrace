@@ -34,6 +34,7 @@ public static class AccFrameMapper
 
     // AC_STATUS (graphics page): 0 OFF, 1 REPLAY, 2 LIVE, 3 PAUSE.
     private const int AccStatusLive = 2;
+    private const int AccStatusReplay = 1;
 
     private const string WeatherDryCool = "dry-cool";
     private const string WeatherDryWarm = "dry-warm";
@@ -150,16 +151,22 @@ public static class AccFrameMapper
     }
 
     /// <summary>
-    /// True only for frames worth recording: ACC is LIVE and the static page has populated
-    /// track/car identity. Dormant box/menu/replay/pause frames carry empty ids and zeroed
-    /// sensors (issue #1) and would poison Phase 2 compute keyed on track_id/car_id — reject
-    /// them at the source. Cheap and array-free, so it is safe to call before <see cref="Map"/>.
+    /// True only for frames worth recording: ACC is LIVE (or REPLAY when <paramref name="allowReplay"/>)
+    /// and the static page has populated track/car identity. Dormant box/menu/pause frames carry empty
+    /// ids and zeroed sensors (issue #1) and would poison Phase 2 compute keyed on track_id/car_id —
+    /// reject them at the source. Cheap and array-free, so it is safe to call before <see cref="Map"/>.
     /// </summary>
+    /// <param name="allowReplay">
+    /// Opt-in: also record during REPLAY playback (<c>AC_STATUS=1</c>), used to capture a reference lap the
+    /// driver cannot produce live. Off by default so normal sessions never record menu/replay frames.
+    /// </param>
     /// <exception cref="ArgumentNullException">The snapshot is null.</exception>
-    public static bool IsRecordable(AccTelemetrySnapshot snapshot)
+    public static bool IsRecordable(AccTelemetrySnapshot snapshot, bool allowReplay = false)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        if (snapshot.Graphics.Status != AccStatusLive)
+        int status = snapshot.Graphics.Status;
+        bool isActive = status == AccStatusLive || (allowReplay && status == AccStatusReplay);
+        if (!isActive)
         {
             return false;
         }

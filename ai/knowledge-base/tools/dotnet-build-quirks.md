@@ -68,6 +68,18 @@ Same rule for any tool that shells to the Windows dotnet: the ground-truth dumpe
 **Windows** processes (Windows paths, and env vars via `test -e`, not a shell prefix), while the
 Python oracle runs in **WSL** (`/mnt/c` paths). See `docs/05-implementation/ground-truth-revalidation.md`.
 
+**A Windows tool exe cannot write to the WSL session scratchpad.** The Claude scratchpad
+(`/tmp/claude-.../scratchpad`) is a WSL-only path with no Windows drive letter, so passing it as the
+dumper's output arg fails (the Windows process can't resolve it). Route the output through a Windows
+temp dir and read it back from WSL via the `/mnt/c` mount — the two names point at the same file:
+
+```bash
+"…/dotnet.exe" run --project tools/SimCoach.GroundTruthDump -c Release -- \
+  'C:\Users\koba9\AppData\Local\SimCoach\recordings\<sessionId>' \
+  'C:\Users\koba9\AppData\Local\Temp\dump.csv'          # Windows write target
+python3 -c "import pandas; print(len(pandas.read_csv('/mnt/c/Users/koba9/AppData/Local/Temp/dump.csv')))"
+```
+
 ## SDK 10+ `dotnet new sln` creates `.slnx` by default
 
 `scripts/bootstrap.sh` / `.ps1` pass `--format sln` (with fallback for older SDKs that

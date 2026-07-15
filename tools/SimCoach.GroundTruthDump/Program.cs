@@ -31,7 +31,8 @@ static string F(float v) => v.ToString("R", CultureInfo.InvariantCulture);
 using var writer = new StreamWriter(outputPath, append: false, Encoding.ASCII);
 writer.Write(
     "t_ms,normalized_car_position,speed_kmh,brake,throttle,gear,steer_angle,"
-    + "is_in_pit_lane,is_valid_lap,tyres_out,current_sector_index,lap_number\n");
+    + "is_in_pit_lane,is_valid_lap,tyres_out,current_sector_index,lap_number,"
+    + "g_lat,g_long,world_x,world_z\n");
 
 long count = 0;
 long pitFrames = 0;
@@ -69,6 +70,16 @@ foreach (TelemetryFrame frame in McapSegmentEnumerator.Read(sessionDir))
     writer.Write(frame.CurrentSectorIndex.ToString(CultureInfo.InvariantCulture));
     writer.Write(',');
     writer.Write(frame.LapNumber.ToString(CultureInfo.InvariantCulture));
+    // g-force (GForceG.X = lateral, .Z = longitudinal) + world position (X, Z) — needed to calibrate the
+    // grip envelope against MEASURED lateral g and to build a real racing line (not the median centerline).
+    writer.Write(',');
+    writer.Write(F(frame.GForceG?.X ?? 0f));
+    writer.Write(',');
+    writer.Write(F(frame.GForceG?.Z ?? 0f));
+    writer.Write(',');
+    writer.Write(F(frame.WorldPos?.X ?? 0f));
+    writer.Write(',');
+    writer.Write(F(frame.WorldPos?.Z ?? 0f));
     writer.Write('\n');
     count++;
 }

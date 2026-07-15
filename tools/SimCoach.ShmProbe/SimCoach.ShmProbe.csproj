@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Dev probe: run on whatever shared runtime the box has (mirrors SimCoach.Bake/GroundTruthDump). -->
+    <RollForward>LatestMajor</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SimCoach.Adapters.ACC\SimCoach.Adapters.ACC.csproj" />
+  </ItemGroup>
+
+</Project>

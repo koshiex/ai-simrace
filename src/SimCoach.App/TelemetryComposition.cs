@@ -190,12 +190,16 @@ public static class TelemetryComposition
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static void AddAccSource(HostApplicationBuilder builder)
     {
-        builder.Services.AddSingleton(new AccReaderOptions());
+        AccReaderOptions accOptions = new()
+        {
+            AllowReplayCapture = builder.Configuration.GetValue<bool>("Telemetry:Acc:AllowReplayCapture"),
+        };
+        builder.Services.AddSingleton(accOptions);
         builder.Services.AddSingleton<IAccPageSource, MemoryMappedAccPageSource>();
         builder.Services.AddSingleton<ITelemetrySource>(provider => new AccSharedMemoryReader(
             provider.GetRequiredService<IAccPageSource>(),
             AccFrameMapper.Map,
-            AccFrameMapper.IsRecordable,
+            snapshot => AccFrameMapper.IsRecordable(snapshot, accOptions.AllowReplayCapture),
             provider.GetRequiredService<AccReaderOptions>(),
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<ILogger<AccSharedMemoryReader>>()));

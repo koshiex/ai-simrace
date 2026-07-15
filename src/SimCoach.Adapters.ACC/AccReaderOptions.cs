@@ -25,6 +25,14 @@ public sealed record AccReaderOptions
     public int MaxSeqlockRetries { get; init; } = 4;
 
     /// <summary>
+    /// When true, ACC frames are recorded during REPLAY playback (<c>AC_STATUS=1</c>), not only LIVE
+    /// driving (<c>=2</c>). Off by default — replay capture is an opt-in tool for grabbing a reference lap
+    /// (e.g. a fast hotlap) that the driver cannot produce live. During a replay the player-slot world
+    /// position may be the followed car rather than a fast alien; verify the captured line before trusting it.
+    /// </summary>
+    public bool AllowReplayCapture { get; init; }
+
+    /// <summary>
     /// Fails fast on unusable values (e.g. zero seqlock retries would silently never produce
     /// a frame). Called by consumers' constructors.
     /// </summary>

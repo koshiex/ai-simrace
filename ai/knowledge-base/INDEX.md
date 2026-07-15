@@ -10,6 +10,7 @@
 - [session-log-forensics.md](docs/reference/session-log-forensics.md) — reading a live coaching session from logs+DB: data locations, `coach_tips.lap_number` is off-by-one (use the log timeline for real per-lap cadence), sessionId is UTC vs local log timestamps, per-Wave what-to-check map (cadence/High-bypass, repeats, cold-start, fallback, debrief metrics, position-reset noise).
 - [coach-llm-host-wiring.md](docs/reference/coach-llm-host-wiring.md) — PR-H: `Llm:Live` is the single fake-vs-real switch *in the router* (Coach always calls the LLM); offline pair needs a rate (zero-cost rows, no key); `LlmOptions` is monitor-only for settings re-bind; settings config-source opened before `Build()`, below the env source; load-bearing Coach stop order (between recorder and compute); e2e drains via `ExecuteTask` not `RunAsync` (StopApplication aborts the drain); `session_id` seam over `SessionContext` (FK to `sessions`).
 - [line-reference-and-gate-caveats.md](docs/reference/line-reference-and-gate-caveats.md) — M38 median centerline is the driver's OWN median line (not an ideal), so line tips stay quiet for a consistent driver; the corner-type gate silences LateralG/large-radius corners by design; a passing ground-truth gate can be "green because dead" (feature inert); running the gate self-serviceable from WSL; `GridMetrics.Index` denominator must be `lapLengthM` not `gridLength-1`.
+- [sqlite-migrations.md](docs/reference/sqlite-migrations.md) — `DatabaseMigrator` runs each migration in ONE transaction (so `.sql` files carry no BEGIN/COMMIT and `PRAGMA foreign_keys=OFF` is a mid-transaction no-op — use `foreign_key_check` as a query for a table rebuild); versions must be a contiguous `1..N` embedded-resource run (`AssertContiguous`); changing a `UNIQUE(...)` forces a full SQLite table rebuild.
 
 ## patterns/
 
@@ -17,4 +18,5 @@
 
 ## tools/
 
+- [claude-workflow-resource-limits.md](tools/claude-workflow-resource-limits.md) — wide multi-agent Workflow fan-out kills this box's RAM (batch ≤2 heavyweight agents via `batched()`); resume cache keys on call order+prompts, so batching-only edits keep cache hits.
 - [dotnet-build-quirks.md](tools/dotnet-build-quirks.md) — testhost runtime roll-forward workaround (but a standalone tool exe DOES honour csproj `RollForward`), `.slnx` vs `.sln`, IDE0007/0008 var rules as build errors (factory `Type.FromX()` ⇒ `var`, generic `Method<Type>()` ⇒ explicit), windows-latest CRLF/`.gitattributes` format failure, single-file publish needs Serilog `Using` list, `.gitignore` `data/` swallows vendored embedded resources (needs negation) AND a new embedded-asset family needs its own csproj `<EmbeddedResource>` glob (silent-inert loader otherwise), NuGet packages that don't exist (MCAP, ParquetSharp 16.0.0).

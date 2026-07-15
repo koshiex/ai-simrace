@@ -70,3 +70,49 @@ odd-length: the four consecutive `wchar_t[15]` at the top of graphics end at 132
   (**"Not used in ACC" → always 0 live**, honest passthrough only), `graphics.IsValidLap`
   (ACC `int`, `!= 0 → true`). Phase 2 maps these to `world_pos` / `current_sector_index` /
   `sector_count` / `tyres_out` / `is_valid_lap` — mapper-only, no marshalling work.
+
+## SHM validity by AC_STATUS — telemetry is only real when LIVE (replay yields nothing usable)
+
+Measured with `tools/SimCoach.ShmProbe` (reads the raw pages, bypassing the new-frame gate). Three
+distinct regimes — **replay capture from shared memory is not possible**:
+
+| Context | AC_STATUS | physics packetId | physics channels | graphics `CarCoordinates` | Static (Track/CarModel) |
+|---|---|---|---|---|---|
+| **Live driving** | `2 LIVE` | advances ~333 Hz | real (speed/gas/brake/gear/AccG) | real, moving (all active cars) | populated |
+| **Menu-loaded `.rpy`** (standalone viewer) | `0 OFF` | **frozen** | all zero | all zero | **empty** — no session |
+| **In-session replay** (ESC→replay in a live session) | `1 REPLAY` | **advances** (heartbeat) | **all zero** | **frozen** at entry position | populated |
+
+A menu replay leaves the SHM entirely dormant (the `Local\acpmf_*` map exists — `TryConnect` succeeds — but
+every page is zeroed; the empty Static page is the tell). An in-session replay is more deceptive: it keeps
+the packetId **ticking** and reports `AC_STATUS=1`, so `AccFrameMapper.IsRecordable(…, allowReplay: true)`
+admits the frames and `AccFrameAcquisition` sees "new frames" — but the physics page is **blanked to zero**
+(not the last live value — actively zeroed) and the graphics car coordinates are **frozen** at the position
+where the replay was entered. Recording it yields a stream of zero-speed, fixed-position frames.
+**Conclusion: the `AccReaderOptions.AllowReplayCapture` gate is mechanically correct but has no usable data
+behind it — ACC does not expose telemetry via shared memory during replay.** An external fast lap must come
+from a non-SHM source (MoTeC `.ld` export) or be reconstructed from a **live** race.
+
+Corollary (a live-only opportunity): during **live** driving the graphics page holds every active car's world
+position (`CarCoordinates`, indexed by `CarId`, count = `ActiveCars`), updated in real time — so a faster
+opponent's *line* (world XZ → speed via Δpos/Δt) is capturable **live** from a race, though their pedals/g are
+not (physics page is player-only).
+
+## MoTeC `.ld`/`.ldx` export — rich channels, but NO world position (can't anchor a line to our grid)
+
+ACC's file-based telemetry export (evaluated as an external reference-lap source) is **off by default** —
+enable in-session via car setup → **ELECTRONICS → TELEMETRY LAPS → N**; it then writes the last N laps
+per session to `Documents/Assetto Corsa Competizione/MoTeC/` (paired `.ld` channel data + `.ldx` XML lap
+markers, `Time` in µs), with no invalid-lap filtering. Format: little-endian, magic `0x40`, channels are a
+doubly-linked list of contiguous per-channel blocks (`datatype_a`+`datatype` codes, `scale/mul/shift`).
+Portable references: `gotzl/ldparser` (Python, **GPL — use as layout spec only, do not port the code**),
+`t-babin/ACC-Telemetry-Tracker` (C#, MIT — structural starting point).
+
+Channels present: `Ground Speed`, `Throttle Pos`, `Brake Pos`, `Steering Angle`, `Gear`, `Engine RPM`,
+`CG Accel Lateral/Longitudinal` (gLat/gLon), wheel speeds, suspension, tyres. **NOT present: world XYZ, a
+lap-distance channel, or normalized/spline position.** MoTeC i2 dead-reckons the track map — distance
+`s=Σ(v·dt)`, heading `θ=Σ(a_lat/v·dt)`, `x=Σ v·cosθ·dt`, `y=Σ v·sinθ·dt`, then a loop-closure correction —
+so the map is an **arbitrary, drift-corrected local frame, not world coordinates**. Consequence: a `.ld`
+**cannot anchor a reference LINE** to our `carCoordinates` grid; only **distance-axis** channels align (via
+`Σspeed` ↔ `normalizedCarPosition`). Grid-anchored lines must come from live SHM `carCoordinates`, not `.ld`.
+And a foreign "alien" `.ld` is not a shippable beyond-PB source: no redistributable public corpus; the good
+ones are paid, personal-license (Coach Dave Delta, Driver61) — can't be bundled.
