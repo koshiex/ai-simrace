@@ -51,11 +51,13 @@ Header (offsets into the decompressed payload):
 - `+8`  f32 world **Z** (m)   — matches `[-1126,1045]`
 - `+12` f32 **yaw** (rad), convention `yaw = atan2(-dx, dz)` (0.009 rad fit residual)
 - `+16` f32 pitch (rad) · `+20` f32 roll (rad)
-- `+24` 6 bytes **UNDECODED** (candidate for packed inputs/gear — not clean f32/f16/u16)
-- `+30..+125` four 24-byte wheel-visual blocks (rotation/suspension-like; semantics undecoded)
-- `+126` f32 **timestamp**, strictly monotonic, **variable/adaptive** sample interval (keyframes denser in
-  corners: step size anti-correlates with curvature, r≈−0.40). **No throttle/brake/steer/gear as clean
-  channels.** Speed is not stored — derive as Δpos/Δt.
+- `+24` u8 **BRAKE** (value/255 = brake fraction) · `+25` u8 **THROTTLE** (value/255) — DECODED (see §Pedals).
+- `+26` u8 ≈always 0 (clutch/pad; ~0 for GT3 auto-clutch) · `+27` u8 nine discrete levels (×32) — NOT gear,
+  NOT steer, uncorrelated with everything · `+28..+29` smooth high-entropy channel, NOT steer, NOT yaw-rate
+  (likely wheel-visual rotation/phase). **Gear + steer are NOT recoverable.**
+- `+30..+125` four 24-byte wheel blocks (per-wheel thermal/load; each f32 tyre-temp-like; no gear/rpm/wheel-speed).
+- `+126` f32 **timestamp**, strictly monotonic, **logarithmically encoded** (see §Clock). Speed is derived,
+  not stored — and **not trustworthy at high speed** even after the clock is solved.
 
 ## Confirmation (why we trust the line)
 
@@ -67,15 +69,17 @@ verified-straight section. Random/misaligned data would be off by hundreds of me
 
 ## Open debts (before this is a usable reference)
 
-1. **Clock not universally calibrated.** A ×128 scale reproduced specimen 0's 282 km/h anchor, but specimen
-   `(1)` has timestamp range `[-3.14, 7.81]` (×128 ⇒ absurd 1400 s), so the timestamp unit is **not a fixed
-   ×128** — semantics still open. Positions (the LINE) are unaffected; **derived speed is not trustworthy**
-   until the clock is pinned (e.g. against a self-recorded ghost of known wall-clock duration).
-2. **Pedals/gear undecoded** — the 6 bytes at `+24` and the per-wheel fast slots. Without them the ghost is
-   **line + rough speed only, no inputs** (can't coach brake/throttle points off it).
+1. **~~Clock~~ SOLVED (form), speed still untrustworthy** — see §Clock below. The `+126` timestamp is a
+   universal **logarithmic** encoding; laptime reproduces exactly for all 9 cars. But the log compresses
+   time-resolution on fast sectors, so derived *vmax* is 400–570 km/h (true ~285) — **speed is not usable**.
+   Only laptime (exact), median speed (~195 km/h) and brake-zone/chicane *shape* survive. Irrelevant for a
+   LINE-only ship (positions unaffected).
+2. **~~Pedals~~ brake/throttle DECODED** (`+24`/`+25`), see §Pedals. Gear/steer/clutch remain undecoded and
+   are not recoverable from the record. Pedals can't feed TIME anyway → still LINE-only.
 3. **Lap-splitting** must be done by world-position loop closure (no normalized-position channel).
-4. **Single-specimen field order** — layout verified on 2 files, both Ferrari 296 / Monza; treat field order
-   as provisional until a different car/track confirms it.
+4. **Single-specimen field order** — record field order verified on 2 files / 1 car (Ferrari 296 + BMW M4) /
+   Monza. Import must **fail-fast** on the arithmetic + bbox + loop-closure + deviation-ceiling guards; a new
+   car/track needs re-validation before it is trusted.
 
 ## Validated on ALIEN laps (accreplay.com) — beyond-PB LINE confirmed
 
@@ -96,19 +100,76 @@ median): a **real, non-zero, faster line** with per-corner "take a different lin
 own world frame. **The ghost path is validated as a beyond-PB LINE source.** (median 0.98 m also re-confirms
 the decode: the alien line sits ON the Monza racing surface.)
 
-## Clock: partially pinned (per-car offset issue)
+## Clock: SOLVED as a logarithmic law (speed still not trustworthy)
 
-Per-file `scale = knownLaptime / timestamp_span` is **consistent (~10 s per raw unit) for 6 of 9 cars**
-(Aston/Bentley/Ford/Lambo/Nissan/Porsche, all full-lap ~5748 m paths). But **BMW (scale 19.3 ≈ 2×) and
-Ferrari/McLaren (~68 ≈ 7×) are outliers**, and BMW's derived speed blew up (an 18.8 s dt gap) — i.e. the
-`+126` timestamp offset is NOT universal; the record layout (wheel/aux block sizes) likely shifts the clock
-field per car. So: the LINE (positions) is solid for all 9; a trustworthy SPEED profile needs the per-car
-timestamp offset re-found (tractable RE — anchor each car's clock against its known laptime). Pedals/gear
-(the 6 bytes at +24) remain undecoded.
+Both earlier hypotheses (wrong stride, shifted timestamp offset) were **falsified**: stride is 130 and the
+timestamp is the f32 at `+126` for **all 9** cars (`recStart + count*130 + 11 == payloadLen` holds exactly;
+`+126` is the only strictly-monotone f32 column). The real cause of the bogus "per-car scale" (9.3 / 19.3 /
+68 s per raw unit): **the `+126` timestamp is logarithmically encoded.**
+
+```
+real_elapsed_time = A · exp(B · raw_ts)     B ≈ 1.41 (≈ √2), UNIVERSAL
+A = knownLaptime / (exp(B·ts_last) − exp(B·ts_first))   # per-car amplitude, from the laptime anchor
+```
+
+Evidence: `corr(raw_ts, log(elapsed)) = 0.99977`; the ground-truth clock derivative `d(real)/d(raw_ts)` rises
+smoothly 1 → 137 across a lap, tracking `A·B·exp(B·raw_ts)`. This reproduces all 9 laptimes. The "7× outliers"
+(Ferrari 0.81 lap, McLaren 0.84 lap) are **partial** ghosts that start mid-lap at high `raw_ts` where the log
+is compressed — consistent under the exp law, absurd under a linear one.
+
+**But derived SPEED is still not trustworthy.** The log encoding loses time-resolution on fast sectors (at
+high `raw_ts` the clock-derivative IQR ≈ its median), so even after uniform-arc resample + smoothing, vmax
+reads 400–570 km/h (true ~285) and ~16 % of a full lap reads >300 km/h. **Reliable:** laptime (exact), median
+speed (~195 km/h, physical), brake-zone/chicane *shape* (corr ~0.83 to our reference). **Unreliable:**
+absolute high-speed values. The two partial-lap cars are only approximately A-calibrated (full laptime over a
+partial path). `B ≈ 1.41` is empirical; the exact constant is unconfirmed. → **Ship LINE-only; ghost TIME/speed
+never feeds `delta_ms` / `min-speed`.**
+
+## Pedals: brake/throttle DECODED
+
+In the 6 bytes at `+24`: **`+24` = BRAKE (u8, /255), `+25` = THROTTLE (u8, /255).** Verified against our BMW
+reference (nearest-position map): `corr(+24, brake_pct) = +0.93`, `corr(+25, throttle_pct) = +0.87`. The ACC
+signature is self-evident even without a reference — full-throttle records are `[+24=0, +25=255]`, braking
+records `[+24=255, +25=0]` (mutually exclusive). Physical cross-check: `+24` (brake) correlates with `g_long`
+at **−0.90** (braking → deceleration). Byte assignment confirmed firsthand on 1 car (BMW); the anti-correlated
+`[0,255]`/`[255,0]` pattern and the g_long check are car-independent. **Gear, steer, clutch: not recoverable.**
+Pedals can't feed a TIME reference, so this stays a LINE-only feature — but a future *line-anchored,
+clock-free* positional brake-point cue is now conceivable (deferred).
+
+## All-9 alien consensus line (Monza GT3) — where the alien line really differs
+
+Decoded world XZ for **all 9** alien Monza GT3 ghosts, nearest-point onto our BMW reference, signed lateral
+deviation binned into 100 `position_normalized` bins, aggregated across cars. **Baseline: global |deviation|
+median = 0.99 m ≈ car-width** — the aliens are on OUR line almost everywhere; per-car full-lap |dev| medians
+cluster at 0.89–1.12 m. The *null is "same line."* Only a contiguous mid-lap band shows a real, shared
+difference (sign = side of our line; std = spread across the 9 cars):
+
+| pn range | corner (approx) | median dev | cross-car std | agreement | confidence |
+|---|---|---|---|---|---|
+| 0.00–0.02 | start/finish + Rettifilo | −2.1 m | 3.5 m | 71 % | **ARTIFACT** (loop-closure seam) |
+| 0.31–0.40 | slow corner ~68 km/h | −1.2…−2.0 m | 0.22 | 9/9 | solid |
+| **0.45–0.59** | **Lesmo→Serraglio 180–250 km/h** | **−2.1 m** (peaks −3.7 @0.45, −3.2 @0.56) | **0.24** | 9/9 | **STRONGEST** |
+| 0.67–0.68 | — | +1.4 m | 0.18 | 9/9 | solid |
+| **0.73–0.78** | **Variante Ascari ~200 km/h** | **+3.1 m** (peak +4.3 @0.74), opposite side | 0.57 | 9/9 | **strong** |
+| 0.83–0.88 | fast pre-Parabolica | −1.25 m | 0.33 | 9/9 | solid |
+| 0.92–1.00 | Parabolica onto straight | +3.9 m | 2.1 | 89 % | **LOW** (seam + car-specific) |
+
+**It is a COMMON alien racing line, not car-specific:** in every strong cluster the 9 different GT3 chassis
+(incl. the alien BMW M4 = our car) converge to within 0.2–0.6 m of *each other* while sitting 1.2–4.3 m off
+*our* line — cross-car spread ≪ deviation-from-us. Dropping the 2 partial-lap ghosts did not move the
+full-lap medians (−2.13 vs −2.14 at cluster-B). **Car-specific/noisy behaviour appears only at the two lap
+seams** (0.00–0.02 and 0.92–1.00). → The two headline "take a different line here" corners are **pn 0.45–0.59**
+and **pn 0.73–0.78**; **discard the two seam bins** — they are the least trustworthy despite Parabolica being
+a real corner.
 
 ## Verdict for the feature
 
 The `.ghost` decode gives a real, grid-alignable, beyond-PB world **LINE** (in OUR frame, unlike MoTeC `.ld`)
-— **validated** against a 7-s-faster same-car alien. Open before it ships: (1) finish the per-car timestamp
-offset for a trustworthy speed profile, (2) decode pedals (or accept line+speed only). Kept OFF the M46
-critical path — M46 (own-optimal, own data) ships first; the alien-LINE is the complementary next feature.
+— **validated** against a 7-s-faster same-car alien and confirmed as a 9-car *shared* line. The two historical
+blockers are now moot **for a LINE-only ship**: the clock is solved in form (laptime exact) but speed stays
+untrustworthy, and pedals are decoded but single-car-verified and can't feed TIME anyway. So the feature ships
+**LINE-ONLY** — see the reviewed implementation plan `beyond-pb-pr-plan.md` (PR-B3). Kept OFF the M46 critical
+path: M46 (own-optimal, own data) ships first as PR-B1 and introduces the reference-`kind` mechanism the ghost
+line reuses. **New hard constraint from review:** the two seam bins (pn 0.00–0.02, 0.92–1.00) must be
+*masked*, not zeroed — zeroing makes `InterpWorldXZ` interpolate toward the origin and fabricate a
+multi-hundred-metre Parabolica deviation cue.

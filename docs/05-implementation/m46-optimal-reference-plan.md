@@ -26,8 +26,10 @@ twice-falsified physics envelope; unlike the M38 self-median that zeroes out for
 - Outlier-guard tolerance: the `s1+s2+s3 ≈ lap_time_ms` window that excludes poisoned sector bests (the 3.4 s
   per-session outlier case). Pick the value — too tight shrinks candidates, too loose lets anomalies set
   untouchable targets.
-- Recency/staleness of sector bests across BoP/setup/track-grip changes (blueprint defers a recency window as
-  YAGNI; `weather_bucket` key + `sector_sources_json` provenance mitigate). Confirm defer-for-now.
+- Recency/staleness of sector bests across BoP/setup/track-grip changes — **DEFER CONFIRMED (owner):** no
+  recency window. Mitigated by `weather_bucket` key + `sector_sources_json` provenance + the mandatory
+  per-sector outlier guard (which catches stale/poisoned bests independent of age). Binding condition: the
+  defer holds only because the outlier guard ships. Full rationale in `beyond-pb-pr-plan.md`.
 - Gold-schema sign-off: new optimal fields leave the machine in Gold JSON (aggregates, consistent with the
   privacy rule, but the schema addition needs owner sign-off per convention).
 
