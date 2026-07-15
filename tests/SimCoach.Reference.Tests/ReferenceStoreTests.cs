@@ -72,6 +72,7 @@ public sealed class ReferenceStoreTests
             ParquetPath = Path.Combine(harness.ReferencesDirectory, "pinned.parquet"),
             Pinned = true,
             CreatedAtUtc = DateTimeOffset.UnixEpoch,
+            Kind = "pb",
         });
 
         bool updated = harness.ReferenceStore.MaybeUpdate(_triple, CleanLap(101_000), Grid(), _identity);

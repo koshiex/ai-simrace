@@ -38,7 +38,7 @@ internal sealed class ComputeTestHarness : IDisposable
             geometry ?? BakedGeometryFixture.Spa(),
             lengths,
             NullLogger<TrackModelStore>.Instance);
-        Lookup = new ReferenceLookup(References);
+        Lookup = new ReferenceLookup(References, NullLogger<ReferenceLookup>.Instance);
         ReferenceStore = new ReferenceStore(
             References,
             Snapshots,
