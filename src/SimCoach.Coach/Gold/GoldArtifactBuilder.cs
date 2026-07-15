@@ -149,6 +149,8 @@ public sealed class GoldArtifactBuilder
                 _names.ResolveName(trackId, l.CornerId), l.TotalLossMs, l.AvgLossMs, l.SampleCount, l.DominantReason)
             {
                 CornerNameRu = _names.GetShort(trackId, l.CornerId),
+                DominantChannel = l.DominantChannel,
+                DominantChannelValue = l.DominantChannelValue,
             }),
     ];
 

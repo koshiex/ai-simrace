@@ -9,7 +9,7 @@ namespace SimCoach.Coach;
 /// is disabled or fails, so the session cadence always yields a real <c>top_losses</c>/<c>top_priority</c>
 /// rather than nothing. Same Gold in → same JSON out (no timestamps / randomness); the shape matches
 /// <see cref="Schema.OutputSchema.Debrief"/> so downstream validation and persistence treat it exactly like an
-/// LLM debrief. Loss reasons render to RU via <see cref="CoachStrings"/> (user-facing text → resx).
+/// LLM debrief. Loss channels render to RU via <see cref="ChannelGloss"/> (user-facing text → resx).
 /// </summary>
 public static class DebriefTemplate
 {
@@ -25,7 +25,7 @@ public static class DebriefTemplate
             {
                 ["corner"] = loss.Corner,
                 ["ms"] = loss.TotalLossMs,
-                ["why"] = ReasonGloss.ToRu(loss.Reason),
+                ["why"] = Why(loss),
             });
         }
 
@@ -99,6 +99,23 @@ public static class DebriefTemplate
         ["value"] = value,
     };
 
+    // The "why" of a per-corner loss is now the M36 dominant CHANNEL, not the retained-but-demoted
+    // dominant_reason. The authoritative loss time stays the sibling "ms" (total_loss_ms); dominant_channel_value
+    // is a HEURISTIC cross-unit ranking magnitude, so it renders inside an explicitly heuristic-marked phrase and
+    // is NEVER surfaced as a bare time beside "ms" (MF-6). With no signed channel (empty), only the neutral gloss
+    // renders — the meaningless zero magnitude is dropped.
+    private static string Why(GoldAggregatedLoss loss)
+    {
+        string gloss = ChannelGloss.ToRu(loss.DominantChannel);
+        return string.IsNullOrEmpty(loss.DominantChannel)
+            ? gloss
+            : string.Format(
+                CultureInfo.InvariantCulture,
+                CoachStrings.Get("Debrief_Why_Channel_Format"),
+                gloss,
+                loss.DominantChannelValue);
+    }
+
     private static string TopPriority(IReadOnlyList<GoldAggregatedLoss> losses)
     {
         if (losses.Count == 0)
@@ -111,6 +128,6 @@ public static class DebriefTemplate
             CultureInfo.InvariantCulture,
             CoachStrings.Get("Debrief_TopPriority_Format"),
             top.Corner,
-            ReasonGloss.ToRu(top.Reason));
+            ChannelGloss.ToRu(top.DominantChannel));
     }
 }

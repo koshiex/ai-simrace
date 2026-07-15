@@ -98,8 +98,8 @@ internal static class GoldTestData
         SectorAvgDeltaMs = { 120, -30, 45 },
         AggregatedLosses =
         {
-            new AggregatedLoss { CornerId = "spa_t02", TotalLossMs = 600, AvgLossMs = 86, SampleCount = 7, DominantReason = "low_min_speed" },
-            new AggregatedLoss { CornerId = "spa_t05", TotalLossMs = 450, AvgLossMs = 64, SampleCount = 7, DominantReason = "late_throttle" },
+            new AggregatedLoss { CornerId = "spa_t02", TotalLossMs = 600, AvgLossMs = 86, SampleCount = 7, DominantReason = "low_min_speed", DominantChannel = "min_speed", DominantChannelValue = 48 },
+            new AggregatedLoss { CornerId = "spa_t05", TotalLossMs = 450, AvgLossMs = 64, SampleCount = 7, DominantReason = "late_throttle", DominantChannel = "throttle_resume", DominantChannelValue = 33 },
             new AggregatedLoss { CornerId = "spa_t08", TotalLossMs = 300, AvgLossMs = 50, SampleCount = 6, DominantReason = "understeer" },
             new AggregatedLoss { CornerId = "spa_t99", TotalLossMs = 250, AvgLossMs = 40, SampleCount = 6, DominantReason = "early_brake" },
             new AggregatedLoss { CornerId = "spa_t01", TotalLossMs = 200, AvgLossMs = 30, SampleCount = 6, DominantReason = "oversteer" },

@@ -45,7 +45,10 @@ public sealed class GoldSessionArtifactTests
         e.AggregatedLosses[0].Corner.Should().Be("Eau Rouge");
         e.AggregatedLosses[0].CornerNameRu.Should().Be("О-Руж");
         e.AggregatedLosses[0].TotalLossMs.Should().Be(600);
+        // dominant_reason (field 5) is retained for back-compat; the M36 dominant_channel/value ride alongside.
         e.AggregatedLosses[0].Reason.Should().Be("low_min_speed");
+        e.AggregatedLosses[0].DominantChannel.Should().Be("min_speed");
+        e.AggregatedLosses[0].DominantChannelValue.Should().Be(48);
     }
 
     [Fact]

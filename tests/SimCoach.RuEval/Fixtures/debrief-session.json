@@ -16,8 +16,8 @@
     "averageLapMs": 139650,
     "understeerTrend": 0.2,
     "aggregatedLosses": [
-      { "cornerId": "spa_t01", "totalLossMs": 1840, "avgLossMs": 230, "sampleCount": 8, "dominantReason": "early_brake" },
-      { "cornerId": "spa_t05", "totalLossMs": 760, "avgLossMs": 95, "sampleCount": 8, "dominantReason": "late_throttle" }
+      { "cornerId": "spa_t01", "totalLossMs": 1840, "avgLossMs": 230, "sampleCount": 8, "dominantReason": "early_brake", "dominantChannel": "brake_point", "dominantChannelValue": 58 },
+      { "cornerId": "spa_t05", "totalLossMs": 760, "avgLossMs": 95, "sampleCount": 8, "dominantReason": "late_throttle", "dominantChannel": "throttle_resume", "dominantChannelValue": 24 }
     ],
     "sectorAvgDeltaMs": [420, 180, 90],
     "consistencyStddevMs": 640,
