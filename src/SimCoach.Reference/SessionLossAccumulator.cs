@@ -9,6 +9,11 @@ namespace SimCoach.Reference;
 /// <c>ComputeSession.TopLosses</c> — so a session with no reference yields an empty list. Mutation is
 /// isolated here; <see cref="Build"/> returns an immutable snapshot. <c>corner_id</c> only — the human
 /// <c>corner_name</c> is resolved at the Coach layer (ADR-0010), never in compute.
+///
+/// The per-channel diagnostic diffs are folded abs-then-average behind the SAME <c>DeltaMs &gt; 0</c>
+/// gate as the loss roll-up (ADR-0020, decisions 1 + 6): a non-lossy contribution early-returns before
+/// its diffs reach the sums, so <see cref="DiffAverages"/> is conditioned on the lossy-corner set, not a
+/// true all-corner average.
 /// </summary>
 internal sealed class SessionLossAccumulator
 {
@@ -17,6 +22,10 @@ internal sealed class SessionLossAccumulator
         public long TotalLossMs { get; set; }
         public int SampleCount { get; set; }
         public Dictionary<string, int> ReasonCounts { get; } = [];
+        public double AbsBrakePointDiffSum { get; set; }
+        public double AbsThrottleResumeDiffSum { get; set; }
+        public double AbsMinSpeedDiffSum { get; set; }
+        public double AbsLineDeviationSum { get; set; }
     }
 
     private readonly Dictionary<string, CornerLosses> _byCorner = [];
@@ -39,6 +48,33 @@ internal sealed class SessionLossAccumulator
         losses.SampleCount++;
         string reason = contribution.Reason;
         losses.ReasonCounts[reason] = losses.ReasonCounts.GetValueOrDefault(reason) + 1;
+
+        // abs-then-average: fold the absolute per-corner diff so a same-magnitude early/late pair does not
+        // cancel (ADR-0020 decision 1). The averaging happens in DiffAverages over SampleCount.
+        losses.AbsBrakePointDiffSum += Math.Abs(contribution.BrakePointDiffM);
+        losses.AbsThrottleResumeDiffSum += Math.Abs(contribution.ThrottleResumeDiffM);
+        losses.AbsMinSpeedDiffSum += Math.Abs(contribution.MinSpeedDiffKmh);
+        losses.AbsLineDeviationSum += Math.Abs(contribution.RacingLineDeviationM);
+    }
+
+    /// <summary>
+    /// The corner's per-channel abs-then-average diagnostic diffs over its accumulated lossy samples, or
+    /// <c>default</c> (all zero) for a corner that never took a lossy contribution. Conditioned on the
+    /// <c>DeltaMs &gt; 0</c> gate in <see cref="Accept"/> (ADR-0020 decision 6).
+    /// </summary>
+    internal ChannelDiffAverages DiffAverages(string cornerId)
+    {
+        ArgumentNullException.ThrowIfNull(cornerId);
+        if (!_byCorner.TryGetValue(cornerId, out CornerLosses? losses) || losses.SampleCount == 0)
+        {
+            return default;
+        }
+
+        return new ChannelDiffAverages(
+            (float)(losses.AbsBrakePointDiffSum / losses.SampleCount),
+            (float)(losses.AbsThrottleResumeDiffSum / losses.SampleCount),
+            (float)(losses.AbsMinSpeedDiffSum / losses.SampleCount),
+            (float)(losses.AbsLineDeviationSum / losses.SampleCount));
     }
 
     public IReadOnlyList<AggregatedLoss> Build(int topN)

@@ -44,6 +44,24 @@ public sealed class CornerEventBuilderTests
     }
 
     [Fact]
+    public void The_contribution_carries_the_per_channel_diffs_in_the_reference_branch()
+    {
+        // M35: the contribution mirrors the emitted CornerEvent diff fields so SessionLossAccumulator can
+        // aggregate them abs-then-average without re-deriving from the proto.
+        IReadOnlyList<TelemetryFrame> self = SlowerSelfCorner();
+        ResampledLap reference = ReferenceGrid();
+
+        (CornerEvent ev, CornerContribution contribution) =
+            CornerEventBuilder.Build(_corner, self, reference, LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction);
+
+        contribution.BrakePointDiffM.Should().Be(ev.BrakePointDiffM);
+        contribution.ThrottleResumeDiffM.Should().Be(ev.ThrottleResumeDiffM);
+        contribution.MinSpeedDiffKmh.Should().Be(ev.MinSpeedDiffKmh);
+        contribution.RacingLineDeviationM.Should().Be(ev.RacingLineDeviationM);
+        contribution.RacingLineDeviationM.Should().BePositive("the reference branch carries the real diffs");
+    }
+
+    [Fact]
     public void A_flat_full_throttle_corner_yields_near_zero_delta_and_suppresses_min_speed()
     {
         // M2 regression guard: a flat full-throttle transit measured over the same [Start,End] span as
@@ -75,6 +93,10 @@ public sealed class CornerEventBuilderTests
         ev.CornerId.Should().Be("spa_t01");
         ev.Reason.Should().BeEmpty("no reference and on-track → no quantifiable reason");
         contribution.DeltaMs.Should().Be(0, "no reference means no top-loss contribution");
+        contribution.BrakePointDiffM.Should().Be(0f, "the no-reference branch leaves the diffs at 0, mirroring DeltaMs");
+        contribution.ThrottleResumeDiffM.Should().Be(0f);
+        contribution.MinSpeedDiffKmh.Should().Be(0f);
+        contribution.RacingLineDeviationM.Should().Be(0f);
     }
 
     [Fact]

@@ -8,10 +8,24 @@ namespace SimCoach.Reference;
 /// <summary>
 /// What a corner contributed to the lap, for <c>top_losses</c> aggregation. <see cref="ApexPosition"/>
 /// places it in a sector; <see cref="DeltaMs"/> is the time lost vs the reference (0 when no reference,
-/// so it never appears in a losses list).
+/// so it never appears in a losses list). The per-channel reference-relative diffs
+/// (<see cref="BrakePointDiffM"/>, <see cref="ThrottleResumeDiffM"/>, <see cref="MinSpeedDiffKmh"/>,
+/// <see cref="RacingLineDeviationM"/>) mirror the emitted <see cref="CornerEvent"/> fields so
+/// <see cref="SessionLossAccumulator"/> can aggregate them abs-then-average (ADR-0020); they carry the
+/// real diffs in the reference branch and are 0 in the no-reference / degenerate branch (mirroring
+/// <c>DeltaMs = 0</c>).
 /// </summary>
 internal sealed record CornerContribution(
-    string CornerId, int DeltaMs, float ApexPosition, string Reason, float UndersteerScore, float OversteerScore);
+    string CornerId,
+    int DeltaMs,
+    float ApexPosition,
+    string Reason,
+    float UndersteerScore,
+    float OversteerScore,
+    float BrakePointDiffM,
+    float ThrottleResumeDiffM,
+    float MinSpeedDiffKmh,
+    float RacingLineDeviationM);
 
 /// <summary>
 /// Builds a <see cref="CornerEvent"/> from a self corner window and (optionally) the reference grid.
@@ -81,7 +95,8 @@ internal static class CornerEventBuilder
             ev.Reason = selfReason;
             return (ev, new CornerContribution(
                 corner.Id, 0, speedSelf.MinSpeedPosition, selfReason,
-                balanceSelf.UndersteerScore, balanceSelf.OversteerScore));
+                balanceSelf.UndersteerScore, balanceSelf.OversteerScore,
+                0f, 0f, 0f, 0f));
         }
 
         ResampledLap refLap = reference!;
@@ -102,7 +117,8 @@ internal static class CornerEventBuilder
             ev.Reason = selfReason;
             return (ev, new CornerContribution(
                 corner.Id, 0, speedSelf.MinSpeedPosition, selfReason,
-                balanceSelf.UndersteerScore, balanceSelf.OversteerScore));
+                balanceSelf.UndersteerScore, balanceSelf.OversteerScore,
+                0f, 0f, 0f, 0f));
         }
 
         BrakeProfile brakeRef = BrakeKernels.Analyze(refFrames);
@@ -170,7 +186,8 @@ internal static class CornerEventBuilder
         ev.Reason = reason;
         return (ev, new CornerContribution(
             corner.Id, deltaMs, speedSelf.MinSpeedPosition, reason,
-            balanceSelf.UndersteerScore, balanceSelf.OversteerScore));
+            balanceSelf.UndersteerScore, balanceSelf.OversteerScore,
+            brakePointDiffM, throttleResumeDiffM, minSpeedDiffKmh, racingLineDeviationM));
     }
 
     /// <summary>
