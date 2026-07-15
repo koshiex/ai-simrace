@@ -47,4 +47,8 @@ public sealed record GoldCornerEvent(
     // reference. Nullable — null (omitted) with no reference, as a separate init member so it never disturbs
     // the positional shape.
     public double? BrakeReleaseDiffM { get; init; }
+
+    // M33: self-derived front brake-lockup score [0,1] (ABS-attenuated). Non-nullable and always present —
+    // it needs no reference — as a separate init member so it never disturbs the positional shape.
+    public double BrakeLockupScore { get; init; }
 }

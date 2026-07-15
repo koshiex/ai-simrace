@@ -84,6 +84,7 @@ internal static class CornerEventBuilder
             OversteerScore = balanceSelf.OversteerScore,
             OffTrack = offTrack,
             WheelspinScore = WheelspinKernels.WheelspinScore(selfSpan),
+            BrakeLockupScore = BrakeLockupKernels.BrakeLockupScore(selfSpan),
             BrakeOverlapSteerPct = BrakeOverlapSteerKernels.OverlapPct(overlapSpan),
             SteeringJitter = SteeringJitterKernels.SteeringJitter(selfSpan),
         };

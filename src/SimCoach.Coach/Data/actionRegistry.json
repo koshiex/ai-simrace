@@ -300,6 +300,23 @@
       "phrase_template_ru": "Меньше газа на выходе из {corner}, ловишь пробуксовку."
     },
     {
+      "id": "brake_lockup",
+      "label_short": "lockup",
+      "hint_en": "locking the front wheels under braking",
+      "hint_ru": "блокирует передние колёса при торможении",
+      "cadence": "corner",
+      "priority": { "phase": "brake", "rank": 16 },
+      "requires_reference": false,
+      "when": [
+        { "field": "brake_lockup_score", "op": "gt", "value": 0.4 },
+        { "field": "off_track", "op": "eq", "value": false }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "В {corner} мягче на тормоз в начале — блокируешь передние колёса."
+    },
+    {
       "id": "earlier_throttle",
       "label_short": "earlier_throttle",
       "hint_en": "late to throttle on exit",

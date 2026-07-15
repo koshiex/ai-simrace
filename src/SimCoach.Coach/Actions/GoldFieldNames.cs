@@ -18,6 +18,7 @@ public static class GoldFieldNames
         "trail_brake_pct_ref", "trail_brake_diff_pct", "understeer_score", "oversteer_score", "wheelspin_score",
         "brake_overlap_steer_pct", "steering_jitter", "off_track", "reason", "has_reference",
         "entry_line_deviation_m", "apex_line_deviation_m", "exit_line_deviation_m", "brake_release_diff_m",
+        "brake_lockup_score",
     }.ToFrozenSet(StringComparer.Ordinal);
 
     private static readonly FrozenSet<string> _sector = new[]

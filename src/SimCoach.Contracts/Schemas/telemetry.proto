@@ -121,6 +121,14 @@ message CornerEvent {
   // position, in metres. Negative = self lets off the brake EARLIER than the reference (short trail-brake,
   // gives up pressure before the apex). Reference-relative → 0 without a reference (nullable/omitted in Gold).
   float brake_release_diff_m = 21;         // negative = released the brake too early
+
+  // M33: self-derived front-wheel brake-lockup score [0,1]. Peak FRONT-wheel longitudinal slip_ratio
+  // (field 43, indices FL/FR) in the LOCKING sign (negative = under-rotating vs ground) while brake_pct is
+  // high, normalized between an onset and a saturation magnitude. ATTENUATED when ABS is engaged
+  // (abs_active(30) OR abs(40) > 0) on the peak-lock frame — an ABS-equipped GT3 rarely fully locks, so a
+  // reading under ABS intervention is far more likely modulation than a true lockup. Self-derived →
+  // always-present in Gold (non-nullable, no reference gate).
+  float brake_lockup_score = 22;           // 0..1, higher = harder front lockup under braking
 }
 
 // Per-sector summary emitted at sector cross.

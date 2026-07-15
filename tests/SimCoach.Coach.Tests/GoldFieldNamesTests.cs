@@ -14,7 +14,7 @@ public sealed class GoldFieldNamesTests
     {
         IReadOnlySet<string> corner = GoldFieldNames.For(CoachCadence.Corner);
 
-        corner.Should().Contain(["wheelspin_score", "brake_overlap_steer_pct", "steering_jitter", "trail_brake_diff_pct"]);
+        corner.Should().Contain(["wheelspin_score", "brake_lockup_score", "brake_overlap_steer_pct", "steering_jitter", "trail_brake_diff_pct"]);
     }
 
     [Fact]
