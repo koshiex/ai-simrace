@@ -81,7 +81,8 @@ public sealed record CoachTipRow
     public string? SetupHint { get; init; }
 }
 
-/// <summary>Row of the <c>references</c> table (one PB per <c>(track, car, weather)</c> triple).</summary>
+/// <summary>Row of the <c>references</c> table (one active reference per <c>(track, car, weather, kind)</c>,
+/// ADR-0021). Each kind is read through a non-overlapping facet.</summary>
 public sealed record ReferenceRow
 {
     public required string Id { get; init; }
@@ -91,9 +92,26 @@ public sealed record ReferenceRow
     public string? SourceSessionId { get; init; }
     public int? SourceLapNumber { get; init; }
     public required int LapTimeMs { get; init; }
-    public required string ParquetPath { get; init; }
+
+    /// <summary>Path to the resampled-lap parquet. Null iff <see cref="Kind"/> is <c>"optimal"</c> (the
+    /// row-only own-optimal kind has no parquet); non-null for <c>"pb"</c>/<c>"alien_line"</c>.</summary>
+    public string? ParquetPath { get; init; }
+
     public bool Pinned { get; init; }
     public required DateTimeOffset CreatedAtUtc { get; init; }
+
+    /// <summary>The DB <c>kind</c> discriminator string (<c>"pb"</c> / <c>"optimal"</c>). The
+    /// <c>ReferenceKind</c> enum + mapping live in <c>SimCoach.Reference</c>; storage stays string-typed
+    /// so it takes no dependency on that assembly.</summary>
+    public required string Kind { get; init; }
+
+    /// <summary>JSON array of N per-sector best durations (ms). Null unless <see cref="Kind"/> is
+    /// <c>"optimal"</c>.</summary>
+    public string? OptimalSectorMs { get; init; }
+
+    /// <summary>JSON describing which session/lap each optimal sector best came from. Null unless
+    /// <see cref="Kind"/> is <c>"optimal"</c>.</summary>
+    public string? SectorSourcesJson { get; init; }
 }
 
 /// <summary>Row of the <c>reference_snapshots</c> history table — one per PB parquet ever written for a

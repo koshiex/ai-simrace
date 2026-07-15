@@ -47,6 +47,13 @@ public static class TelemetryComposition
             return recordingOptions;
         });
 
+        // OptimalReferenceBaker (M46) is a StartAsync one-shot catch-up bake, NOT a stop-order
+        // participant (its StopAsync is a no-op). It is registered before the load-bearing services so
+        // the historical optimal is refreshed at start; because it takes no part in shutdown, its
+        // position does not disturb the reversed stop-order among SessionManager/recorder/coach/compute/
+        // ingest below.
+        builder.Services.AddHostedService<OptimalReferenceBaker>();
+
         // Stop order is the reverse of registration. SessionManager is registered first so it stops
         // LAST and finalizes the row (counts/PB from persisted laps, plus laps.parquet conversion)
         // only after ComputeService has drained and written its lap rows and the recorder has flushed
@@ -120,7 +127,14 @@ public static class TelemetryComposition
             Directory = Path.Combine(dataRoot, "references"),
         });
         builder.Services.AddSingleton<ReferenceLookup>();
+        builder.Services.AddSingleton<OptimalReferenceLookup>();
         builder.Services.AddSingleton<ReferenceStore>();
+
+        OptimalReferenceOptions optimalOptions =
+            builder.Configuration.GetSection("Reference:Optimal").Get<OptimalReferenceOptions>()
+            ?? new OptimalReferenceOptions();
+        optimalOptions.EnsureValid();
+        builder.Services.AddSingleton(optimalOptions);
 
         builder.Services.AddSingleton<DomainEventFanOut>();
     }

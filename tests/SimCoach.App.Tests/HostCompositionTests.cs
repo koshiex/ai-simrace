@@ -6,6 +6,9 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using SimCoach.Coach;
 using SimCoach.LLM;
+using SimCoach.Pipeline;
+using SimCoach.Reference;
+using SimCoach.Storage;
 using Xunit;
 
 namespace SimCoach.App.Tests;
@@ -53,6 +56,41 @@ public sealed class HostCompositionTests : IDisposable
         host.Services.GetRequiredService<ILlmClient>().Should().NotBeNull();
         host.Services.GetRequiredService<ICoachAmbientState>().Should().NotBeNull();
         host.Services.GetServices<IHostedService>().Should().Contain(static s => s is CoachService);
+    }
+
+    [Fact]
+    public void Optimal_baker_is_registered_and_the_load_bearing_stop_order_is_preserved()
+    {
+        HostApplicationBuilder builder = NewBuilder();
+        builder.AddTelemetryPipeline();
+        using IHost host = builder.Build();
+
+        List<IHostedService> hosted = [.. host.Services.GetServices<IHostedService>()];
+        List<string> names = [.. hosted.Select(static s => s.GetType().Name)];
+
+        // The baker (a StartAsync one-shot, no-op stop) is present.
+        names.Should().Contain(nameof(OptimalReferenceBaker));
+
+        // Registration order == start order; stop order is its reverse. The load-bearing invariant is the
+        // relative order of these five: SessionManager registered first (stops LAST, finalizes the row),
+        // then the recorder, the coach stack, ComputeService, and IngestService registered last (the
+        // producer stops FIRST). Assert that relative order is intact regardless of the baker's slot.
+        int session = names.IndexOf(nameof(SessionManager));
+        int recorder = names.IndexOf(nameof(McapRecorderService));
+        int coach = names.IndexOf(nameof(CoachService));
+        int compute = names.IndexOf(nameof(ComputeService));
+        int ingest = names.IndexOf(nameof(IngestService));
+
+        session.Should().BeGreaterThanOrEqualTo(0);
+        session.Should().BeLessThan(recorder);
+        recorder.Should().BeLessThan(coach);
+        coach.Should().BeLessThan(compute);
+        compute.Should().BeLessThan(ingest);
+
+        // The baker takes no part in the reversed stop-order: it must not sit between the recorder and
+        // IngestService, so it can never intrude on the finalize-after-drain ordering.
+        int baker = names.IndexOf(nameof(OptimalReferenceBaker));
+        (baker < session || baker > ingest).Should().BeTrue();
     }
 
     [Fact]
