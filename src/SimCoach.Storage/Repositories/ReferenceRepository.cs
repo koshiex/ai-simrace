@@ -58,4 +58,20 @@ public sealed class ReferenceRepository
             """,
             new { trackId, carId, weatherBucket, kind });
     }
+
+    /// <summary>Every stored reference row of one <paramref name="kind"/> (one per triple), ordered by
+    /// triple. Feeds the own-optimal catch-up bake (M46), which iterates the stored <c>"pb"</c> rows to
+    /// derive an optimal per triple from historical clean laps.</summary>
+    public IReadOnlyList<ReferenceRow> GetAllByKind(string kind)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(kind);
+        using SqliteConnection connection = _factory.Create();
+        return [.. connection.Query<ReferenceRow>(
+            """
+            SELECT * FROM [references]
+            WHERE kind = @kind
+            ORDER BY track_id, car_id, weather_bucket
+            """,
+            new { kind })];
+    }
 }
