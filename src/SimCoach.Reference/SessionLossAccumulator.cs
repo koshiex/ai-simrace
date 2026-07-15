@@ -17,6 +17,19 @@ namespace SimCoach.Reference;
 /// </summary>
 internal sealed class SessionLossAccumulator
 {
+    // M36 dominant_channel closed set — the THREE SIGNED diagnostic channels only. The unsigned RMS
+    // line-deviation is DELIBERATELY absent (excluded from the argmax domain, ADR-0020 / MF-2).
+    private const string BrakePointChannel = "brake_point";
+    private const string ThrottleResumeChannel = "throttle_resume";
+    private const string MinSpeedChannel = "min_speed";
+
+    private readonly ChannelLossScales _scales;
+
+    public SessionLossAccumulator(ChannelLossScales scales)
+    {
+        _scales = scales;
+    }
+
     private sealed class CornerLosses
     {
         public long TotalLossMs { get; set; }
@@ -95,11 +108,12 @@ internal sealed class SessionLossAccumulator
             .ToList();
     }
 
-    private static AggregatedLoss BuildLoss(string cornerId, CornerLosses losses)
+    private AggregatedLoss BuildLoss(string cornerId, CornerLosses losses)
     {
         // The diagnostic diffs 6-9 (ADR-0020) are report-only abs-then-average magnitudes over the same
         // lossy-corner samples the totals roll up from — never summed into total_loss_ms.
         ChannelDiffAverages diffs = Averages(losses);
+        (string dominantChannel, int dominantValue) = DominantChannel(diffs);
         return new AggregatedLoss
         {
             CornerId = cornerId,
@@ -111,7 +125,39 @@ internal sealed class SessionLossAccumulator
             AvgThrottleResumeDiffM = diffs.ThrottleResumeDiffM,
             AvgMinSpeedDiffKmh = diffs.MinSpeedDiffKmh,
             AvgLineDeviationM = diffs.LineDeviationM,
+            DominantChannel = dominantChannel,
+            DominantChannelValue = dominantValue,
         };
+    }
+
+    /// <summary>
+    /// M36 scaled cross-unit argmax over the THREE SIGNED channels only (brake-point, throttle-resume,
+    /// min-speed). Each channel's abs-then-average diff is scaled onto a common millisecond axis by its
+    /// <see cref="ChannelLossScales"/> factor, then the largest wins. The unsigned RMS line-deviation is
+    /// NOT a candidate (MF-2). Ties resolve deterministically brake-point &gt; throttle-resume &gt; min-speed.
+    /// Returns <c>("", 0)</c> when no signed channel has a non-zero scaled magnitude. The value is a
+    /// heuristic ranking magnitude (scaled ms), never an additive time.
+    /// </summary>
+    private (string Channel, int Value) DominantChannel(ChannelDiffAverages diffs)
+    {
+        float brake = diffs.BrakePointDiffM * _scales.MsPerMetreBrakePoint;
+        float throttle = diffs.ThrottleResumeDiffM * _scales.MsPerMetreThrottleResume;
+        float minSpeed = diffs.MinSpeedDiffKmh * _scales.MsPerKmhMinSpeed;
+
+        float max = MathF.Max(brake, MathF.Max(throttle, minSpeed));
+        if (max <= 0f)
+        {
+            return (string.Empty, 0);
+        }
+
+        if (max == brake)
+        {
+            return (BrakePointChannel, (int)MathF.Round(brake));
+        }
+
+        return max == throttle
+            ? (ThrottleResumeChannel, (int)MathF.Round(throttle))
+            : (MinSpeedChannel, (int)MathF.Round(minSpeed));
     }
 
     private static string DominantReason(Dictionary<string, int> counts) =>

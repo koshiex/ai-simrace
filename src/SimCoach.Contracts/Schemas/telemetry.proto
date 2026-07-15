@@ -213,6 +213,16 @@ message AggregatedLoss {
   float avg_throttle_resume_diff_m = 7;    // mean(|throttle_resume_diff_m|)
   float avg_min_speed_diff_kmh = 8;        // mean(|min_speed_diff_kmh|)
   float avg_line_deviation_m = 9;          // mean(|racing_line_deviation_m|), unsigned RMS input
+  // M36 scaled dominant-channel picker. The authoritative loss stays total_loss_ms(2); dominant_reason(5)
+  // is retained for back-compat but no longer authoritative. dominant_channel is the argmax over the THREE
+  // SIGNED diagnostic channels ONLY — {"brake_point", "throttle_resume", "min_speed"} — each ranked by
+  // mean(|diff|) x an IOptions ms-per-unit scale (ComputeOptions.MsPer*). The unsigned RMS line_deviation
+  // (field 9) is DELIBERATELY EXCLUDED from the domain (it would spuriously win the cross-unit argmax).
+  // Empty string when no signed channel has a non-zero scaled magnitude.
+  string dominant_channel = 10;
+  // Scaled ranking magnitude of the winning channel (mean(|diff|) x scale, rounded to ms). A HEURISTIC
+  // cross-unit ranking number, NOT an additive time — it MUST NEVER be summed into total_loss_ms.
+  int32 dominant_channel_value = 11;
 }
 
 message StintSummary {

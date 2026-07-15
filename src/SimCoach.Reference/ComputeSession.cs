@@ -38,7 +38,7 @@ internal sealed class ComputeSession
     // name in its sector tip, while _lapLosses/_sessionLosses (accumulation-gated) stay empty. On a
     // clean lap emittable==accumulable, so its content equals _lapLosses and clean-lap tips are unchanged.
     private readonly List<CornerContribution> _emitLosses = [];
-    private readonly SessionLossAccumulator _sessionLosses = new();
+    private readonly SessionLossAccumulator _sessionLosses;
     private readonly Dictionary<int, int> _bestSectorMs = [];        // clean-lap per-sector minima (best = min)
     private readonly Dictionary<int, List<int>> _sectorDeltaAccum = []; // per-sector coachable-crossing deltas (M25: median input)
     private List<CornerTracker> _cornerTrackers = [];
@@ -100,6 +100,8 @@ internal sealed class ComputeSession
         _options = options;
         _logger = logger;
         _identity = identity;
+        _sessionLosses = new SessionLossAccumulator(new ChannelLossScales(
+            options.MsPerMetreBrakePoint, options.MsPerMetreThrottleResume, options.MsPerKmhMinSpeed));
     }
 
     // M1 two-latch design (do NOT re-merge these): live coaching and aggregate/reference accumulation are
