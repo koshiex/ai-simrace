@@ -31,11 +31,22 @@ new table, `INSERT INTO new SELECT ... FROM old`, drop old, rename new):
 - **`PRAGMA foreign_keys = OFF` is a NO-OP mid-transaction** (SQLite only honours it outside an active
   transaction). The official FK-safe rebuild dance (`foreign_keys=OFF` … rebuild … `foreign_keys=ON`) is
   therefore **unavailable** inside the migrator.
-- **`PRAGMA foreign_key_check` DOES work as a query mid-transaction.** Use it at the end of the migration to
-  assert integrity, and fail the migration if it returns rows.
+- **`PRAGMA foreign_key_check` / `pragma_foreign_key_check('t')` DO work mid-transaction**, but making the
+  migration *abort* on a violation is not obvious: **`RAISE(ABORT,…)` only compiles inside a trigger-program**,
+  so `SELECT RAISE(ABORT,'…') WHERE EXISTS(…)` and `SELECT CASE WHEN … THEN RAISE(ABORT,…) END` both fail with
+  *"RAISE() may only be used within a trigger-program"* (verified against Microsoft.Data.Sqlite 9.0.0). The
+  working trick is a **temp-table CHECK** — the insert violates the CHECK and rolls back the migrator
+  transaction:
+  ```sql
+  CREATE TEMP TABLE _fk_guard (violations INTEGER CHECK (violations = 0));
+  INSERT INTO _fk_guard SELECT count(*) FROM pragma_foreign_key_check('references');
+  DROP TABLE _fk_guard;
+  ```
 - A rebuild is only safe when nothing FK-references the table's PK and its outgoing FKs are recreated in the
-  new table definition. Verify this before rebuilding. When you rebuild, explicitly `SELECT`-copy every
-  existing column (preserve `id`, `pinned`, `created_at`, etc.) rather than relying on column order.
+  new table definition. Verify this before rebuilding (`grep` for `REFERENCES <table>`). When you rebuild,
+  explicitly `SELECT`-copy every existing column (preserve `id`, `pinned`, `created_at`, etc.) rather than
+  relying on column order. **A table/column named `references` is a SQL reserved word** — quote it as
+  `[references]` everywhere (the rebuild rename included).
 
 ## Tests
 
