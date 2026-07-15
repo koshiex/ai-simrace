@@ -42,7 +42,11 @@ public sealed class SectorCornerMembershipBuilderTests
         builder.Observe(0, 0.00f, 0.30f);
         builder.Observe(1, 0.35f, 0.66f); // lap 2: wider sector-1 crossing
 
-        IReadOnlyList<SectorCornerMembership> membership = builder.Build([CornerAt("edge", apex: 0.64f)]);
+        IReadOnlyList<SectorCornerMembership> membership = builder.Build(
+        [
+            CornerAt("s0", apex: 0.10f),
+            CornerAt("edge", apex: 0.64f),
+        ]);
 
         membership.Select(m => m.SectorIndex).Should().Equal(0, 1);
         // 0.64 falls inside the unioned [0.35, 0.66] sector-1 range (no `because` arg — Equal(params string[])
@@ -51,17 +55,20 @@ public sealed class SectorCornerMembershipBuilderTests
     }
 
     [Fact]
-    public void Emits_a_cornerless_sector_with_an_empty_membership()
+    public void Omits_a_cornerless_sector_from_the_membership()
     {
-        // A straight sector with no baked apex inside its range still appears as an observed sector, with no
-        // corner ids — membership is derived truthfully, it does not invent corners.
+        // A straight sector with no baked apex inside its range emits no entry: the proto invariant is that
+        // each emitted SectorCornerMembership maps to >=1 corner, so a corner-free sector is dropped rather
+        // than surfaced with an empty corner list.
         var builder = new SectorCornerMembershipBuilder();
         builder.Observe(0, 0.00f, 0.50f);
+        builder.Observe(1, 0.50f, 1.00f);
 
         IReadOnlyList<SectorCornerMembership> membership = builder.Build([CornerAt("t9", apex: 0.90f)]);
 
         membership.Should().ContainSingle();
-        membership[0].CornerIds.Should().BeEmpty();
+        membership[0].SectorIndex.Should().Be(1);
+        membership[0].CornerIds.Should().Equal("t9");
     }
 
     [Fact]

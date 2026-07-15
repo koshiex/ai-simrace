@@ -271,7 +271,7 @@ message StintSummary {
 // M41 (B2): grounded sector→corner membership. Maps one observed sector index to the baked corners whose
 // apex falls within that sector's distance range. Derived at session end (ADR-0010: sectors stay OUT of the
 // track model — this is derived, not persisted). Rides SessionEvent(19) as repeated, one entry per observed
-// sector; each sector maps to >=1 corner.
+// sector that contains at least one corner apex; each emitted entry maps to >=1 corner.
 message SectorCornerMembership {
   int32 sector_index = 1;                  // 0-based observed sector
   repeated string corner_ids = 2;          // baked corner ids whose apex lies in this sector (>=1)

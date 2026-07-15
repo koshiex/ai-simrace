@@ -7,8 +7,8 @@ namespace SimCoach.Reference;
 /// only (ADR-0010): the normalized-position range of each sector index is OBSERVED at sector-cross time (as
 /// <c>current_sector_index</c> changes) and never persisted to the track model. At session end the observed
 /// ranges are intersected with the baked corner apex positions to derive membership — one
-/// <see cref="SectorCornerMembership"/> per observed sector. Mutation is isolated here; <see cref="Build"/>
-/// returns an immutable snapshot.
+/// <see cref="SectorCornerMembership"/> per observed sector that contains at least one baked corner apex.
+/// Mutation is isolated here; <see cref="Build"/> returns an immutable snapshot.
 /// </summary>
 internal sealed class SectorCornerMembershipBuilder
 {
@@ -46,7 +46,12 @@ internal sealed class SectorCornerMembershipBuilder
                 }
             }
 
-            membership.Add(mapping);
+            // Honor the proto invariant that each emitted entry maps to >=1 corner: a corner-free sector
+            // (unrealizable on a closed circuit, but possible in a degenerate baked model) emits nothing.
+            if (mapping.CornerIds.Count > 0)
+            {
+                membership.Add(mapping);
+            }
         }
 
         return membership;
