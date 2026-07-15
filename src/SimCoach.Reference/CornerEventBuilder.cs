@@ -158,6 +158,14 @@ internal static class CornerEventBuilder
             * lapLengthM;
         float racingLineDeviationM = RacingLineDeviation(selfSpan, lineRef);
 
+        // M33: reference-relative brake-release diff — where the driver lets off the brake vs where the
+        // reference does, over the SAME [Start,End] span the brake profile above measured. Negative = self
+        // releases earlier (a short trail-brake). A window with no braking leaves both offsets null → the
+        // shared EndPosition fallback yields a 0 diff (neutral), mirroring the flat/lift-only corner.
+        float brakeReleaseDiffM =
+            ((brakeSelf.BrakeOffPosition ?? corner.EndPosition) - (brakeRef.BrakeOffPosition ?? corner.EndPosition))
+            * lapLengthM;
+
         // M34: signed per-phase line deviation (entry/apex/exit) over the SAME [Start,End] self span the
         // unsigned RMS (field 9) uses. The pure kernel folds each band's median offset by the reference
         // turn direction (+ = wider, − = tighter) and neutralises a near-straight band to 0.
@@ -174,6 +182,7 @@ internal static class CornerEventBuilder
 
         ev.DeltaMs = deltaMs;
         ev.BrakePointDiffM = brakePointDiffM;
+        ev.BrakeReleaseDiffM = brakeReleaseDiffM;
         ev.MinSpeedDiffKmh = minSpeedDiffKmh;
         ev.ThrottleResumeDiffM = throttleResumeDiffM;
         ev.TrailBrakePctRef = brakeRef.TrailBrakePct;

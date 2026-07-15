@@ -62,6 +62,31 @@ public sealed class CornerEventBuilderTests
     }
 
     [Fact]
+    public void Releasing_the_brake_earlier_than_the_reference_yields_a_negative_release_diff()
+    {
+        // M33: self trail-brakes only to ~0.36 while the reference holds the brake to ~0.40 → self lets off
+        // the brake EARLIER (negative diff, a short trail-brake). Reference-relative → 0 without a reference.
+        List<TelemetryFrame> self = [];
+        for (int k = 0; k <= 20; k++)
+        {
+            float pos = 0.30f + (0.01f * k);
+            float speed = pos <= 0.40f ? Lerp(60f, 30f, Frac(0.30f, 0.40f, pos)) : Lerp(30f, 60f, Frac(0.40f, 0.50f, pos));
+            float brake = pos is >= 0.31f and <= 0.35f ? 0.8f : 0f;   // releases the brake at ~0.36
+            float throttle = pos >= 0.45f ? 0.8f : 0f;
+            self.Add(Frame(pos, speed, brake, throttle, tMs: 15 * k, worldX: pos * LapLengthM));
+        }
+
+        (CornerEvent withRef, _) =
+            CornerEventBuilder.Build(_corner, self, ReferenceGrid(), LapLengthM, GridLength, BrakeWindowUpstreamM, ApexWindowFraction);
+        (CornerEvent noRef, _) =
+            CornerEventBuilder.Build(_corner, self, reference: null, LapLengthM, gridLength: 0, BrakeWindowUpstreamM, ApexWindowFraction);
+
+        withRef.BrakeReleaseDiffM.Should().BeNegative("self releases the brake earlier than the reference (~0.36 vs ~0.41)");
+        withRef.BrakeReleaseDiffM.Should().BeApproximately(-50f, 15f);
+        noRef.BrakeReleaseDiffM.Should().Be(0f, "reference-relative → left at the proto default without a reference");
+    }
+
+    [Fact]
     public void A_flat_full_throttle_corner_yields_near_zero_delta_and_suppresses_min_speed()
     {
         // M2 regression guard: a flat full-throttle transit measured over the same [Start,End] span as

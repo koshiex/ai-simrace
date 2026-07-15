@@ -116,6 +116,11 @@ message CornerEvent {
   float entry_line_deviation_m = 18;
   float apex_line_deviation_m = 19;
   float exit_line_deviation_m = 20;        // + = wider exit line, - = tighter (carries the former track_width intent)
+
+  // M33: reference-relative brake RELEASE point diff — self brake-off position minus reference brake-off
+  // position, in metres. Negative = self lets off the brake EARLIER than the reference (short trail-brake,
+  // gives up pressure before the apex). Reference-relative → 0 without a reference (nullable/omitted in Gold).
+  float brake_release_diff_m = 21;         // negative = released the brake too early
 }
 
 // Per-sector summary emitted at sector cross.

@@ -49,6 +49,7 @@ public sealed class GoldArtifactBuilder
             EntryLineDeviationM = hasRef ? Rounding.Meters(e.EntryLineDeviationM) : null,
             ApexLineDeviationM = hasRef ? Rounding.Meters(e.ApexLineDeviationM) : null,
             ExitLineDeviationM = hasRef ? Rounding.Meters(e.ExitLineDeviationM) : null,
+            BrakeReleaseDiffM = hasRef ? Rounding.Meters(e.BrakeReleaseDiffM) : null,
         };
 
         return Envelope("corner", Header(ctx), payload, ctx.Locale);

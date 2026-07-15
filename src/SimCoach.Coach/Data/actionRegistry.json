@@ -20,6 +20,24 @@
       "phrase_template_ru": "В {corner} тормози позже на {meters}."
     },
     {
+      "id": "brake_release_too_early",
+      "label_short": "release_early",
+      "hint_en": "released the brake too early before the apex",
+      "hint_ru": "рано отпускает тормоз до апекса",
+      "cadence": "corner",
+      "priority": { "phase": "brake", "rank": 15 },
+      "requires_reference": true,
+      "when": [
+        { "field": "brake_release_diff_m", "op": "lt", "value": -2.0 },
+        { "field": "off_track", "op": "eq", "value": false }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" },
+        { "name": "meters", "from": "brake_release_diff_m", "transform": "abs_round0", "unit": "м" }
+      ],
+      "phrase_template_ru": "В {corner} дольше держи тормоз к апексу — отпускаешь на {meters} раньше."
+    },
+    {
       "id": "more_trail_brake",
       "label_short": "more_trail",
       "hint_en": "too little trail braking",

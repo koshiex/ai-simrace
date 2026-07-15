@@ -29,6 +29,7 @@ internal static class GoldTestData
         EntryLineDeviationM = 0.62f,
         ApexLineDeviationM = -0.44f,
         ExitLineDeviationM = 1.18f,
+        BrakeReleaseDiffM = -3.10f,
         OffTrack = false,
         UndersteerScore = 0.71f,
         OversteerScore = 0.12f,

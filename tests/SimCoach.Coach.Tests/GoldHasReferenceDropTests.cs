@@ -26,6 +26,7 @@ public sealed class GoldHasReferenceDropTests
         json.Should().NotContain("entry_line_deviation_m");
         json.Should().NotContain("apex_line_deviation_m");
         json.Should().NotContain("exit_line_deviation_m");
+        json.Should().NotContain("brake_release_diff_m");
         json.Should().NotContain("trail_brake_pct_ref");
         json.Should().NotContain("trail_brake_diff_pct");
     }

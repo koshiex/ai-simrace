@@ -42,4 +42,9 @@ public sealed record GoldCornerEvent(
     public double? ApexLineDeviationM { get; init; }
 
     public double? ExitLineDeviationM { get; init; }
+
+    // M33: reference-relative brake-release point diff (metres); − = self releases the brake earlier than the
+    // reference. Nullable — null (omitted) with no reference, as a separate init member so it never disturbs
+    // the positional shape.
+    public double? BrakeReleaseDiffM { get; init; }
 }
