@@ -31,6 +31,7 @@ public sealed class GoldCornerArtifactTests
         e.CornerNameRu.Should().Be("О-Руж");
         e.WheelspinScore.Should().Be(0.18);
         e.BrakeLockupScore.Should().Be(0.55);
+        e.ShortShiftScore.Should().Be(0.42);
         e.BrakeOverlapSteerPct.Should().Be(0.31);
         e.SteeringJitter.Should().Be(0.09);
         e.Reason.Should().Be("low_min_speed");
@@ -43,6 +44,7 @@ public sealed class GoldCornerArtifactTests
         GoldCornerEvent e = GoldTestData.Builder().BuildCorner(GoldTestData.Corner(), GoldTestData.Ctx(hasReference: false)).Event;
 
         e.BrakeLockupScore.Should().Be(0.55);
+        e.ShortShiftScore.Should().Be(0.42);
     }
 
     [Fact]

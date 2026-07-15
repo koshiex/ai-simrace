@@ -39,6 +39,7 @@ public sealed class CornerGoldView : IGoldView
             case "oversteer_score": return GoldScalar.Num(e.OversteerScore, out value);
             case "wheelspin_score": return GoldScalar.Num(e.WheelspinScore, out value);
             case "brake_lockup_score": return GoldScalar.Num(e.BrakeLockupScore, out value);
+            case "short_shift_score": return GoldScalar.Num(e.ShortShiftScore, out value);
             case "brake_overlap_steer_pct": return GoldScalar.Num(e.BrakeOverlapSteerPct, out value);
             case "steering_jitter": return GoldScalar.Num(e.SteeringJitter, out value);
             default: value = 0d; return false;

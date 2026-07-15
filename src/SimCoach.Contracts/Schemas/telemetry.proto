@@ -129,6 +129,15 @@ message CornerEvent {
   // reading under ABS intervention is far more likely modulation than a true lockup. Self-derived →
   // always-present in Gold (non-nullable, no reference gate).
   float brake_lockup_score = 22;           // 0..1, higher = harder front lockup under braking
+
+  // M33: self-derived short-shift score [0,1]. For each UPSHIFT in the corner window (gear increases
+  // between consecutive frames, from a driving gear) the rpm just BEFORE the change is the rpm the driver
+  // chose to shift at; a short-shift is one taken well below the top of the usable rev range. No telemetry
+  // channel carries the car's redline, so the reference is the PEAK rpm(15) seen anywhere in the window —
+  // the highest the engine is revved is the best self-derived proxy for the power-band ceiling. The score
+  // is the LARGEST shift-rpm deficit below that peak, normalized between an onset and a saturation fraction.
+  // Self-derived → always-present in Gold (non-nullable, no reference gate).
+  float short_shift_score = 23;            // 0..1, higher = upshifted further below the power band
 }
 
 // Per-sector summary emitted at sector cross.

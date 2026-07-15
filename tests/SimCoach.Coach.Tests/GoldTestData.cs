@@ -35,6 +35,7 @@ internal static class GoldTestData
         OversteerScore = 0.12f,
         WheelspinScore = 0.18f,
         BrakeLockupScore = 0.55f,
+        ShortShiftScore = 0.42f,
         BrakeOverlapSteerPct = 0.31f,
         SteeringJitter = 0.094f,
         Reason = "low_min_speed",

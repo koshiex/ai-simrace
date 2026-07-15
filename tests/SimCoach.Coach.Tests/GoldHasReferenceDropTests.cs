@@ -40,6 +40,7 @@ public sealed class GoldHasReferenceDropTests
         json.Should().Contain("understeer_score");
         json.Should().Contain("wheelspin_score");
         json.Should().Contain("brake_lockup_score");
+        json.Should().Contain("short_shift_score");
         json.Should().Contain("off_track");
         json.Should().Contain("corner_name");
     }

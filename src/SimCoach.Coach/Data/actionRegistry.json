@@ -317,6 +317,23 @@
       "phrase_template_ru": "В {corner} мягче на тормоз в начале — блокируешь передние колёса."
     },
     {
+      "id": "short_shift",
+      "label_short": "short_shift",
+      "hint_en": "upshifting below the power band",
+      "hint_ru": "переключаешься вверх слишком рано, ниже полки мощности",
+      "cadence": "corner",
+      "priority": { "phase": "exit", "rank": 45 },
+      "requires_reference": false,
+      "when": [
+        { "field": "short_shift_score", "op": "gt", "value": 0.4 },
+        { "field": "off_track", "op": "eq", "value": false }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "На выходе из {corner} держи передачу дольше — переключаешься слишком рано."
+    },
+    {
       "id": "earlier_throttle",
       "label_short": "earlier_throttle",
       "hint_en": "late to throttle on exit",

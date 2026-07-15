@@ -163,6 +163,7 @@ public sealed class CoachStartupValidator : IValidateOptions<CoachOptions>
                 ExitLineDeviationM = 1,
                 BrakeReleaseDiffM = 1,
                 BrakeLockupScore = 1,
+                ShortShiftScore = 1,
             })),
         CoachCadence.Sector => GoldView.For(new GoldArtifact<GoldSectorEvent>(
             "gold/1", "sector", "ru-RU",

@@ -51,4 +51,8 @@ public sealed record GoldCornerEvent(
     // M33: self-derived front brake-lockup score [0,1] (ABS-attenuated). Non-nullable and always present —
     // it needs no reference — as a separate init member so it never disturbs the positional shape.
     public double BrakeLockupScore { get; init; }
+
+    // M33: self-derived short-shift score [0,1] (upshift below the power band). Non-nullable and always
+    // present — it needs no reference — as a separate init member so it never disturbs the positional shape.
+    public double ShortShiftScore { get; init; }
 }
