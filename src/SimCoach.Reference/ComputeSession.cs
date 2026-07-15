@@ -261,9 +261,14 @@ internal sealed class ComputeSession
             _trackModel.Corners.Count, _reference is not null, _lineReference is not null, _optimalSectorMs is not null);
     }
 
-    // M46: read the persisted own-optimal for the triple as cumulative sector-boundary times. The sim's sector
-    // count comes off the frame; a zero count (no sector plumb yet) or a corrupt stored row disables the
-    // optimal deltas silently rather than crashing compute init.
+    // M46: read the persisted own-optimal for the triple as cumulative sector-boundary times. The sector
+    // count is taken ONCE from the first frame — a deliberate, accepted assumption: session identity
+    // (sim/track/car/weather, seeded from this same first frame in InitSession) and sector geometry are
+    // fixed for the whole session, so re-reading either from later frames would add nothing. A junk first
+    // frame is not a silent hazard here: it also seeds the identity triple, and a bogus identity fails
+    // loudly downstream (reference lookup / lap persistence) well before a wrong sector count could bite. A
+    // zero count (no sector plumb yet) or a corrupt stored row disables the optimal deltas silently rather
+    // than crashing compute init.
     private int[]? LoadOptimalSectorTimes(TelemetryFrame frame)
     {
         int sectorCount = frame.SectorCount;

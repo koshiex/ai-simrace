@@ -50,6 +50,9 @@ public sealed class LapRepository
     public IReadOnlyList<CleanLapSectors> BestSectorsByTriple(string trackId, string carId, string weatherBucket)
     {
         using SqliteConnection connection = _factory.Create();
+        // ACC-only MVP shape: laps store exactly three sectors (s1/s2/s3), so this clean-lap projection
+        // reads three fixed columns. A sim-agnostic variable sector count (e.g. a normalized lap_sectors
+        // child table) is future work — every currently supported sim (ACC) runs 3 sectors.
         IEnumerable<CleanLapSectorQueryRow> rows = connection.Query<CleanLapSectorQueryRow>(
             """
             SELECT l.session_id, l.lap_number, l.lap_time_ms, l.s1_ms, l.s2_ms, l.s3_ms

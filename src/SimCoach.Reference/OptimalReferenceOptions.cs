@@ -2,8 +2,10 @@ namespace SimCoach.Reference;
 
 /// <summary>
 /// Tuning for the own-optimal ("theoretical best") reference builder (M46). Every threshold is
-/// config-driven — no magic numbers in <see cref="OptimalReferenceBuilder"/>. Bound via
-/// <c>IOptions&lt;OptimalReferenceOptions&gt;</c> at the composition edge.
+/// config-driven — no magic numbers in <see cref="OptimalReferenceBuilder"/>. Bound from the
+/// <c>Reference:Optimal</c> configuration section and registered as a validated concrete singleton (NOT
+/// <c>IOptions&lt;&gt;</c>) at the composition edge — <see cref="EnsureValid"/> runs at startup, matching
+/// the repo's existing concrete-options pattern (e.g. <c>ComputeOptions</c>).
 /// </summary>
 public sealed record OptimalReferenceOptions
 {
