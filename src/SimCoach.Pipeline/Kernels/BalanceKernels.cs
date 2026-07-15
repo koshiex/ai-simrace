@@ -102,4 +102,42 @@ public static class BalanceKernels
             OversteerScore = (float)(oversteerSum / corneringFrames),
         };
     }
+
+    /// <summary>
+    /// Scores understeer/oversteer INDEPENDENTLY over each phase band (entry/apex/exit) of a baked corner
+    /// window, reusing the shared <see cref="CornerPhaseBands"/> apex arithmetic (one definition of "apex").
+    /// Each band is the position-sliced sub-window scored by <see cref="Analyze"/>; a band with no frame
+    /// degrades to the neutral <c>{0,0}</c> instead of throwing (a genuinely new kernel path, not a
+    /// re-slicing of the single-window scalar). The frames must carry <c>normalized_car_position</c>.
+    /// </summary>
+    public static PhaseBalanceScores AnalyzePhases(
+        IReadOnlyList<TelemetryFrame> frames, double start, double apex, double end, double apexBandFraction)
+    {
+        ArgumentNullException.ThrowIfNull(frames);
+        CornerPhaseOffsets offsets = CornerPhaseBands.Offsets(start, apex, end, apexBandFraction);
+        float apexStart = (float)(start + offsets.ApexStart);
+        float apexEnd = (float)(start + offsets.ApexEnd);
+        float exitEnd = (float)(start + offsets.Length);
+        return new PhaseBalanceScores
+        {
+            Entry = ScoreBand(frames, (float)start, apexStart),
+            Apex = ScoreBand(frames, apexStart, apexEnd),
+            Exit = ScoreBand(frames, apexEnd, exitEnd),
+        };
+    }
+
+    private static BalanceScores ScoreBand(IReadOnlyList<TelemetryFrame> frames, float lo, float hi)
+    {
+        List<TelemetryFrame> band = [];
+        foreach (TelemetryFrame frame in frames)
+        {
+            float pos = frame.NormalizedCarPosition;
+            if (pos >= lo && pos <= hi)
+            {
+                band.Add(frame);
+            }
+        }
+
+        return band.Count == 0 ? new BalanceScores { UndersteerScore = 0f, OversteerScore = 0f } : Analyze(band);
+    }
 }

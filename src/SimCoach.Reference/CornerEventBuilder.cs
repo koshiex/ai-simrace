@@ -13,7 +13,9 @@ namespace SimCoach.Reference;
 /// <see cref="RacingLineDeviationM"/>) mirror the emitted <see cref="CornerEvent"/> fields so
 /// <see cref="SessionLossAccumulator"/> can aggregate them abs-then-average (ADR-0020); they carry the
 /// real diffs in the reference branch and are 0 in the no-reference / degenerate branch (mirroring
-/// <c>DeltaMs = 0</c>).
+/// <c>DeltaMs = 0</c>). <see cref="PhaseBalance"/> is self-derived (like the whole-window
+/// <see cref="UndersteerScore"/>/<see cref="OversteerScore"/>) so it is populated in every branch — it
+/// feeds the per-phase M41 balance trend.
 /// </summary>
 internal sealed record CornerContribution(
     string CornerId,
@@ -25,7 +27,8 @@ internal sealed record CornerContribution(
     float BrakePointDiffM,
     float ThrottleResumeDiffM,
     float MinSpeedDiffKmh,
-    float RacingLineDeviationM);
+    float RacingLineDeviationM,
+    PhaseBalanceScores PhaseBalance);
 
 /// <summary>
 /// Builds a <see cref="CornerEvent"/> from a self corner window and (optionally) the reference grid.
@@ -63,6 +66,11 @@ internal static class CornerEventBuilder
         BrakeProfile brakeSelf = BrakeKernels.Analyze(selfSpan);
         CornerMetrics speedSelf = ThrottleSpeedKernels.Analyze(selfSpan);
         BalanceScores balanceSelf = BalanceKernels.Analyze(selfSpan);
+        // M41: per-phase (entry/apex/exit) balance over the SAME self span, scored independently per phase
+        // band. Self-derived, so it rides every return branch (reference or not) exactly like the whole-
+        // window balance scores above.
+        PhaseBalanceScores phaseBalance = BalanceKernels.AnalyzePhases(
+            selfSpan, corner.StartPosition, corner.ApexPosition, corner.EndPosition, apexWindowFraction);
         bool offTrack = OffTrack(selfSpan);
 
         // M9: unwanted brake-while-steering is measured ONLY over the turn-in → apex band, not the whole
@@ -98,7 +106,7 @@ internal static class CornerEventBuilder
             return (ev, new CornerContribution(
                 corner.Id, 0, speedSelf.MinSpeedPosition, selfReason,
                 balanceSelf.UndersteerScore, balanceSelf.OversteerScore,
-                0f, 0f, 0f, 0f));
+                0f, 0f, 0f, 0f, phaseBalance));
         }
 
         ResampledLap refLap = reference!;
@@ -120,7 +128,7 @@ internal static class CornerEventBuilder
             return (ev, new CornerContribution(
                 corner.Id, 0, speedSelf.MinSpeedPosition, selfReason,
                 balanceSelf.UndersteerScore, balanceSelf.OversteerScore,
-                0f, 0f, 0f, 0f));
+                0f, 0f, 0f, 0f, phaseBalance));
         }
 
         BrakeProfile brakeRef = BrakeKernels.Analyze(refFrames);
@@ -198,7 +206,7 @@ internal static class CornerEventBuilder
         return (ev, new CornerContribution(
             corner.Id, deltaMs, speedSelf.MinSpeedPosition, reason,
             balanceSelf.UndersteerScore, balanceSelf.OversteerScore,
-            brakePointDiffM, throttleResumeDiffM, minSpeedDiffKmh, racingLineDeviationM));
+            brakePointDiffM, throttleResumeDiffM, minSpeedDiffKmh, racingLineDeviationM, phaseBalance));
     }
 
     /// <summary>

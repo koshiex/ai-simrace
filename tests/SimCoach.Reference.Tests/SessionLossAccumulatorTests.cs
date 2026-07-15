@@ -1,5 +1,6 @@
 using FluentAssertions;
 using SimCoach.Contracts.V1;
+using SimCoach.Pipeline.Kernels;
 using Xunit;
 
 namespace SimCoach.Reference.Tests;
@@ -268,19 +269,65 @@ public sealed class SessionLossAccumulatorTests
         a.DominantChannelValue.Should().Be(b.DominantChannelValue);
     }
 
+    [Fact]
+    public void Records_a_lap_indexed_loss_trend_ordered_by_lap()
+    {
+        // M41 (AggregatedLoss 12): the per-corner loss trend is the corner's loss across the laps it was
+        // driven, one point per lossy lap. Fed out of lap order, Build emits the series ordered by lap so a
+        // "getting worse / improving" read is stable regardless of accumulation order.
+        SessionLossAccumulator acc = NewAccumulator();
+        acc.Accept(Contribution("t01", 100, "slower"));
+        acc.Accept(Contribution("t01", 140, "slower"));
+        acc.Accept(Contribution("t01", 120, "slower"));
+        acc.RecordLapTrend(3, Contribution("t01", 120, "slower"));
+        acc.RecordLapTrend(1, Contribution("t01", 100, "slower"));
+        acc.RecordLapTrend(2, Contribution("t01", 140, "slower"));
+
+        AggregatedLoss loss = acc.Build(topN: 1).Single();
+
+        loss.LossTrend.Select(p => p.LapNumber).Should().Equal(1, 2, 3);
+        loss.LossTrend.Select(p => p.LossMs).Should().Equal(100, 140, 120);
+    }
+
+    [Fact]
+    public void Loss_trend_ignores_non_lossy_laps_and_corners_never_rolled_up()
+    {
+        // A trend point exists only for a lap the corner actually lost time on (DeltaMs>0) and only for a
+        // corner already rolled up via Accept — a non-positive delta or an un-accepted corner adds nothing
+        // (the latter also avoids a divide-by-zero on an empty CornerLosses in Build).
+        SessionLossAccumulator acc = NewAccumulator();
+        acc.Accept(Contribution("t01", 100, "slower"));
+        acc.RecordLapTrend(1, Contribution("t01", 0, "slower"));    // non-lossy lap → skipped
+        acc.RecordLapTrend(1, Contribution("t01", -30, "slower"));  // faster than reference → skipped
+        acc.RecordLapTrend(1, Contribution("t99", 200, "slower"));  // never accepted → skipped, no phantom corner
+
+        IReadOnlyList<AggregatedLoss> losses = acc.Build(topN: 5);
+
+        losses.Should().ContainSingle().Which.CornerId.Should().Be("t01");
+        losses.Single().LossTrend.Should().BeEmpty("no lossy lap was recorded for t01, and t99 was never rolled up");
+    }
+
     private static SessionLossAccumulator NewAccumulator() =>
         new(Scales(brake: 10f, throttle: 10f, minSpeed: 20f));
 
     private static ChannelLossScales Scales(float brake, float throttle, float minSpeed) =>
         new(brake, throttle, minSpeed);
 
+    private static readonly PhaseBalanceScores _neutralPhaseBalance = new()
+    {
+        Entry = new BalanceScores { UndersteerScore = 0f, OversteerScore = 0f },
+        Apex = new BalanceScores { UndersteerScore = 0f, OversteerScore = 0f },
+        Exit = new BalanceScores { UndersteerScore = 0f, OversteerScore = 0f },
+    };
+
     private static CornerContribution Contribution(string cornerId, int deltaMs, string reason) =>
         new(cornerId, deltaMs, ApexPosition: 0.5f, reason, UndersteerScore: 0f, OversteerScore: 0f,
-            BrakePointDiffM: 0f, ThrottleResumeDiffM: 0f, MinSpeedDiffKmh: 0f, RacingLineDeviationM: 0f);
+            BrakePointDiffM: 0f, ThrottleResumeDiffM: 0f, MinSpeedDiffKmh: 0f, RacingLineDeviationM: 0f,
+            PhaseBalance: _neutralPhaseBalance);
 
     private static CornerContribution ContributionWithDiffs(
         string cornerId, int deltaMs, float brakePoint, float throttleResume, float minSpeed, float line) =>
         new(cornerId, deltaMs, ApexPosition: 0.5f, Reason: "slower", UndersteerScore: 0f, OversteerScore: 0f,
             BrakePointDiffM: brakePoint, ThrottleResumeDiffM: throttleResume, MinSpeedDiffKmh: minSpeed,
-            RacingLineDeviationM: line);
+            RacingLineDeviationM: line, PhaseBalance: _neutralPhaseBalance);
 }

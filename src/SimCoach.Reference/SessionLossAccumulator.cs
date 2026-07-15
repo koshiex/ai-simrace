@@ -39,6 +39,9 @@ internal sealed class SessionLossAccumulator
         public double AbsThrottleResumeDiffSum { get; set; }
         public double AbsMinSpeedDiffSum { get; set; }
         public double AbsLineDeviationSum { get; set; }
+
+        // M41 per-lap loss series (AggregatedLoss 12) — one point per lossy lap the corner was driven.
+        public List<(int LapNumber, int LossMs)> Trend { get; } = [];
     }
 
     private readonly Dictionary<string, CornerLosses> _byCorner = [];
@@ -68,6 +71,24 @@ internal sealed class SessionLossAccumulator
         losses.AbsThrottleResumeDiffSum += Math.Abs(contribution.ThrottleResumeDiffM);
         losses.AbsMinSpeedDiffSum += Math.Abs(contribution.MinSpeedDiffKmh);
         losses.AbsLineDeviationSum += Math.Abs(contribution.RacingLineDeviationM);
+    }
+
+    /// <summary>
+    /// Records one lap's per-corner loss into that corner's lap-indexed trend series (M41, AggregatedLoss
+    /// 12). Fed per completed lap by <see cref="ComputeSession"/> under the SAME <c>DeltaMs &gt; 0</c> lossy
+    /// gate the roll-up uses, so a trend point exists only for a lap the corner actually lost time on. Only
+    /// corners already rolled up (<see cref="Accept"/>ed) gain a point — a magnitude series, never summed
+    /// into <c>total_loss_ms</c>.
+    /// </summary>
+    public void RecordLapTrend(int lapNumber, CornerContribution contribution)
+    {
+        ArgumentNullException.ThrowIfNull(contribution);
+        if (contribution.DeltaMs <= 0 || !_byCorner.TryGetValue(contribution.CornerId, out CornerLosses? losses))
+        {
+            return;
+        }
+
+        losses.Trend.Add((lapNumber, contribution.DeltaMs));
     }
 
     /// <summary>
@@ -114,7 +135,7 @@ internal sealed class SessionLossAccumulator
         // lossy-corner samples the totals roll up from — never summed into total_loss_ms.
         ChannelDiffAverages diffs = Averages(losses);
         (string dominantChannel, int dominantValue) = DominantChannel(diffs);
-        return new AggregatedLoss
+        var loss = new AggregatedLoss
         {
             CornerId = cornerId,
             TotalLossMs = (int)losses.TotalLossMs,
@@ -128,6 +149,13 @@ internal sealed class SessionLossAccumulator
             DominantChannel = dominantChannel,
             DominantChannelValue = dominantValue,
         };
+        // M41 loss trend (field 12): the corner's per-lap loss series, ordered by lap. A magnitude series,
+        // never summed into total_loss_ms.
+        loss.LossTrend.AddRange(
+            losses.Trend
+                .OrderBy(point => point.LapNumber)
+                .Select(point => new LossTrend { LapNumber = point.LapNumber, LossMs = point.LossMs }));
+        return loss;
     }
 
     /// <summary>

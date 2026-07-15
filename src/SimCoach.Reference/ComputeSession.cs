@@ -39,6 +39,11 @@ internal sealed class ComputeSession
     // clean lap emittable==accumulable, so its content equals _lapLosses and clean-lap tips are unchanged.
     private readonly List<CornerContribution> _emitLosses = [];
     private readonly SessionLossAccumulator _sessionLosses;
+    // M41 session aggregates, both derived at session end. _phaseBalance mirrors the understeer_trend
+    // accumulation but per phase band; _sectorMembership observes each sector's position range as it is
+    // crossed and grounds it to the baked corner apexes in Build (sectors stay runtime-only, ADR-0010).
+    private readonly PhaseBalanceAccumulator _phaseBalance = new();
+    private readonly SectorCornerMembershipBuilder _sectorMembership = new();
     private readonly Dictionary<int, int> _bestSectorMs = [];        // clean-lap per-sector minima (best = min)
     private readonly Dictionary<int, List<int>> _sectorDeltaAccum = []; // per-sector coachable-crossing deltas (M25: median input)
     private List<CornerTracker> _cornerTrackers = [];
@@ -209,6 +214,10 @@ internal sealed class ComputeSession
             // Stints are descoped for Phase 2 — the empty repeated field is proto3-valid.
             session.AggregatedLosses.AddRange(PlausibleAggregatedLosses());
             session.SectorAvgDeltaMs.AddRange(PlausibleSectorAvgDeltas());
+            // M41 session aggregates. loss_trend(12) rides the AggregatedLoss entries above (per-corner);
+            // membership(19) and balance-phase trend(20) are derived here at session end.
+            session.SectorCornerMembership.AddRange(_sectorMembership.Build(_trackModel.Corners));
+            session.BalancePhaseTrend.AddRange(_phaseBalance.Build());
             (int Gap, IReadOnlyList<int> SectorDeficits)? optimal = OptimalGap();
             if (optimal is { } value)
             {
@@ -326,6 +335,7 @@ internal sealed class ComputeSession
             _sessionLosses.Accept(contribution);
             _understeerAccum += contribution.UndersteerScore;
             _oversteerAccum += contribution.OversteerScore;
+            _phaseBalance.Accept(contribution.PhaseBalance);
             _balanceCornerCount++;
         }
     }
@@ -343,6 +353,11 @@ internal sealed class ComputeSession
         // crossing is excluded from the accumulator so it cannot skew the session aggregate.
         if (CurrentLapEmittable())
         {
+            // M41: observe this sector's covered position range [prev-cross, this-cross] for the session-end
+            // sector→corner grounding. refEndPos already folds the S/F wrap to 1.0, so the range is
+            // non-wrapping. Emittable-gated (not pit), independent of a reference — sector geometry is fixed.
+            _sectorMembership.Observe(split.SectorIndex, _prevSectorCrossPos, refEndPos);
+
             int deltaMs = 0;
             if (_reference is not null)
             {
@@ -473,6 +488,15 @@ internal sealed class ComputeSession
         }
 
         _domain.Publish(DomainEvent.Lap(lapEvent));
+
+        // M41: record this lap's per-corner losses into the loss-trend series before ResetForNextLap clears
+        // _lapLosses. Fed the completing (renumbered, monotonic) lap number so the series orders by lap. The
+        // same accumulation-gated corners the aggregate roll-up saw; RecordLapTrend re-applies the DeltaMs>0
+        // gate, so only lossy laps add a point and only rolled-up corners gain one.
+        foreach (CornerContribution contribution in _lapLosses)
+        {
+            _sessionLosses.RecordLapTrend(completed.LapNumber, contribution);
+        }
 
         // Geometry is baked and fixed for the session (ADR-0014); a clean lap only updates the reference.
         if (clean && self is not null && _referenceStore.MaybeUpdate(_triple, completed, self, _identity))
