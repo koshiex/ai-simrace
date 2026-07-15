@@ -70,12 +70,15 @@ internal sealed class SessionLossAccumulator
             return default;
         }
 
-        return new ChannelDiffAverages(
+        return Averages(losses);
+    }
+
+    private static ChannelDiffAverages Averages(CornerLosses losses) =>
+        new(
             (float)(losses.AbsBrakePointDiffSum / losses.SampleCount),
             (float)(losses.AbsThrottleResumeDiffSum / losses.SampleCount),
             (float)(losses.AbsMinSpeedDiffSum / losses.SampleCount),
             (float)(losses.AbsLineDeviationSum / losses.SampleCount));
-    }
 
     public IReadOnlyList<AggregatedLoss> Build(int topN)
     {
@@ -85,18 +88,30 @@ internal sealed class SessionLossAccumulator
         }
 
         return _byCorner
-            .Select(pair => new AggregatedLoss
-            {
-                CornerId = pair.Key,
-                TotalLossMs = (int)pair.Value.TotalLossMs,
-                AvgLossMs = (int)(pair.Value.TotalLossMs / pair.Value.SampleCount),
-                SampleCount = pair.Value.SampleCount,
-                DominantReason = DominantReason(pair.Value.ReasonCounts),
-            })
+            .Select(pair => BuildLoss(pair.Key, pair.Value))
             .OrderByDescending(loss => loss.TotalLossMs)
             .ThenBy(loss => loss.CornerId, StringComparer.Ordinal)
             .Take(topN)
             .ToList();
+    }
+
+    private static AggregatedLoss BuildLoss(string cornerId, CornerLosses losses)
+    {
+        // The diagnostic diffs 6-9 (ADR-0020) are report-only abs-then-average magnitudes over the same
+        // lossy-corner samples the totals roll up from — never summed into total_loss_ms.
+        ChannelDiffAverages diffs = Averages(losses);
+        return new AggregatedLoss
+        {
+            CornerId = cornerId,
+            TotalLossMs = (int)losses.TotalLossMs,
+            AvgLossMs = (int)(losses.TotalLossMs / losses.SampleCount),
+            SampleCount = losses.SampleCount,
+            DominantReason = DominantReason(losses.ReasonCounts),
+            AvgBrakePointDiffM = diffs.BrakePointDiffM,
+            AvgThrottleResumeDiffM = diffs.ThrottleResumeDiffM,
+            AvgMinSpeedDiffKmh = diffs.MinSpeedDiffKmh,
+            AvgLineDeviationM = diffs.LineDeviationM,
+        };
     }
 
     private static string DominantReason(Dictionary<string, int> counts) =>

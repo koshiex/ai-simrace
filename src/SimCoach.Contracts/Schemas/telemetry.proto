@@ -204,6 +204,15 @@ message AggregatedLoss {
   int32 avg_loss_ms = 3;
   int32 sample_count = 4;
   string dominant_reason = 5;
+  // Report-only diagnostic diffs (M35, ADR-0020): each is the abs-then-average of a per-corner diff
+  // channel over the same DeltaMs>0 lossy-corner set the losses roll up from — mean(|per_corner_diff|),
+  // never |mean|, so a wrong-on-every-corner driver is not cancelled to ~0. Magnitudes, not times: never
+  // summed into total_loss_ms. avg_min_speed_diff_kmh is same-sign when lossy; the two brake/throttle
+  // diffs are bidirectional (the sign-fault invariant, ADR-0020, targets those).
+  float avg_brake_point_diff_m = 6;        // mean(|brake_point_diff_m|) over lossy samples
+  float avg_throttle_resume_diff_m = 7;    // mean(|throttle_resume_diff_m|)
+  float avg_min_speed_diff_kmh = 8;        // mean(|min_speed_diff_kmh|)
+  float avg_line_deviation_m = 9;          // mean(|racing_line_deviation_m|), unsigned RMS input
 }
 
 message StintSummary {
