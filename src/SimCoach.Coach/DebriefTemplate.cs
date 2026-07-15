@@ -37,7 +37,33 @@ public static class DebriefTemplate
             ["session_metrics"] = SessionMetrics(payload),
         };
 
+        // M46 debrief-only UX: the per-sector deficit ranking rides alongside the metrics, present only when a
+        // persisted optimal fed the session (SectorOptimalGapMs non-null). Absent otherwise so first-session /
+        // no-optimal debriefs stay byte-identical to before.
+        if (payload.SectorOptimalGapMs is not null)
+        {
+            artifact["sector_deficits"] = SectorDeficits(payload.SectorOptimalGapMs);
+        }
+
         return artifact.ToJsonString();
+    }
+
+    // Ranks sectors by how much time the cross-session optimal still holds over this session's best sector
+    // (deficit ≥ 0), descending; zero-deficit sectors are omitted (nothing to gain). Sector numbers are
+    // 1-based for the reader. Deterministic: ties break by ascending sector.
+    private static JsonArray SectorDeficits(IReadOnlyList<int> deficits)
+    {
+        var ranked = new JsonArray();
+        foreach ((int sector, int ms) in deficits
+            .Select((ms, i) => (Sector: i + 1, Ms: ms))
+            .Where(x => x.Ms > 0)
+            .OrderByDescending(x => x.Ms)
+            .ThenBy(x => x.Sector))
+        {
+            ranked.Add(new JsonObject { ["sector"] = sector, ["ms"] = ms });
+        }
+
+        return ranked;
     }
 
     // Grounded session metrics (M20): consistency stddev + theoretical-best gap surfaced with neutral RU resx
@@ -52,7 +78,14 @@ public static class DebriefTemplate
             metrics.Add(Metric("Debrief_Metric_Consistency", JsonValue.Create(consistency)));
         }
 
-        if (payload.TheoreticalBestGapMs is int gap)
+        // The gap headline supersedes (M46/must-fix #4): the cross-session optimal gap is preferred and the
+        // within-session theoretical best is the first-session-only fallback the builder leaves set only when no
+        // optimal exists. At most one gap metric renders — the two never appear together.
+        if (payload.OptimalGapMs is int optimalGap)
+        {
+            metrics.Add(Metric("Debrief_Metric_OptimalGap", JsonValue.Create(optimalGap)));
+        }
+        else if (payload.TheoreticalBestGapMs is int gap)
         {
             metrics.Add(Metric("Debrief_Metric_TheoreticalBestGap", JsonValue.Create(gap)));
         }

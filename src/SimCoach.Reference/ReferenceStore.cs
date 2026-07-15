@@ -60,7 +60,8 @@ public sealed class ReferenceStore
 
         // Re-read the row's pinned/time state immediately before deciding — a pin set mid-session wins.
         ReferenceRow? existing =
-            _repository.GetByTriple(triple.TrackId, triple.CarId, triple.WeatherBucket);
+            _repository.GetByTriple(
+                triple.TrackId, triple.CarId, triple.WeatherBucket, ReferenceKind.Pb.ToDbString());
         if (existing is not null && (existing.Pinned || existing.LapTimeMs <= completed.LapTimeMs))
         {
             return false;
@@ -101,6 +102,7 @@ public sealed class ReferenceStore
             ParquetPath = snapshotPath,
             Pinned = false,
             CreatedAtUtc = createdAtUtc,
+            Kind = ReferenceKind.Pb.ToDbString(),
         });
 
         PruneOldSnapshots(triple, snapshotId);

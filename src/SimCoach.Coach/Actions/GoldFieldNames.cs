@@ -38,7 +38,7 @@ public static class GoldFieldNames
     private static readonly FrozenSet<string> _session = new[]
     {
         "lap_count", "clean_lap_count", "pb_time_ms", "average_lap_ms", "understeer_trend",
-        "consistency_stddev_ms", "theoretical_best_gap_ms", "has_reference",
+        "consistency_stddev_ms", "theoretical_best_gap_ms", "optimal_gap_ms", "has_reference",
     }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>

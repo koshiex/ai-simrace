@@ -85,6 +85,11 @@ public sealed class GoldArtifactBuilder
 
     public GoldArtifact<GoldSessionPayload> BuildSession(SessionEvent e, GoldSessionContext ctx)
     {
+        // M46 supersede (must-fix #4): a non-empty sector_optimal_gap_ms is the "a persisted cross-session
+        // optimal exists" signal (proto3 int32 can't tell a real 0-gap from "no optimal"). When present the
+        // cross-session optimal_gap_ms is THE headline and the within-session field-16 theoretical_best_gap_ms
+        // demotes to null; when absent (first-ever session for the triple) field-16 is the fallback headline.
+        bool hasOptimal = e.SectorOptimalGapMs.Count > 0;
         var payload = new GoldSessionPayload(
             LapCount: e.LapCount,
             CleanLapCount: e.CleanLapCount,
@@ -94,7 +99,9 @@ public sealed class GoldArtifactBuilder
             AggregatedLosses: AggregatedLosses(e.TrackId, e.AggregatedLosses),
             SectorAvgDeltaMs: ctx.HasReference ? e.SectorAvgDeltaMs.ToList() : null,
             ConsistencyStddevMs: e.CleanLapCount >= 2 ? Rounding.Stddev(e.ConsistencyStddevMs) : null,
-            TheoreticalBestGapMs: e.CleanLapCount >= 1 ? e.TheoreticalBestGapMs : null,
+            TheoreticalBestGapMs: !hasOptimal && e.CleanLapCount >= 1 ? e.TheoreticalBestGapMs : null,
+            OptimalGapMs: hasOptimal ? e.OptimalGapMs : null,
+            SectorOptimalGapMs: hasOptimal ? e.SectorOptimalGapMs.ToList() : null,
             SetupHint: null,
             FuelTyre: new GoldFuelTyreSummary(Rounding.Fuel(e.AvgFuelPerLapL), Rounding.Percent(e.EndTyreWearPct)),
             Stints: Stints(e.Stints));

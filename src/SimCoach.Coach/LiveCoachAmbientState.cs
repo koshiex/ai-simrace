@@ -87,7 +87,8 @@ public sealed class LiveCoachAmbientState : BackgroundService, ICoachAmbientStat
                 {
                     cachedTriple = triple;
                     carClass = _carClasses.TryGetCarClass(frame.CarId, out string resolved) ? resolved : "unknown";
-                    hasReference = _references.GetByTriple(frame.TrackId, frame.CarId, frame.WeatherBucket) is not null;
+                    hasReference = _references.GetByTriple(
+                        frame.TrackId, frame.CarId, frame.WeatherBucket, ReferenceKind.Pb.ToDbString()) is not null;
                     corners = _trackModels.Get(frame.TrackId).Corners;
                 }
 

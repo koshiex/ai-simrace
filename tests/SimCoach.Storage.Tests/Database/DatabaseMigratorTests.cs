@@ -49,7 +49,7 @@ public sealed class DatabaseMigratorTests : IDisposable
         indexes.Should().BeEquivalentTo(
             "idx_coach_tips_session", "idx_laps_session", "idx_llm_usage_ts",
             "idx_reference_snapshots_triple", "idx_sessions_track_car");
-        connection.ExecuteScalar<long>("PRAGMA user_version;").Should().Be(6);
+        connection.ExecuteScalar<long>("PRAGMA user_version;").Should().Be(7);
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public sealed class DatabaseMigratorTests : IDisposable
         // Assert
         secondRun.Should().NotThrow();
         using SqliteConnection connection = _factory.Create();
-        connection.ExecuteScalar<long>("PRAGMA user_version;").Should().Be(6);
+        connection.ExecuteScalar<long>("PRAGMA user_version;").Should().Be(7);
     }
 
     [Fact]

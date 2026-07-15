@@ -113,6 +113,39 @@ public sealed class DebriefTemplateTests
         doc.RootElement.GetProperty("session_metrics").GetRawText().Should().Be(expected);
     }
 
+    [Fact]
+    public void BuildJson_renders_the_optimal_gap_headline_and_ranked_sector_deficits()
+    {
+        // A persisted optimal fed the session: the optimal gap is THE gap metric (theoretical-best absent) and
+        // the per-sector deficits render as a descending ranking with zero-deficit sectors omitted.
+        GoldArtifact<GoldSessionPayload> gold = Session(
+            [], consistencyStddevMs: 200.5, optimalGapMs: 1044, sectorOptimalGapMs: [120, 0, 884]);
+
+        string json = DebriefTemplate.BuildJson(gold, 5);
+
+        using var doc = JsonDocument.Parse(json);
+        JsonElement metrics = doc.RootElement.GetProperty("session_metrics");
+        metrics.GetArrayLength().Should().Be(2);
+        metrics[1].GetProperty("label").GetString().Should().Be(CoachStrings.Get("Debrief_Metric_OptimalGap"));
+        metrics[1].GetProperty("value").GetInt32().Should().Be(1044);
+
+        JsonElement deficits = doc.RootElement.GetProperty("sector_deficits");
+        deficits.GetArrayLength().Should().Be(2, "the zero-deficit sector is omitted from the ranking");
+        deficits[0].GetProperty("sector").GetInt32().Should().Be(3);
+        deficits[0].GetProperty("ms").GetInt32().Should().Be(884);
+        deficits[1].GetProperty("sector").GetInt32().Should().Be(1);
+        deficits[1].GetProperty("ms").GetInt32().Should().Be(120);
+    }
+
+    [Fact]
+    public void BuildJson_omits_sector_deficits_when_no_optimal_fed_the_session()
+    {
+        string json = DebriefTemplate.BuildJson(Session([], theoreticalBestGapMs: 380), 5);
+
+        using var doc = JsonDocument.Parse(json);
+        doc.RootElement.TryGetProperty("sector_deficits", out _).Should().BeFalse();
+    }
+
     private static IReadOnlyList<GoldAggregatedLoss> Losses(int count) =>
     [
         .. Enumerable.Range(0, count)
@@ -123,7 +156,9 @@ public sealed class DebriefTemplateTests
         IReadOnlyList<GoldAggregatedLoss> losses,
         string? setupHint = null,
         double? consistencyStddevMs = null,
-        int? theoreticalBestGapMs = null)
+        int? theoreticalBestGapMs = null,
+        int? optimalGapMs = null,
+        IReadOnlyList<int>? sectorOptimalGapMs = null)
     {
         var payload = new GoldSessionPayload(
             LapCount: 10,
@@ -135,6 +170,8 @@ public sealed class DebriefTemplateTests
             SectorAvgDeltaMs: null,
             ConsistencyStddevMs: consistencyStddevMs,
             TheoreticalBestGapMs: theoreticalBestGapMs,
+            OptimalGapMs: optimalGapMs,
+            SectorOptimalGapMs: sectorOptimalGapMs,
             SetupHint: setupHint,
             FuelTyre: new GoldFuelTyreSummary(2.5, 0.0),
             Stints: []);
