@@ -85,7 +85,8 @@ internal sealed class LlmRouter : ILlmClient
             route.Reasoning,
             route.Stream,
             route.Temperature,
-            route.TopP);
+            route.TopP,
+            route.CacheSystemPrompt);
     }
 
     private ILlmProvider ProviderFor(ResolvedRoute route)

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using FluentAssertions;
 using SimCoach.LLM;
@@ -105,6 +106,42 @@ public sealed class OpenRouterProviderTests
         JsonObject body = JsonNode.Parse(handler.LastRequestBody!)!.AsObject();
         body.Should().NotContainKey("temperature");
         body.Should().NotContainKey("top_p");
+    }
+
+    [Fact]
+    public async Task Request_marks_system_prompt_with_cache_control_when_route_enables_it()
+    {
+        var handler = MockHttpMessageHandler.Json(HttpStatusCode.OK, OpenAiSuccess("{}"));
+        OpenRouterProvider provider = Provider(handler);
+
+        await provider.CompleteAsync(
+            Request(RealTimeSchema),
+            Route("openrouter-anthropic", "anthropic/claude-sonnet-4.6", cacheSystemPrompt: true),
+            CancellationToken.None);
+
+        JsonObject body = JsonNode.Parse(handler.LastRequestBody!)!.AsObject();
+        JsonObject systemMessage = body["messages"]![0]!.AsObject();
+        systemMessage["role"]!.GetValue<string>().Should().Be("system");
+        JsonObject block = systemMessage["content"]!.AsArray()[0]!.AsObject();
+        block["type"]!.GetValue<string>().Should().Be("text");
+        block["cache_control"]!["type"]!.GetValue<string>().Should().Be("ephemeral");
+    }
+
+    [Fact]
+    public async Task Request_leaves_system_prompt_uncached_when_route_flag_is_off()
+    {
+        var handler = MockHttpMessageHandler.Json(HttpStatusCode.OK, OpenAiSuccess("{}"));
+        OpenRouterProvider provider = Provider(handler);
+
+        await provider.CompleteAsync(
+            Request(RealTimeSchema),
+            Route("openrouter-google", "google/gemini-2.5-flash-lite"),
+            CancellationToken.None);
+
+        JsonObject body = JsonNode.Parse(handler.LastRequestBody!)!.AsObject();
+        // Default off: the system content stays a plain string, so no cache_control marker rides the wire.
+        body["messages"]![0]!["content"]!.GetValueKind().Should().Be(JsonValueKind.String);
+        handler.LastRequestBody!.Should().NotContain("cache_control");
     }
 
     [Fact]
@@ -277,8 +314,18 @@ public sealed class OpenRouterProviderTests
         double timeoutMs = 2000,
         ReasoningEffort reasoning = ReasoningEffort.Off,
         double? temperature = null,
-        double? topP = null)
-        => new(providerId, modelId, maxTokens, TimeSpan.FromMilliseconds(timeoutMs), reasoning, false, temperature, topP);
+        double? topP = null,
+        bool cacheSystemPrompt = false)
+        => new(
+            providerId,
+            modelId,
+            maxTokens,
+            TimeSpan.FromMilliseconds(timeoutMs),
+            reasoning,
+            false,
+            temperature,
+            topP,
+            cacheSystemPrompt);
 
     private static string OpenAiSuccess(string contentJson, string finish = "stop")
         => new JsonObject

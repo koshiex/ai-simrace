@@ -10,4 +10,5 @@ internal readonly record struct ResolvedRoute(
     ReasoningEffort Reasoning,
     bool Stream,
     double? Temperature = null,
-    double? TopP = null);
+    double? TopP = null,
+    bool CacheSystemPrompt = false);

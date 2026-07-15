@@ -82,11 +82,29 @@ internal sealed class OpenRouterProvider : ILlmProvider
             ? request.SystemPrompt
             : $"{request.SystemPrompt}\n\n{directive.SystemInstruction}";
 
+        // Default off: the system content is a plain string, keeping the current uncached wire shape. When the
+        // route opts in, the content becomes a single text block carrying a cache_control breakpoint so the
+        // provider can serve the stable prefix from its prompt cache.
+        var systemMessage = new JsonObject { ["role"] = "system" };
+        if (route.CacheSystemPrompt)
+        {
+            systemMessage["content"] = new JsonArray(new JsonObject
+            {
+                ["type"] = "text",
+                ["text"] = system,
+                ["cache_control"] = new JsonObject { ["type"] = "ephemeral" },
+            });
+        }
+        else
+        {
+            systemMessage["content"] = system;
+        }
+
         var body = new JsonObject
         {
             ["model"] = route.ModelId,
             ["messages"] = new JsonArray(
-                new JsonObject { ["role"] = "system", ["content"] = system },
+                systemMessage,
                 new JsonObject { ["role"] = "user", ["content"] = request.UserPrompt }),
             ["max_tokens"] = route.MaxOutputTokens,
             ["stream"] = false,
