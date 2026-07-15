@@ -70,6 +70,19 @@ public sealed class DebriefTemplateTests
     }
 
     [Fact]
+    public void BuildJson_renders_the_grounded_setup_hint_when_present()
+    {
+        // M41: a synthesized grounded setup_hint (balance-derived) surfaces on the LLM-off debrief; a null hint
+        // drops (JsonValueKind.Null), asserted by the sibling channel test above.
+        GoldArtifact<GoldSessionPayload> gold = Session([], setupHint: "устойчивый снос на входе в поворот");
+
+        string json = DebriefTemplate.BuildJson(gold, 5);
+
+        using var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("setup_hint").GetString().Should().Be("устойчивый снос на входе в поворот");
+    }
+
+    [Fact]
     public void BuildJson_with_no_losses_emits_a_non_empty_priority()
     {
         string json = DebriefTemplate.BuildJson(Session([]), 5);

@@ -14,6 +14,15 @@ namespace SimCoach.Coach.Gold;
 /// <see cref="SectorOptimalGapMs"/> is the per-sector deficit vector (≥0) for the debrief deficit ranking. Both
 /// are <c>null</c> (dropped) when no persisted optimal exists yet.
 /// </para>
+/// <para>
+/// M41: <see cref="BalancePhaseTrends"/> (per-phase entry/apex/exit balance) and
+/// <see cref="SectorCornerMemberships"/> (grounded sector→corner map) ride here as <b>non-scalar</b> init
+/// members, so they are auto-excluded from the reflected <c>GoldFieldNames._session</c> drift guard (like
+/// <see cref="AggregatedLosses"/>/<see cref="Stints"/>). <see cref="SetupHint"/> is now synthesized from the
+/// balance grounds (D-SETUPHINT) — still under the same name-excluded member, no new proto scalar — and stays
+/// <c>null</c> when no phase clears the balance threshold. The per-corner loss trend rides
+/// <see cref="GoldAggregatedLoss"/>, not this payload.
+/// </para>
 /// </summary>
 public sealed record GoldSessionPayload(
     int LapCount,
@@ -29,4 +38,9 @@ public sealed record GoldSessionPayload(
     IReadOnlyList<int>? SectorOptimalGapMs,
     string? SetupHint,
     GoldFuelTyreSummary FuelTyre,
-    IReadOnlyList<GoldStint> Stints);
+    IReadOnlyList<GoldStint> Stints)
+{
+    public IReadOnlyList<GoldBalancePhaseTrend> BalancePhaseTrends { get; init; } = [];
+
+    public IReadOnlyList<GoldSectorCornerMembership> SectorCornerMemberships { get; init; } = [];
+}

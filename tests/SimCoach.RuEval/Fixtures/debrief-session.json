@@ -23,6 +23,15 @@
     "consistencyStddevMs": 640,
     "theoreticalBestGapMs": 1120,
     "avgFuelPerLapL": 2.8,
-    "endTyreWearPct": 0.31
+    "endTyreWearPct": 0.31,
+    "balancePhaseTrend": [
+      { "phase": "entry", "balance": 0.28, "sampleCount": 8 },
+      { "phase": "apex", "balance": 0.06, "sampleCount": 8 },
+      { "phase": "exit", "balance": -0.09, "sampleCount": 8 }
+    ],
+    "sectorCornerMembership": [
+      { "sectorIndex": 0, "cornerIds": ["spa_t01"] },
+      { "sectorIndex": 1, "cornerIds": ["spa_t05"] }
+    ]
   }
 }

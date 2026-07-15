@@ -99,9 +99,24 @@ internal static class GoldTestData
         AvgFuelPerLapL = 2.834f,
         EndTyreWearPct = 0f,
         SectorAvgDeltaMs = { 120, -30, 45 },
+        BalancePhaseTrend =
+        {
+            new BalancePhaseTrend { Phase = "entry", Balance = 0.32f, SampleCount = 6 },
+            new BalancePhaseTrend { Phase = "apex", Balance = 0.05f, SampleCount = 6 },
+            new BalancePhaseTrend { Phase = "exit", Balance = -0.10f, SampleCount = 6 },
+        },
+        SectorCornerMembership =
+        {
+            new SectorCornerMembership { SectorIndex = 0, CornerIds = { "spa_t01", "spa_t02" } },
+            new SectorCornerMembership { SectorIndex = 1, CornerIds = { "spa_t05" } },
+        },
         AggregatedLosses =
         {
-            new AggregatedLoss { CornerId = "spa_t02", TotalLossMs = 600, AvgLossMs = 86, SampleCount = 7, DominantReason = "low_min_speed", DominantChannel = "min_speed", DominantChannelValue = 48 },
+            new AggregatedLoss
+            {
+                CornerId = "spa_t02", TotalLossMs = 600, AvgLossMs = 86, SampleCount = 7, DominantReason = "low_min_speed", DominantChannel = "min_speed", DominantChannelValue = 48,
+                LossTrend = { new LossTrend { LapNumber = 1, LossMs = 120 }, new LossTrend { LapNumber = 2, LossMs = 90 }, new LossTrend { LapNumber = 3, LossMs = 210 } },
+            },
             new AggregatedLoss { CornerId = "spa_t05", TotalLossMs = 450, AvgLossMs = 64, SampleCount = 7, DominantReason = "late_throttle", DominantChannel = "throttle_resume", DominantChannelValue = 33 },
             new AggregatedLoss { CornerId = "spa_t08", TotalLossMs = 300, AvgLossMs = 50, SampleCount = 6, DominantReason = "understeer" },
             new AggregatedLoss { CornerId = "spa_t99", TotalLossMs = 250, AvgLossMs = 40, SampleCount = 6, DominantReason = "early_brake" },

@@ -6,7 +6,9 @@ namespace SimCoach.Coach.Gold;
 /// <see cref="Reason"/> (proto <c>dominant_reason</c>, field 5) is RETAINED for back-compat but no longer
 /// authoritative — the debrief renders <see cref="DominantChannel"/> instead (M36). <see cref="DominantChannelValue"/>
 /// is a HEURISTIC scaled ranking magnitude, never an additive time; it must never be summed with
-/// <see cref="TotalLossMs"/> (MF-6).
+/// <see cref="TotalLossMs"/> (MF-6). <see cref="LossTrend"/> is the M41 per-corner lap-indexed loss series
+/// (proto <c>AggregatedLoss.loss_trend</c>, field 12) — a magnitude series, likewise never summed into
+/// <see cref="TotalLossMs"/>. It rides here (per-corner), not on <see cref="GoldSessionPayload"/>.
 /// </summary>
 public sealed record GoldAggregatedLoss(
     string Corner,
@@ -20,4 +22,6 @@ public sealed record GoldAggregatedLoss(
     public string DominantChannel { get; init; } = string.Empty;
 
     public int DominantChannelValue { get; init; }
+
+    public IReadOnlyList<GoldLossTrend> LossTrend { get; init; } = [];
 }
