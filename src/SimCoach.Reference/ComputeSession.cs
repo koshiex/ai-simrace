@@ -21,6 +21,7 @@ internal sealed class ComputeSession
     private readonly TrackModelStore _trackModels;
     private readonly CenterlineGeometryDataset _centerlines;
     private readonly ReferenceLookup _lookup;
+    private readonly OptimalReferenceLookup _optimalLookup;
     private readonly ReferenceStore _referenceStore;
     private readonly LapRepository _laps;
     private readonly ITrackLengthProvider _lengths;
@@ -53,6 +54,9 @@ internal sealed class ComputeSession
     private TrackModel _trackModel = new() { TrackId = string.Empty, Corners = [], Source = TrackModelSource.None };
     private ResampledLap? _reference;
     private ResampledLap? _lineReference;
+    // M46: cumulative sector-boundary times (ms from lap start) of the triple's own-optimal, or null when no
+    // optimal is persisted. TIME ONLY — read at sector-cross boundaries by index; never a ResampledLap.
+    private int[]? _optimalSectorMs;
 
     private int _runningBestMs = int.MaxValue;
     private int _lapCount;
@@ -77,6 +81,7 @@ internal sealed class ComputeSession
         TrackModelStore trackModels,
         CenterlineGeometryDataset centerlines,
         ReferenceLookup lookup,
+        OptimalReferenceLookup optimalLookup,
         ReferenceStore referenceStore,
         LapRepository laps,
         ITrackLengthProvider lengths,
@@ -88,6 +93,7 @@ internal sealed class ComputeSession
         _trackModels = trackModels;
         _centerlines = centerlines;
         _lookup = lookup;
+        _optimalLookup = optimalLookup;
         _referenceStore = referenceStore;
         _laps = laps;
         _lengths = lengths;
@@ -201,6 +207,13 @@ internal sealed class ComputeSession
             // Stints are descoped for Phase 2 — the empty repeated field is proto3-valid.
             session.AggregatedLosses.AddRange(PlausibleAggregatedLosses());
             session.SectorAvgDeltaMs.AddRange(PlausibleSectorAvgDeltas());
+            (int Gap, IReadOnlyList<int> SectorDeficits)? optimal = OptimalGap();
+            if (optimal is { } value)
+            {
+                session.OptimalGapMs = value.Gap;
+                session.SectorOptimalGapMs.AddRange(value.SectorDeficits);
+            }
+
             _domain.Publish(DomainEvent.Session(session));
         }
 
@@ -238,10 +251,38 @@ internal sealed class ComputeSession
             _hasLength && _centerlines.TryGetCenterline(_trackId, _lapLengthM, out MedianCenterline? centerline)
                 ? CenterlineLineReference.Build(centerline!)
                 : null;
+        // M46: the own-optimal is TIME ONLY — cumulative per-sector best boundaries, read by index at sector
+        // crossings. Loaded LAST and fault-isolated so a corrupt optimal row degrades to "no optimal" instead
+        // of breaking the reference/centerline setup above.
+        _optimalSectorMs = LoadOptimalSectorTimes(frame);
         _logger.LogInformation(
-            "Compute started for {Session}: {Track}/{Car}/{Weather}, model {Source} ({Corners} corners), reference {HasRef}, centerline {HasLine}",
+            "Compute started for {Session}: {Track}/{Car}/{Weather}, model {Source} ({Corners} corners), reference {HasRef}, centerline {HasLine}, optimal {HasOptimal}",
             _identity.SessionId, _trackId, _carId, _weatherBucket, _trackModel.Source,
-            _trackModel.Corners.Count, _reference is not null, _lineReference is not null);
+            _trackModel.Corners.Count, _reference is not null, _lineReference is not null, _optimalSectorMs is not null);
+    }
+
+    // M46: read the persisted own-optimal for the triple as cumulative sector-boundary times. The sim's sector
+    // count comes off the frame; a zero count (no sector plumb yet) or a corrupt stored row disables the
+    // optimal deltas silently rather than crashing compute init.
+    private int[]? LoadOptimalSectorTimes(TelemetryFrame frame)
+    {
+        int sectorCount = frame.SectorCount;
+        if (sectorCount <= 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            return _optimalLookup.GetSectorTimes(_triple, sectorCount);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(
+                ex, "Optimal reference for {Track}/{Car}/{Weather} is corrupt; optimal deltas disabled",
+                _trackId, _carId, _weatherBucket);
+            return null;
+        }
     }
 
     private void EmitCorner(Corner corner, IReadOnlyList<TelemetryFrame> window)
@@ -331,6 +372,7 @@ internal sealed class ComputeSession
                 SectorIdx = split.SectorIndex,
                 SectorTimeMs = split.SectorTimeMs,
                 DeltaMs = deltaMs,
+                OptimalDeltaMs = OptimalSectorDelta(split.SectorIndex, split.SectorTimeMs),
             };
             ev.TopLosses.AddRange(TopLosses(
                 _emitLosses.Where(c => c.ApexPosition >= _prevSectorCrossPos && c.ApexPosition <= refEndPos)));
@@ -396,6 +438,7 @@ internal sealed class ComputeSession
             DeltaMs = deltaMs ?? 0,
             IsPb = isPb,
             IsClean = clean,
+            OptimalDeltaMs = OptimalLapDelta(completed.LapTimeMs),
             Thermal = new LapEvent.Types.ThermalSummary
             {
                 MaxTyreTempC = thermal.MaxTyreTempC,
@@ -539,6 +582,60 @@ internal sealed class ComputeSession
 
         int bestSectorsSum = _bestSectorMs.Values.Sum();
         return Math.Max(0, _runningBestMs - bestSectorsSum);
+    }
+
+    // M46 TIME-only per-sector optimal delta at a sector crossing: this sector's time minus the persisted
+    // cross-session best duration for the SAME sector, read by index from the cumulative boundaries
+    // (durationsₖ = cumulativeₖ − cumulativeₖ₋₁). 0 when no optimal is persisted or the index is out of range —
+    // never reads a ResampledLap or a mid-sector TimeAt.
+    private int OptimalSectorDelta(int sectorIndex, int sectorTimeMs)
+    {
+        if (_optimalSectorMs is null || sectorIndex < 0 || sectorIndex >= _optimalSectorMs.Length)
+        {
+            return 0;
+        }
+
+        int optimalSectorMs = _optimalSectorMs[sectorIndex] - (sectorIndex > 0 ? _optimalSectorMs[sectorIndex - 1] : 0);
+        return sectorTimeMs - optimalSectorMs;
+    }
+
+    // M46 TIME-only lap optimal delta: this lap's time minus the optimal target (Σ best sectors = the last
+    // cumulative boundary). 0 when no optimal is persisted.
+    private int OptimalLapDelta(int lapTimeMs) =>
+        _optimalSectorMs is null ? 0 : lapTimeMs - _optimalSectorMs[^1];
+
+    // M46 debrief headline (must-fix #2/#4): the CURRENT-session-aware gap to the cross-session own-optimal.
+    // Merges the persisted per-sector optimal with THIS session's best sectors (min per sector), so a sector
+    // the driver beat today folds in; gap = PB − Σ merged (clamped ≥ 0, mirroring TheoreticalBestGapMs). The
+    // per-sector deficit vector (this-session-best − merged, ≥ 0) ranks where the optimal still holds time.
+    // Returns null when no persisted optimal exists (first-session fallback → field 16 shows) or no clean PB
+    // was set this session (no baseline lap to measure the gap against).
+    private (int Gap, IReadOnlyList<int> SectorDeficits)? OptimalGap()
+    {
+        if (_optimalSectorMs is null || _runningBestMs == int.MaxValue || _bestSectorMs.Count == 0)
+        {
+            return null;
+        }
+
+        int mergedSum = 0;
+        int[] deficits = new int[_optimalSectorMs.Length];
+        for (int i = 0; i < _optimalSectorMs.Length; i++)
+        {
+            int persisted = _optimalSectorMs[i] - (i > 0 ? _optimalSectorMs[i - 1] : 0);
+            if (_bestSectorMs.TryGetValue(i, out int best))
+            {
+                int merged = Math.Min(persisted, best);
+                mergedSum += merged;
+                deficits[i] = best - merged;
+            }
+            else
+            {
+                mergedSum += persisted;
+                deficits[i] = 0;
+            }
+        }
+
+        return (Math.Max(0, _runningBestMs - mergedSum), deficits);
     }
 
     // M25 (Q4): the per-sector session aggregate is the MEDIAN of the coachable-lap crossing deltas, not

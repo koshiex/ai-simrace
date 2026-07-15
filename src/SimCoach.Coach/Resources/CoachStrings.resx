@@ -111,4 +111,8 @@
     <value>Отставание от теоретического круга, мс</value>
     <comment>Neutral debrief label for the theoretical-best-lap gap (M20); value is a grounded number.</comment>
   </data>
+  <data name="Debrief_Metric_OptimalGap" xml:space="preserve">
+    <value>Отставание от оптимального круга, мс</value>
+    <comment>Neutral debrief label for the cross-session own-optimal gap (M46); supersedes the theoretical-best gap.</comment>
+  </data>
 </root>

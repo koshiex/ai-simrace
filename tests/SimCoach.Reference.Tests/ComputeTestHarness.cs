@@ -39,6 +39,7 @@ internal sealed class ComputeTestHarness : IDisposable
             lengths,
             NullLogger<TrackModelStore>.Instance);
         Lookup = new ReferenceLookup(References, NullLogger<ReferenceLookup>.Instance);
+        OptimalLookup = new OptimalReferenceLookup(References, NullLogger<OptimalReferenceLookup>.Instance);
         ReferenceStore = new ReferenceStore(
             References,
             Snapshots,
@@ -68,6 +69,8 @@ internal sealed class ComputeTestHarness : IDisposable
 
     public ReferenceLookup Lookup { get; }
 
+    public OptimalReferenceLookup OptimalLookup { get; }
+
     public ReferenceStore ReferenceStore { get; }
 
     public string ReferencesDirectory => Path.Combine(_root, "references");
@@ -94,7 +97,7 @@ internal sealed class ComputeTestHarness : IDisposable
         Sessions.Insert(NewSessionRow(identity, frames[0]));
 
         var session = new ComputeSession(
-            DomainFanOut, TrackModels, Centerlines, Lookup, ReferenceStore, Laps, _lengths,
+            DomainFanOut, TrackModels, Centerlines, Lookup, OptimalLookup, ReferenceStore, Laps, _lengths,
             options ?? new ComputeOptions(), NullLogger.Instance, identity);
         foreach (TelemetryFrame frame in frames)
         {
@@ -124,7 +127,7 @@ internal sealed class ComputeTestHarness : IDisposable
         var identity = new SessionIdentity(sessionId, new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero));
         Sessions.Insert(NewSessionRow(identity, frames[0]));
         var session = new ComputeSession(
-            new DomainEventFanOut(), TrackModels, Centerlines, Lookup, ReferenceStore, Laps, _lengths,
+            new DomainEventFanOut(), TrackModels, Centerlines, Lookup, OptimalLookup, ReferenceStore, Laps, _lengths,
             options ?? new ComputeOptions(), NullLogger.Instance, identity);
         foreach (TelemetryFrame frame in frames)
         {

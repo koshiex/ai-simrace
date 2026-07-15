@@ -127,6 +127,7 @@ public static class TelemetryComposition
             Directory = Path.Combine(dataRoot, "references"),
         });
         builder.Services.AddSingleton<ReferenceLookup>();
+        builder.Services.AddSingleton<OptimalReferenceLookup>();
         builder.Services.AddSingleton<ReferenceStore>();
 
         OptimalReferenceOptions optimalOptions =

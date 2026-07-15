@@ -23,6 +23,7 @@ public sealed class ComputeService : BackgroundService
     private readonly TrackModelStore _trackModels;
     private readonly CenterlineGeometryDataset _centerlines;
     private readonly ReferenceLookup _lookup;
+    private readonly OptimalReferenceLookup _optimalLookup;
     private readonly ReferenceStore _referenceStore;
     private readonly LapRepository _laps;
     private readonly ITrackLengthProvider _lengths;
@@ -36,6 +37,7 @@ public sealed class ComputeService : BackgroundService
         TrackModelStore trackModels,
         CenterlineGeometryDataset centerlines,
         ReferenceLookup lookup,
+        OptimalReferenceLookup optimalLookup,
         ReferenceStore referenceStore,
         LapRepository laps,
         ITrackLengthProvider lengths,
@@ -48,6 +50,7 @@ public sealed class ComputeService : BackgroundService
         ArgumentNullException.ThrowIfNull(trackModels);
         ArgumentNullException.ThrowIfNull(centerlines);
         ArgumentNullException.ThrowIfNull(lookup);
+        ArgumentNullException.ThrowIfNull(optimalLookup);
         ArgumentNullException.ThrowIfNull(referenceStore);
         ArgumentNullException.ThrowIfNull(laps);
         ArgumentNullException.ThrowIfNull(lengths);
@@ -59,6 +62,7 @@ public sealed class ComputeService : BackgroundService
         _trackModels = trackModels;
         _centerlines = centerlines;
         _lookup = lookup;
+        _optimalLookup = optimalLookup;
         _referenceStore = referenceStore;
         _laps = laps;
         _lengths = lengths;
@@ -91,8 +95,8 @@ public sealed class ComputeService : BackgroundService
         }
 
         var session = new ComputeSession(
-            _domainFanOut, _trackModels, _centerlines, _lookup, _referenceStore, _laps, _lengths, _options, _logger,
-            identity);
+            _domainFanOut, _trackModels, _centerlines, _lookup, _optimalLookup, _referenceStore, _laps, _lengths,
+            _options, _logger, identity);
 
         // Backstop: a per-frame compute fault must never bubble out of ExecuteAsync, because the host's
         // default BackgroundServiceExceptionBehavior is StopHost — one bad frame would stop the recorder

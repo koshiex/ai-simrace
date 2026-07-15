@@ -125,6 +125,11 @@ message SectorEvent {
   int32 sector_time_ms = 3;
   int32 delta_ms = 4;                      // vs reference sector
   repeated CornerLoss top_losses = 5;      // up to 3
+
+  // Own-optimal ("theoretical best") sector delta (M46, append-only): this sector's time minus the
+  // triple's cross-session best-ever time for the SAME sector. TIME ONLY — the optimal is a set of
+  // per-sector best durations, never a control-channel line. 0 (proto default) when no optimal exists.
+  int32 optimal_delta_ms = 6;
 }
 
 // Per-lap summary emitted at finish line.
@@ -139,6 +144,10 @@ message LapEvent {
 
   // Phase 3 tyre/brake-temp abuse summary at lap cadence (append-only, B1).
   ThermalSummary thermal = 8;
+
+  // Own-optimal ("theoretical best") lap delta (M46, append-only): this lap's time minus the sum of the
+  // triple's cross-session best-ever sector durations. TIME ONLY. 0 (proto default) when no optimal exists.
+  int32 optimal_delta_ms = 9;
 
   message ThermalSummary {
     float max_tyre_temp_c = 1;
@@ -176,6 +185,15 @@ message SessionEvent {
   int32 theoretical_best_gap_ms = 16;              // best lap − Σ best clean sectors (0 if no clean lap)
   float avg_fuel_per_lap_l = 17;                   // averaged over racing laps
   float end_tyre_wear_pct = 18;                    // 0..1; honest-zero on ACC (no wear channel)
+
+  // Own-optimal ("theoretical best", M46) debrief headline. Fields 19/20 are RESERVED for M41 per the P3
+  // ratified additive map — M46 takes 21/22, do not renumber. Cross-session, current-session-aware:
+  // optimal_gap_ms = best lap − Σ min(persisted-optimal-sector, this-session-best-sector); it SUPERSEDES the
+  // within-session field 16 (which demotes to a first-session-only fallback at the Gold layer). Both are
+  // empty when no persisted optimal exists yet. sector_optimal_gap_ms is the per-sector deficit vector
+  // (this-session-best − merged-optimal, ≥0), positional by sector index, for the debrief deficit ranking.
+  int32 optimal_gap_ms = 21;
+  repeated int32 sector_optimal_gap_ms = 22;
 }
 
 // Per-corner loss rolled up across the session (B2). corner_id only — the human corner_name is
