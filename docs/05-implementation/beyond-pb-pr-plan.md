@@ -126,6 +126,69 @@ reconciliation (owner decision below).
 - **[PR-B3 specimen]** Use an **owner-produced / anonymized** `.ghost` for the decode unit test — NO
   third-party `.ghost` committed. Store a driver name in provenance only when present, as optional metadata.
 
+## Optimal reference storage — option A (adversarially reviewed, KEEP-A-WITH-AMENDMENTS)
+
+Owner picked **option A (row-only, no Parquet)** and required an adversarial review. Verdict:
+**KEEP-A-WITH-AMENDMENTS** — A is the correct shape (makes must-fix #7's "no fabricated mid-sector time"
+true *by construction*, since there is no per-metre TIME grid to interpolate); **SWITCH-TO-B rejected
+outright** (B reintroduces the exact `GridMetrics.TimeAt` unbounded nearest-index fabrication surface #7
+deletes, guarded only by a test). The review found a **critical, plan-omitted** hazard.
+
+**CRITICAL discovery — `GetByTriple` detonates on coexistence (3 call sites, one omitted).** Once migration
+007 relaxes `UNIQUE(track,car,weather)` → `(...,kind)`, a `pb` and an `optimal` row coexist per triple. But
+`ReferenceRepository.GetByTriple` (`ReferenceRepository.cs:47-52`) does `QuerySingleOrDefault` with **no kind
+predicate** → it throws `InvalidOperationException` the instant an optimal row exists, **detonating the whole
+PB read path, not just the new feature**. Three callers break: `ReferenceLookup.cs:25` (compute init),
+`ReferenceStore.cs:63` (MaybeUpdate, every clean lap), and **`LiveCoachAmbientState.cs:90` in the
+`SimCoach.Coach` module — which the m46 plan never listed.** (Shared identically by A and B — a mandatory
+read-path migration either way, not an A-vs-B factor.)
+
+**Final storage shape (implement exactly this):** migration 007 rebuilds `[references]` (SQLite table-rebuild
+— UNIQUE change forces it; nothing FK-references `references.id`, so drop/rename is safe) with columns:
+`id`, `track_id`, `car_id`, `weather_bucket`, `source_session_id TEXT REFERENCES sessions(id) ON DELETE SET
+NULL` (recreated), `source_lap_number`, `lap_time_ms INTEGER NOT NULL` (pb: PB time; **optimal: Σ best
+sectors** — reuse this, NO separate sum column; alien_line: its lap time), `parquet_path TEXT` (**now
+NULLABLE**, null iff kind='optimal'), `pinned`, `created_at_utc`, `kind TEXT NOT NULL DEFAULT 'pb'`,
+`optimal_sector_ms TEXT` (JSON array of per-sector best **durations**, e.g. `"[36012,38945,37011]"`;
+sim-agnostic length N — NOT fixed s1/s2/s3 columns), `sector_sources_json TEXT` (provenance), plus:
+- `UNIQUE(track_id, car_id, weather_bucket, kind)`
+- `CHECK (kind = 'optimal' OR parquet_path IS NOT NULL)` — preserves the pb/alien_line NOT-NULL guarantee
+  per-kind (recovers B's only advantage without its fabrication risk)
+- `CHECK (kind <> 'optimal' OR optimal_sector_ms IS NOT NULL)` — optimal must carry its payload
+
+**Required amendments (fold into PR-B1):**
+1. **[commit 1, atomic]** `GetByTriple(track,car,weather,kind='pb')` adds `AND kind=@kind`; `Upsert` conflict
+   target → `(track_id,car_id,weather_bucket,kind)`. Without this the PB path regresses to a crash.
+2. **[commit 1]** Sweep **all three** callers to pass `kind='pb'`: `ReferenceLookup.Get`,
+   `ReferenceStore.MaybeUpdate`, **`LiveCoachAmbientState.cs:90`** (the omitted one). Update 3-arg test callers
+   (`ReferenceRepositoryTests`, `ReferenceStoreTests`, `ComputeSessionTests`, `Phase2ComputeE2EGoldenTests`).
+   A default `kind='pb'` param is fine to bound churn, but the SQL must still filter on kind.
+3. **[commit 1]** `ReferenceRow.ParquetPath`: `required string` → `string?` (`Rows.cs:94`), compensated by the
+   `CHECK` above. Add XML doc: `ParquetPath` null iff `Kind==Optimal`; `OptimalSectorMs`/`SectorSourcesJson`
+   null unless `Kind==Optimal`. Guard the pb/alien_line read seam: treat a null `parquet_path` there as a hard
+   error (log+throw), so only optimal is legitimately file-less (kills the silent go-quiet where
+   `File.Exists(null)==false`).
+4. **[commit 2/4]** Optimal gets its **own read path** (e.g. `OptimalReferenceLookup.GetSectorTimes(triple)
+   → int[]?` of per-sector durations, prefix-summed to cumulative boundaries on read, validated against the
+   sim's sector count, fail-fast). **Do NOT overload `ReferenceLookup.Get`** — it unconditionally does
+   `File.Exists + ReferenceParquetCodec.Read` and would silently return null for a file-less optimal row
+   (delta never fires, no crash, no log). `ComputeSession` consumes it exactly as the PB boundary reads at
+   `cs:301`: `optimalSectorMs = cumulative[endIdx] − cumulative[startIdx]` at `_prevSectorCrossPos`; no
+   `ResampledLap`, no `GridMetrics.TimeAt`.
+5. **[commit 1]** Migration 007 fully specified (per must-fix #8): CREATE new table, INSERT-SELECT copy
+   `id`/`pinned`/`created_at_utc`/`source_session_id`/all columns with `kind='pb'`, `optimal_sector_ms=NULL`,
+   `sector_sources_json=NULL`; DROP old; RENAME; `PRAGMA foreign_key_check` as a query at end; `Migration007Tests`
+   (fresh + 006→007 with a populated PB row surviving with identity intact, `user_version=7`).
+6. **[commit 1]** `pb`+`optimal` coexistence regression test: insert both for one triple, assert each of the
+   three read sites still resolves exactly the `pb` row.
+
+**Plan-text clarifications (the ghost-fit "one row + one Parquet, adds no column" wording is alien_line-scoped,
+not universal):** the "each kind = one `[references]` row + one Parquet" and "adds NO migration and NO column"
+statements below were written for `alien_line` (a LINE reference that genuinely reuses `ResampledLap`/
+`ReferenceParquetCodec` unchanged). They stay true for `alien_line`. **`optimal` is the divergent kind:** it is
+row-only (no Parquet) and it is the kind that introduces migration 007 + the two JSON columns. ADR-0021 states
+the taxonomy explicitly: **pb = full Parquet, alien_line = LINE Parquet, optimal = row-only sector times.**
+
 ## Ghost architecture fit (how the alien line drops in — validated, LINE-only)
 
 - **Third reference kind `alien_line`** alongside `pb` and `optimal`. Stored exactly like any reference: one
