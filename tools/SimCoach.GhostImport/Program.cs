@@ -1,55 +1,177 @@
+using System.Globalization;
 using SimCoach.GhostImport;
+using SimCoach.Reference;
+using SimCoach.Storage;
+using SimCoach.Storage.Database;
+using SimCoach.Storage.Repositories;
 
 // SimCoach.GhostImport — offline, ACC-specific .ghost -> beyond-PB alien LINE importer (dev-time tool).
 // ACC ghost decode lives ONLY here, never the sim-agnostic runtime.
 //
-// Commit-19 scope: container/zlib decode + 130-byte record parse + fail-fast import guards, exposed as a
-// local-file `decode` smoke command. The accreplay fetch is written (AccReplayClient) but is NOT wired
-// end-to-end here and is never exercised by a test; loop-split/align/resample and persistence land in the
-// following commits.
-//
 //   usage:
 //     SimCoach.GhostImport decode <path-to.ghost>
-if (args.Length < 2 || !string.Equals(args[0], "decode", StringComparison.Ordinal))
+//     SimCoach.GhostImport import --track <t> --car <c> --weather <w> --lap-length <m> [--data-root <path>]
+//
+// `decode` is a local-file smoke command (container/zlib decode + record parse + guards). `import` wires the
+// full dev-time pipeline: accreplay fetch (fastest GT3 lap, OD2) -> decode -> loop-closure split -> centerline
+// align -> per-metre resample -> seam mask -> persist an alien_line row + LINE parquet under the OWNER triple.
+// The accreplay fetch runs live and is NEVER exercised by a test; the raw .ghost is transient (never committed)
+// and only the derived alien LINE is written (locally here, vendored-embedded separately — OD1/OD10).
+if (args.Length >= 1 && string.Equals(args[0], "decode", StringComparison.Ordinal))
 {
-    Console.Error.WriteLine("usage: SimCoach.GhostImport decode <path-to.ghost>");
-    return 2;
+    return RunDecode(args);
 }
 
-string ghostPath = args[1];
-if (!File.Exists(ghostPath))
+if (args.Length >= 1 && string.Equals(args[0], "import", StringComparison.Ordinal))
 {
-    Console.Error.WriteLine($"ghost file not found: {ghostPath}");
-    return 2;
+    return await RunImportAsync(args).ConfigureAwait(false);
 }
 
-try
-{
-    byte[] file = File.ReadAllBytes(ghostPath);
-    byte[] payload = GhostContainer.Inflate(file);
-    GhostPayloadHeader header = GhostPayload.ReadHeader(payload);
-    ImportGuards.CheckArithmetic(header);
-    IReadOnlyList<GhostRecord> records = GhostPayload.ReadRecords(payload, header);
+Console.Error.WriteLine(
+    "usage:\n"
+    + "  SimCoach.GhostImport decode <path-to.ghost>\n"
+    + "  SimCoach.GhostImport import --track <t> --car <c> --weather <w> --lap-length <m> [--data-root <path>]");
+return 2;
 
-    float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
-    float minZ = float.PositiveInfinity, maxZ = float.NegativeInfinity;
-    foreach (GhostRecord record in records)
+static int RunDecode(string[] args)
+{
+    if (args.Length < 2)
     {
-        minX = Math.Min(minX, record.WorldX);
-        maxX = Math.Max(maxX, record.WorldX);
-        minZ = Math.Min(minZ, record.WorldZ);
-        maxZ = Math.Max(maxZ, record.WorldZ);
+        Console.Error.WriteLine("usage: SimCoach.GhostImport decode <path-to.ghost>");
+        return 2;
     }
 
-    Console.WriteLine($"track     : {header.TrackId}");
-    Console.WriteLine($"payload   : {payload.Length} bytes");
-    Console.WriteLine($"records   : {records.Count}");
-    Console.WriteLine($"world X   : [{minX:0.0}, {maxX:0.0}]");
-    Console.WriteLine($"world Z   : [{minZ:0.0}, {maxZ:0.0}]");
-    return 0;
+    string ghostPath = args[1];
+    if (!File.Exists(ghostPath))
+    {
+        Console.Error.WriteLine($"ghost file not found: {ghostPath}");
+        return 2;
+    }
+
+    try
+    {
+        byte[] file = File.ReadAllBytes(ghostPath);
+        byte[] payload = GhostContainer.Inflate(file);
+        GhostPayloadHeader header = GhostPayload.ReadHeader(payload);
+        ImportGuards.CheckArithmetic(header);
+        IReadOnlyList<GhostRecord> records = GhostPayload.ReadRecords(payload, header);
+
+        float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
+        float minZ = float.PositiveInfinity, maxZ = float.NegativeInfinity;
+        foreach (GhostRecord record in records)
+        {
+            minX = Math.Min(minX, record.WorldX);
+            maxX = Math.Max(maxX, record.WorldX);
+            minZ = Math.Min(minZ, record.WorldZ);
+            maxZ = Math.Max(maxZ, record.WorldZ);
+        }
+
+        Console.WriteLine($"track     : {header.TrackId}");
+        Console.WriteLine($"payload   : {payload.Length} bytes");
+        Console.WriteLine($"records   : {records.Count}");
+        Console.WriteLine($"world X   : [{minX:0.0}, {maxX:0.0}]");
+        Console.WriteLine($"world Z   : [{minZ:0.0}, {maxZ:0.0}]");
+        return 0;
+    }
+    catch (InvalidDataException ex)
+    {
+        Console.Error.WriteLine($"decode failed: {ex.Message}");
+        return 1;
+    }
 }
-catch (InvalidDataException ex)
+
+static async Task<int> RunImportAsync(string[] args)
 {
-    Console.Error.WriteLine($"decode failed: {ex.Message}");
-    return 1;
+    Dictionary<string, string> options = ParseOptions(args);
+    if (!options.TryGetValue("track", out string? track)
+        || !options.TryGetValue("car", out string? car)
+        || !options.TryGetValue("weather", out string? weather)
+        || !options.TryGetValue("lap-length", out string? lapLengthText)
+        || !float.TryParse(lapLengthText, NumberStyles.Float, CultureInfo.InvariantCulture, out float lapLengthM))
+    {
+        Console.Error.WriteLine(
+            "usage: SimCoach.GhostImport import --track <t> --car <c> --weather <w> --lap-length <m> "
+            + "[--data-root <path>]");
+        return 2;
+    }
+
+    var importOptions = new GhostImportOptions();
+    if (!CenterlineGeometryDataset.Load().TryGetCenterline(track, lapLengthM, out MedianCenterline? centerline)
+        || centerline is null)
+    {
+        Console.Error.WriteLine(
+            $"no vendored centerline for '{track}' at {lapLengthM:0.0} m — cannot align the ghost");
+        return 1;
+    }
+
+    try
+    {
+        int accTrackId = AccReplayClient.TrackIdFor(track);
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        AccReplayLap lap = await AccReplayClient
+            .FetchFastestGt3LapAsync(http, accTrackId, CancellationToken.None)
+            .ConfigureAwait(false);
+        byte[] ghost = await AccReplayClient
+            .DownloadGhostAsync(http, lap.LapId, track, CancellationToken.None)
+            .ConfigureAwait(false);
+
+        byte[] payload = GhostContainer.Inflate(ghost);
+        GhostPayloadHeader header = GhostPayload.ReadHeader(payload);
+        ImportGuards.CheckArithmetic(header);
+        IReadOnlyList<GhostRecord> records = GhostPayload.ReadRecords(payload, header);
+
+        IReadOnlyList<IReadOnlyList<GhostRecord>> laps = LapSplitter.Split(records, importOptions);
+        if (laps.Count == 0)
+        {
+            Console.Error.WriteLine("no complete lap in the ghost (loop-closure split returned nothing)");
+            return 1;
+        }
+
+        IReadOnlyList<AlignedPoint> aligned = CenterlineAligner.Align(laps[0], centerline, importOptions);
+        ResampledLap grid = LineResampler.Resample(aligned, centerline.LapLengthM, lapNumber: 1, importOptions);
+        ResampledLap masked = SeamMask.Apply(grid, importOptions.SeamBands);
+
+        var triple = new ReferenceTriple(track, car, weather);
+        var provenance = GhostProvenance.FromAccReplay(lap, track);
+
+        options.TryGetValue("data-root", out string? dataRootArg);
+        string dataRoot = DataRootResolver.Resolve(dataRootArg);
+        var factory = new SqliteConnectionFactory(
+            new DatabaseOptions { DbPath = DataRootResolver.DatabasePath(dataRoot) });
+        new DatabaseMigrator(factory).Migrate();
+
+        string parquetPath = AlienReferenceWriter.Persist(
+            new ReferenceRepository(factory),
+            DataRootResolver.ReferencesDirectory(dataRoot),
+            triple,
+            masked,
+            lap.LapTimeMs,
+            provenance,
+            DateTimeOffset.UtcNow);
+
+        Console.WriteLine(
+            $"alien_line persisted for {triple.TrackId}/{triple.CarId}/{triple.WeatherBucket} "
+            + $"(source car {lap.Car}, {lap.LapTimeMs} ms) -> {parquetPath}");
+        return 0;
+    }
+    catch (Exception ex) when (ex is InvalidDataException or ArgumentException or HttpRequestException or IOException)
+    {
+        Console.Error.WriteLine($"import failed: {ex.Message}");
+        return 1;
+    }
+}
+
+static Dictionary<string, string> ParseOptions(string[] args)
+{
+    var map = new Dictionary<string, string>(StringComparer.Ordinal);
+    for (int i = 1; i + 1 < args.Length; i += 2)
+    {
+        string key = args[i];
+        if (key.StartsWith("--", StringComparison.Ordinal))
+        {
+            map[key[2..]] = args[i + 1];
+        }
+    }
+
+    return map;
 }
