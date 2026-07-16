@@ -25,6 +25,10 @@
     <!-- First-party baked median centerline, one file per track: centerline.<trackId>.json (ADR-0019, M38) —
          the runtime LINE reference loaded by CenterlineGeometryDataset. -->
     <EmbeddedResource Include="Data\centerline.*.json" />
+    <!-- Vendored alien racing-line reference, one LINE-only parquet per track: alien_line.<trackId>.parquet
+         (ADR-0021, PR-B3) — loaded by AlienLineDataset. No asset is vendored yet; the glob currently matches
+         nothing and the loader is inert until a track's alien_line parquet is added. -->
+    <EmbeddedResource Include="Data\alien_line.*.parquet" />
   </ItemGroup>
 
 </Project>
