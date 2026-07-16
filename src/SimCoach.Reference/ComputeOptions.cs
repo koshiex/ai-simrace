@@ -74,6 +74,15 @@ public sealed record ComputeOptions
     /// baked corner whose apex radius exceeds this is a fast kink / near-straight — its signed per-phase
     /// line deviations (M34) are neutralised to 0 (M38 corner-type gate). A corner with no baked radius
     /// (0) is never gated here (the kernel's geometric neutralisation still applies).
+    /// <para>
+    /// PR-B3 alien-regime review (MUST-FIX #5, OD7): this ceiling and the <c>Trigger == "LateralG"</c>
+    /// neutralisation are KEPT as-is for the alien LINE reference. Against a real 2–4 m pro corridor the
+    /// same fast corners now show genuine offsets, but the owner decision is to LEAVE fast/LateralG corners
+    /// intentionally NOT signed-line-coached (apex is still handled by the now-seam-gated unsigned cue). No
+    /// per-kind <c>AlienLineDeviationFloorM</c> is added — that ships only on explicit owner request. The
+    /// gate stays config-driven here so lowering this ceiling makes a fast-corner alien difference coachable
+    /// (no magic number), asserted by <c>AlienRegimeGateTests</c>.
+    /// </para>
     /// </summary>
     public float LineRelevanceMaxRadiusM { get; init; } = 300f;
 

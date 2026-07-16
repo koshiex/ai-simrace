@@ -79,6 +79,14 @@ internal static class SignedLineDeviation
             }
 
             (float refX, float refZ) = GridMetrics.InterpWorldXZ(reference, pos);
+            // PR-B3 defensive: a NaN-masked seam bin interpolates to NaN. Skip it (sibling of the (0,0,0)
+            // sentinel skip above). Behavioral no-op — InterpWorldTangent already returns (0,0) on a
+            // NaN-touching segment, so the tangent guard below drops the frame first — kept for explicitness.
+            if (float.IsNaN(refX) || float.IsNaN(refZ))
+            {
+                continue;
+            }
+
             float dx = worldPos.X - refX;
             float dz = worldPos.Z - refZ;
             float perpendicular = (tx * dz) - (tz * dx); // 2D cross of travel tangent with (self - ref)
@@ -94,6 +102,13 @@ internal static class SignedLineDeviation
     {
         (float sx, float sz) = GridMetrics.InterpWorldTangent(reference, band.Lo);
         (float ex, float ez) = GridMetrics.InterpWorldTangent(reference, band.Hi);
+        // PR-B3 defensive: a band endpoint on a NaN-masked seam yields a NaN tangent → undefined side → 0.
+        // (InterpWorldTangent already returns (0,0) there, so this is explicit belt-and-braces.)
+        if (float.IsNaN(sx) || float.IsNaN(sz) || float.IsNaN(ex) || float.IsNaN(ez))
+        {
+            return 0f;
+        }
+
         float rotation = (sx * ez) - (sz * ex); // 2D cross of the entry tangent with the exit tangent
         if (rotation > MinTurnRotation)
         {

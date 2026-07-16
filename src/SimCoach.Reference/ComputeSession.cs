@@ -256,20 +256,70 @@ internal sealed class ComputeSession
         _trackModel = _trackModels.Get(_trackId);
         RebuildCornerTrackers();
         _reference = _lookup.Get(_triple);
-        // M38: the LINE reference is the baked median centerline when one is vendored for this track (and
-        // trustworthy); otherwise null → CornerEventBuilder falls back to the PB line (ADR-0019).
-        _lineReference =
-            _hasLength && _centerlines.TryGetCenterline(_trackId, _lapLengthM, out MedianCenterline? centerline)
-                ? CenterlineLineReference.Build(centerline!)
-                : null;
+        // LINE-reference tiers (highest first), all advisory and TIME-agnostic — never touch _reference/TIME:
+        //   1. PR-B3 alien_line: an imported beyond-PB pro corridor (fault-isolated, ADR-0021).
+        //   2. M38 baked median centerline for the track (ADR-0019).
+        //   3. null → CornerEventBuilder falls back to the PB world line.
+        ResampledLap? alienLine = TryLoadAlienLine();
+        _lineReference = alienLine ?? BuildCenterlineLineReference();
         // M46: the own-optimal is TIME ONLY — cumulative per-sector best boundaries, read by index at sector
         // crossings. Loaded LAST and fault-isolated so a corrupt optimal row degrades to "no optimal" instead
         // of breaking the reference/centerline setup above.
         _optimalSectorMs = LoadOptimalSectorTimes(frame);
+        string lineSource = alienLine is not null ? "alien_line"
+            : _lineReference is not null ? "centerline"
+            : "pb-fallback";
         _logger.LogInformation(
-            "Compute started for {Session}: {Track}/{Car}/{Weather}, model {Source} ({Corners} corners), reference {HasRef}, centerline {HasLine}, optimal {HasOptimal}",
+            "Compute started for {Session}: {Track}/{Car}/{Weather}, model {Source} ({Corners} corners), reference {HasRef}, line {LineSource}, optimal {HasOptimal}",
             _identity.SessionId, _trackId, _carId, _weatherBucket, _trackModel.Source,
-            _trackModel.Corners.Count, _reference is not null, _lineReference is not null, _optimalSectorMs is not null);
+            _trackModel.Corners.Count, _reference is not null, lineSource, _optimalSectorMs is not null);
+    }
+
+    // PR-B3 tier-1 LINE source: the imported alien_line for the triple, read through the kind-parameterized
+    // lookup (M4 — one singleton, no sibling). Fault-isolated (M3): a corrupt import (null parquet_path →
+    // InvalidOperationException; a bad/multi-row-group parquet → InvalidDataException) degrades to "no alien
+    // line" and the centerline/PB line takes over — exactly as an absent import would, so a third-party file
+    // can never poison the session. _reference/TIME is UNTOUCHED, keeping the alien corridor advisory LINE-only.
+    private ResampledLap? TryLoadAlienLine()
+    {
+        try
+        {
+            ResampledLap? alien = _lookup.Get(_triple, ReferenceKind.AlienLine);
+            if (alien is null)
+            {
+                WarnIfAlienLineWeatherMismatch();
+            }
+
+            return alien;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or InvalidDataException)
+        {
+            _logger.LogWarning(
+                ex, "alien_line reference for {Track}/{Car}/{Weather} failed to load; falling back to centerline/PB line",
+                _trackId, _carId, _weatherBucket);
+            return null;
+        }
+    }
+
+    // M38 tier-2 LINE source: the baked median centerline for the track, when one is vendored and a lap
+    // length is known; otherwise null → CornerEventBuilder falls back to the PB world line (ADR-0019).
+    private ResampledLap? BuildCenterlineLineReference() =>
+        _hasLength && _centerlines.TryGetCenterline(_trackId, _lapLengthM, out MedianCenterline? centerline)
+            ? CenterlineLineReference.Build(centerline!)
+            : null;
+
+    // M7: an alien_line stamped under a weather bucket other than the live session's silently never resolves
+    // (GetByTriple keys weather exactly, OD6). Surface it as an info line so a mis-stamp is field-debuggable;
+    // resolution semantics are unchanged — the session still runs on the centerline/PB line.
+    private void WarnIfAlienLineWeatherMismatch()
+    {
+        string? storedWeather = _lookup.FindAlienLineWeatherMismatch(_triple);
+        if (storedWeather is not null)
+        {
+            _logger.LogInformation(
+                "alien_line present for {Track}/{Car} under weather {Stored} but session is {Live}; alien line inactive",
+                _trackId, _carId, storedWeather, _weatherBucket);
+        }
     }
 
     // M46: read the persisted own-optimal for the triple as cumulative sector-boundary times. The sector
