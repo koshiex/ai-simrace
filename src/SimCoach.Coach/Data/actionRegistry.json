@@ -503,20 +503,6 @@
       "phrase_template_ru": "Чисто, но на {loss} медленнее. Поработай над {top}."
     },
     {
-      "id": "lap_dirty",
-      "label_short": "lap_dirty",
-      "hint_en": "invalid / dirty lap",
-      "hint_ru": "грязный или невалидный круг",
-      "cadence": "lap",
-      "priority": { "phase": "exit", "rank": 202 },
-      "requires_reference": false,
-      "when": [
-        { "field": "is_clean", "op": "eq", "value": false }
-      ],
-      "params": [],
-      "phrase_template_ru": "Круг грязный. Не торопись, попробуй ещё раз."
-    },
-    {
       "id": "tyre_overheat",
       "label_short": "tyre_temp",
       "hint_en": "tyres overheating",
