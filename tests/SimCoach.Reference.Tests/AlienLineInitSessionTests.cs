@@ -79,9 +79,9 @@ public sealed class AlienLineInitSessionTests
 
         var logger = new CollectingLogger();
         var session = new ComputeSession(
-            harness.DomainFanOut, harness.TrackModels, harness.Centerlines, harness.Lookup, harness.OptimalLookup,
-            harness.ReferenceStore, harness.Laps, FakeTrackLengths.Spa(), new ComputeOptions(), logger,
-            new SessionIdentity("m7", DateTimeOffset.UnixEpoch));
+            harness.DomainFanOut, harness.TrackModels, harness.Centerlines, harness.AlienLines, harness.Lookup,
+            harness.OptimalLookup, harness.ReferenceStore, harness.Laps, FakeTrackLengths.Spa(), new ComputeOptions(),
+            logger, new SessionIdentity("m7", DateTimeOffset.UnixEpoch));
 
         // A single partial lap: InitSession runs on the first frame; no lap completes, so no FK/persistence.
         foreach (TelemetryFrame frame in SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 1))

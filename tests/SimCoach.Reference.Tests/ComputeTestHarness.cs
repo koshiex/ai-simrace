@@ -67,6 +67,8 @@ internal sealed class ComputeTestHarness : IDisposable
 
     public CenterlineGeometryDataset Centerlines { get; } = CenterlineGeometryDataset.Load();
 
+    public AlienLineDataset AlienLines { get; } = AlienLineDataset.Load();
+
     public ReferenceLookup Lookup { get; }
 
     public OptimalReferenceLookup OptimalLookup { get; }
@@ -97,7 +99,7 @@ internal sealed class ComputeTestHarness : IDisposable
         Sessions.Insert(NewSessionRow(identity, frames[0]));
 
         var session = new ComputeSession(
-            DomainFanOut, TrackModels, Centerlines, Lookup, OptimalLookup, ReferenceStore, Laps, _lengths,
+            DomainFanOut, TrackModels, Centerlines, AlienLines, Lookup, OptimalLookup, ReferenceStore, Laps, _lengths,
             options ?? new ComputeOptions(), NullLogger.Instance, identity);
         foreach (TelemetryFrame frame in frames)
         {
@@ -127,8 +129,8 @@ internal sealed class ComputeTestHarness : IDisposable
         var identity = new SessionIdentity(sessionId, new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero));
         Sessions.Insert(NewSessionRow(identity, frames[0]));
         var session = new ComputeSession(
-            new DomainEventFanOut(), TrackModels, Centerlines, Lookup, OptimalLookup, ReferenceStore, Laps, _lengths,
-            options ?? new ComputeOptions(), NullLogger.Instance, identity);
+            new DomainEventFanOut(), TrackModels, Centerlines, AlienLines, Lookup, OptimalLookup, ReferenceStore, Laps,
+            _lengths, options ?? new ComputeOptions(), NullLogger.Instance, identity);
         foreach (TelemetryFrame frame in frames)
         {
             session.Accept(frame);

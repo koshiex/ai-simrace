@@ -163,7 +163,7 @@ public sealed class Phase2ComputeE2EGoldenTests : IDisposable
             fanOut, context, new RecordingOptions { BasePath = recordingsBase, SegmentDuration = TimeSpan.FromMinutes(5) },
             TimeProvider.System, NullLogger<McapRecorderService>.Instance);
         var compute = new ComputeService(
-            fanOut, domainFanOut, context, trackModels, CenterlineGeometryDataset.Load(),
+            fanOut, domainFanOut, context, trackModels, CenterlineGeometryDataset.Load(), AlienLineDataset.Load(),
             new ReferenceLookup(references, NullLogger<ReferenceLookup>.Instance),
             new OptimalReferenceLookup(references, NullLogger<OptimalReferenceLookup>.Instance), referenceStore, laps, lengths,
             new ComputeOptions(), NullLogger<ComputeService>.Instance);

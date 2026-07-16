@@ -20,6 +20,7 @@ internal sealed class ComputeSession
     private readonly DomainEventFanOut _domain;
     private readonly TrackModelStore _trackModels;
     private readonly CenterlineGeometryDataset _centerlines;
+    private readonly AlienLineDataset _alienLines;
     private readonly ReferenceLookup _lookup;
     private readonly OptimalReferenceLookup _optimalLookup;
     private readonly ReferenceStore _referenceStore;
@@ -85,6 +86,7 @@ internal sealed class ComputeSession
         DomainEventFanOut domain,
         TrackModelStore trackModels,
         CenterlineGeometryDataset centerlines,
+        AlienLineDataset alienLines,
         ReferenceLookup lookup,
         OptimalReferenceLookup optimalLookup,
         ReferenceStore referenceStore,
@@ -97,6 +99,7 @@ internal sealed class ComputeSession
         _domain = domain;
         _trackModels = trackModels;
         _centerlines = centerlines;
+        _alienLines = alienLines;
         _lookup = lookup;
         _optimalLookup = optimalLookup;
         _referenceStore = referenceStore;
@@ -276,7 +279,11 @@ internal sealed class ComputeSession
     }
 
     // PR-B3 tier-1 LINE source: the imported alien_line for the triple, read through the kind-parameterized
-    // lookup (M4 — one singleton, no sibling). Fault-isolated (M3): a corrupt import (null parquet_path →
+    // lookup (M4 — one singleton, no sibling). The DB row is the dev/override path (written only where
+    // GhostImport ran); when absent, the vendored embedded alien line takes over so the feature works
+    // out-of-box (OD10 — mirrors the centerline embed). The embedded asset is keyed by track id ONLY (like
+    // the centerline), so it activates for any car/weather on that track — broader than the triple-exact DB
+    // row, accepted per OD2's car-difference caveat. Fault-isolated (M3): a corrupt import (null parquet_path →
     // InvalidOperationException; a bad/multi-row-group parquet → InvalidDataException) degrades to "no alien
     // line" and the centerline/PB line takes over — exactly as an absent import would, so a third-party file
     // can never poison the session. _reference/TIME is UNTOUCHED, keeping the alien corridor advisory LINE-only.
@@ -285,12 +292,18 @@ internal sealed class ComputeSession
         try
         {
             ResampledLap? alien = _lookup.Get(_triple, ReferenceKind.AlienLine);
-            if (alien is null)
+            if (alien is not null)
             {
-                WarnIfAlienLineWeatherMismatch();
+                return alien;
             }
 
-            return alien;
+            if (_alienLines.TryGetAlienLine(_trackId, out ResampledLap? embedded) && embedded is not null)
+            {
+                return embedded;
+            }
+
+            WarnIfAlienLineWeatherMismatch();
+            return null;
         }
         catch (Exception ex) when (ex is InvalidOperationException or InvalidDataException)
         {

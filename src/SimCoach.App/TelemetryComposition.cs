@@ -120,6 +120,7 @@ public static class TelemetryComposition
 
         builder.Services.AddSingleton(CornerGeometryDataset.Load());
         builder.Services.AddSingleton(CenterlineGeometryDataset.Load());
+        builder.Services.AddSingleton(AlienLineDataset.Load());
         builder.Services.AddSingleton<TrackModelStore>();
 
         builder.Services.AddSingleton(new ReferenceStorageOptions

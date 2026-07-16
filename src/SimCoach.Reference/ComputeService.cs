@@ -22,6 +22,7 @@ public sealed class ComputeService : BackgroundService
     private readonly SessionContext _sessionContext;
     private readonly TrackModelStore _trackModels;
     private readonly CenterlineGeometryDataset _centerlines;
+    private readonly AlienLineDataset _alienLines;
     private readonly ReferenceLookup _lookup;
     private readonly OptimalReferenceLookup _optimalLookup;
     private readonly ReferenceStore _referenceStore;
@@ -36,6 +37,7 @@ public sealed class ComputeService : BackgroundService
         SessionContext sessionContext,
         TrackModelStore trackModels,
         CenterlineGeometryDataset centerlines,
+        AlienLineDataset alienLines,
         ReferenceLookup lookup,
         OptimalReferenceLookup optimalLookup,
         ReferenceStore referenceStore,
@@ -49,6 +51,7 @@ public sealed class ComputeService : BackgroundService
         ArgumentNullException.ThrowIfNull(sessionContext);
         ArgumentNullException.ThrowIfNull(trackModels);
         ArgumentNullException.ThrowIfNull(centerlines);
+        ArgumentNullException.ThrowIfNull(alienLines);
         ArgumentNullException.ThrowIfNull(lookup);
         ArgumentNullException.ThrowIfNull(optimalLookup);
         ArgumentNullException.ThrowIfNull(referenceStore);
@@ -61,6 +64,7 @@ public sealed class ComputeService : BackgroundService
         _sessionContext = sessionContext;
         _trackModels = trackModels;
         _centerlines = centerlines;
+        _alienLines = alienLines;
         _lookup = lookup;
         _optimalLookup = optimalLookup;
         _referenceStore = referenceStore;
@@ -95,8 +99,8 @@ public sealed class ComputeService : BackgroundService
         }
 
         var session = new ComputeSession(
-            _domainFanOut, _trackModels, _centerlines, _lookup, _optimalLookup, _referenceStore, _laps, _lengths,
-            _options, _logger, identity);
+            _domainFanOut, _trackModels, _centerlines, _alienLines, _lookup, _optimalLookup, _referenceStore, _laps,
+            _lengths, _options, _logger, identity);
 
         // Backstop: a per-frame compute fault must never bubble out of ExecuteAsync, because the host's
         // default BackgroundServiceExceptionBehavior is StopHost — one bad frame would stop the recorder
