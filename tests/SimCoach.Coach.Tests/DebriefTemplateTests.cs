@@ -25,21 +25,61 @@ public sealed class DebriefTemplateTests
     }
 
     [Fact]
-    public void BuildJson_renders_ru_reason_and_priority()
+    public void BuildJson_renders_the_dominant_channel_and_heuristic_value_not_the_reason()
     {
-        GoldArtifact<GoldSessionPayload> gold =
-            Session([new GoldAggregatedLoss("Eau Rouge", 600, 120, 5, "early_brake")]);
+        // M36: the "why" is driven by dominant_channel (+ its heuristic magnitude), NOT the retained-but-demoted
+        // dominant_reason. The reason "early_brake" would gloss to "раннее торможение" — it must NOT appear.
+        GoldArtifact<GoldSessionPayload> gold = Session(
+        [
+            new GoldAggregatedLoss("Eau Rouge", 600, 120, 5, "early_brake")
+            {
+                DominantChannel = "brake_point",
+                DominantChannelValue = 42,
+            },
+        ]);
 
         string json = DebriefTemplate.BuildJson(gold, 5);
 
         using var doc = JsonDocument.Parse(json);
         JsonElement firstLoss = doc.RootElement.GetProperty("top_losses")[0];
         firstLoss.GetProperty("corner").GetString().Should().Be("Eau Rouge");
+        // "ms" is the authoritative total-loss time; the heuristic magnitude 42 must NOT masquerade as it (MF-6).
         firstLoss.GetProperty("ms").GetInt32().Should().Be(600);
-        firstLoss.GetProperty("why").GetString().Should().Be("раннее торможение");
+        string why = firstLoss.GetProperty("why").GetString()!;
+        why.Should().Contain(CoachStrings.Get("Channel_brake_point")).And.Contain("42");
+        why.Should().NotBe(CoachStrings.Get("Channel_brake_point"), "the heuristic magnitude renders alongside the gloss");
+        why.Should().NotContain(CoachStrings.Get("Reason_early_brake"), "dominant_reason is no longer rendered");
         doc.RootElement.GetProperty("top_priority").GetString()
-            .Should().Contain("Eau Rouge").And.Contain("раннее торможение");
+            .Should().Contain("Eau Rouge").And.Contain(CoachStrings.Get("Channel_brake_point"));
         doc.RootElement.GetProperty("setup_hint").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public void BuildJson_renders_the_neutral_gloss_without_a_number_when_no_channel_dominates()
+    {
+        // No signed channel won the argmax (empty dominant_channel, zero magnitude): the neutral gloss renders
+        // alone — the meaningless zero is dropped rather than shown as "(эвристика: 0)".
+        GoldArtifact<GoldSessionPayload> gold =
+            Session([new GoldAggregatedLoss("Eau Rouge", 600, 120, 5, "slower")]);
+
+        string json = DebriefTemplate.BuildJson(gold, 5);
+
+        using var doc = JsonDocument.Parse(json);
+        string why = doc.RootElement.GetProperty("top_losses")[0].GetProperty("why").GetString()!;
+        why.Should().Be(CoachStrings.Get("Reason_slower"));
+    }
+
+    [Fact]
+    public void BuildJson_renders_the_grounded_setup_hint_when_present()
+    {
+        // M41: a synthesized grounded setup_hint (balance-derived) surfaces on the LLM-off debrief; a null hint
+        // drops (JsonValueKind.Null), asserted by the sibling channel test above.
+        GoldArtifact<GoldSessionPayload> gold = Session([], setupHint: "устойчивый снос на входе в поворот");
+
+        string json = DebriefTemplate.BuildJson(gold, 5);
+
+        using var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("setup_hint").GetString().Should().Be("устойчивый снос на входе в поворот");
     }
 
     [Fact]

@@ -68,6 +68,14 @@ public sealed class CoachOptions
     /// </summary>
     public double MediumSeverityLossMs { get; init; } = 100;
 
+    /// <summary>
+    /// M41 (dev-tier, NOT a user slider): the absolute per-phase balance at or above which a
+    /// <c>BalancePhaseTrend</c> band grounds a session <c>setup_hint</c>. Below this on every sampled band the
+    /// hint drops (null) rather than fabricating a "neutral" setup claim. In <c>(0, 1]</c> since balance is
+    /// clamped to <c>[-1, 1]</c>. See <see cref="SetupHintSynthesizer"/>.
+    /// </summary>
+    public double SetupHintBalanceThreshold { get; init; } = 0.15;
+
     /// <summary>Maps each coaching cadence to the opaque LLM route key the router resolves.</summary>
     public IReadOnlyDictionary<CoachCadence, string> RouteKeys { get; init; } =
         new Dictionary<CoachCadence, string>
@@ -167,6 +175,12 @@ public sealed class CoachOptions
         if (MaxDebriefLosses <= 0)
         {
             throw new InvalidOperationException("CoachOptions.MaxDebriefLosses must be positive.");
+        }
+
+        if (SetupHintBalanceThreshold <= 0 || SetupHintBalanceThreshold > 1)
+        {
+            throw new InvalidOperationException(
+                "CoachOptions.SetupHintBalanceThreshold must be in (0, 1].");
         }
 
         if (MediumSeverityLossMs <= 0 || HighSeverityLossMs <= MediumSeverityLossMs)

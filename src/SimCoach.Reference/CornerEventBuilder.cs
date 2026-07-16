@@ -8,10 +8,27 @@ namespace SimCoach.Reference;
 /// <summary>
 /// What a corner contributed to the lap, for <c>top_losses</c> aggregation. <see cref="ApexPosition"/>
 /// places it in a sector; <see cref="DeltaMs"/> is the time lost vs the reference (0 when no reference,
-/// so it never appears in a losses list).
+/// so it never appears in a losses list). The per-channel reference-relative diffs
+/// (<see cref="BrakePointDiffM"/>, <see cref="ThrottleResumeDiffM"/>, <see cref="MinSpeedDiffKmh"/>,
+/// <see cref="RacingLineDeviationM"/>) mirror the emitted <see cref="CornerEvent"/> fields so
+/// <see cref="SessionLossAccumulator"/> can aggregate them abs-then-average (ADR-0020); they carry the
+/// real diffs in the reference branch and are 0 in the no-reference / degenerate branch (mirroring
+/// <c>DeltaMs = 0</c>). <see cref="PhaseBalance"/> is self-derived (like the whole-window
+/// <see cref="UndersteerScore"/>/<see cref="OversteerScore"/>) so it is populated in every branch — it
+/// feeds the per-phase M41 balance trend.
 /// </summary>
 internal sealed record CornerContribution(
-    string CornerId, int DeltaMs, float ApexPosition, string Reason, float UndersteerScore, float OversteerScore);
+    string CornerId,
+    int DeltaMs,
+    float ApexPosition,
+    string Reason,
+    float UndersteerScore,
+    float OversteerScore,
+    float BrakePointDiffM,
+    float ThrottleResumeDiffM,
+    float MinSpeedDiffKmh,
+    float RacingLineDeviationM,
+    PhaseBalanceScores PhaseBalance);
 
 /// <summary>
 /// Builds a <see cref="CornerEvent"/> from a self corner window and (optionally) the reference grid.
@@ -49,6 +66,11 @@ internal static class CornerEventBuilder
         BrakeProfile brakeSelf = BrakeKernels.Analyze(selfSpan);
         CornerMetrics speedSelf = ThrottleSpeedKernels.Analyze(selfSpan);
         BalanceScores balanceSelf = BalanceKernels.Analyze(selfSpan);
+        // M41: per-phase (entry/apex/exit) balance over the SAME self span, scored independently per phase
+        // band. Self-derived, so it rides every return branch (reference or not) exactly like the whole-
+        // window balance scores above.
+        PhaseBalanceScores phaseBalance = BalanceKernels.AnalyzePhases(
+            selfSpan, corner.StartPosition, corner.ApexPosition, corner.EndPosition, apexWindowFraction);
         bool offTrack = OffTrack(selfSpan);
 
         // M9: unwanted brake-while-steering is measured ONLY over the turn-in → apex band, not the whole
@@ -70,6 +92,8 @@ internal static class CornerEventBuilder
             OversteerScore = balanceSelf.OversteerScore,
             OffTrack = offTrack,
             WheelspinScore = WheelspinKernels.WheelspinScore(selfSpan),
+            BrakeLockupScore = BrakeLockupKernels.BrakeLockupScore(selfSpan),
+            ShortShiftScore = ShortShiftKernels.ShortShiftScore(selfSpan),
             BrakeOverlapSteerPct = BrakeOverlapSteerKernels.OverlapPct(overlapSpan),
             SteeringJitter = SteeringJitterKernels.SteeringJitter(selfSpan),
         };
@@ -81,7 +105,8 @@ internal static class CornerEventBuilder
             ev.Reason = selfReason;
             return (ev, new CornerContribution(
                 corner.Id, 0, speedSelf.MinSpeedPosition, selfReason,
-                balanceSelf.UndersteerScore, balanceSelf.OversteerScore));
+                balanceSelf.UndersteerScore, balanceSelf.OversteerScore,
+                0f, 0f, 0f, 0f, phaseBalance));
         }
 
         ResampledLap refLap = reference!;
@@ -102,7 +127,8 @@ internal static class CornerEventBuilder
             ev.Reason = selfReason;
             return (ev, new CornerContribution(
                 corner.Id, 0, speedSelf.MinSpeedPosition, selfReason,
-                balanceSelf.UndersteerScore, balanceSelf.OversteerScore));
+                balanceSelf.UndersteerScore, balanceSelf.OversteerScore,
+                0f, 0f, 0f, 0f, phaseBalance));
         }
 
         BrakeProfile brakeRef = BrakeKernels.Analyze(refFrames);
@@ -142,6 +168,14 @@ internal static class CornerEventBuilder
             * lapLengthM;
         float racingLineDeviationM = RacingLineDeviation(selfSpan, lineRef);
 
+        // M33: reference-relative brake-release diff — where the driver lets off the brake vs where the
+        // reference does, over the SAME [Start,End] span the brake profile above measured. Negative = self
+        // releases earlier (a short trail-brake). A window with no braking leaves both offsets null → the
+        // shared EndPosition fallback yields a 0 diff (neutral), mirroring the flat/lift-only corner.
+        float brakeReleaseDiffM =
+            ((brakeSelf.BrakeOffPosition ?? corner.EndPosition) - (brakeRef.BrakeOffPosition ?? corner.EndPosition))
+            * lapLengthM;
+
         // M34: signed per-phase line deviation (entry/apex/exit) over the SAME [Start,End] self span the
         // unsigned RMS (field 9) uses. The pure kernel folds each band's median offset by the reference
         // turn direction (+ = wider, − = tighter) and neutralises a near-straight band to 0.
@@ -158,6 +192,7 @@ internal static class CornerEventBuilder
 
         ev.DeltaMs = deltaMs;
         ev.BrakePointDiffM = brakePointDiffM;
+        ev.BrakeReleaseDiffM = brakeReleaseDiffM;
         ev.MinSpeedDiffKmh = minSpeedDiffKmh;
         ev.ThrottleResumeDiffM = throttleResumeDiffM;
         ev.TrailBrakePctRef = brakeRef.TrailBrakePct;
@@ -170,7 +205,8 @@ internal static class CornerEventBuilder
         ev.Reason = reason;
         return (ev, new CornerContribution(
             corner.Id, deltaMs, speedSelf.MinSpeedPosition, reason,
-            balanceSelf.UndersteerScore, balanceSelf.OversteerScore));
+            balanceSelf.UndersteerScore, balanceSelf.OversteerScore,
+            brakePointDiffM, throttleResumeDiffM, minSpeedDiffKmh, racingLineDeviationM, phaseBalance));
     }
 
     /// <summary>

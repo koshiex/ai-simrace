@@ -48,6 +48,20 @@ public sealed record BalanceScores
 }
 
 /// <summary>
+/// Per-phase (entry/apex/exit) understeer/oversteer balance over one corner window, each band scored
+/// INDEPENDENTLY by <see cref="BalanceKernels.AnalyzePhases"/> over the shared <see cref="CornerPhaseBands"/>
+/// apex geometry — so an entry-oversteer / exit-understeer car is distinguishable from a single window
+/// scalar. A band with no steady-state cornering frames carries the neutral <c>{0,0}</c>
+/// <see cref="BalanceScores"/>, the same result as a balanced band.
+/// </summary>
+public sealed record PhaseBalanceScores
+{
+    public required BalanceScores Entry { get; init; }
+    public required BalanceScores Apex { get; init; }
+    public required BalanceScores Exit { get; init; }
+}
+
+/// <summary>
 /// Tyre/brake-temp abuse summary over a lap. Peaks are the maximum across the [FL, FR, RL, RR] arrays;
 /// the overheat flags compare those peaks against the kernel's abuse bands. All zero / false when the
 /// sim provides no temperature channels (ACC live arrays are often empty).

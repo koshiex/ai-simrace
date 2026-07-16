@@ -30,6 +30,7 @@ public sealed class CornerGoldView : IGoldView
             case "entry_line_deviation_m": return GoldScalar.Num(e.EntryLineDeviationM, out value);
             case "apex_line_deviation_m": return GoldScalar.Num(e.ApexLineDeviationM, out value);
             case "exit_line_deviation_m": return GoldScalar.Num(e.ExitLineDeviationM, out value);
+            case "brake_release_diff_m": return GoldScalar.Num(e.BrakeReleaseDiffM, out value);
             case "trail_brake_pct_self": return GoldScalar.Num(e.TrailBrakePctSelf, out value);
             case "peak_brake_pct": return GoldScalar.Num(e.PeakBrakePct, out value);
             case "trail_brake_pct_ref": return GoldScalar.Num(e.TrailBrakePctRef, out value);
@@ -37,6 +38,8 @@ public sealed class CornerGoldView : IGoldView
             case "understeer_score": return GoldScalar.Num(e.UndersteerScore, out value);
             case "oversteer_score": return GoldScalar.Num(e.OversteerScore, out value);
             case "wheelspin_score": return GoldScalar.Num(e.WheelspinScore, out value);
+            case "brake_lockup_score": return GoldScalar.Num(e.BrakeLockupScore, out value);
+            case "short_shift_score": return GoldScalar.Num(e.ShortShiftScore, out value);
             case "brake_overlap_steer_pct": return GoldScalar.Num(e.BrakeOverlapSteerPct, out value);
             case "steering_jitter": return GoldScalar.Num(e.SteeringJitter, out value);
             default: value = 0d; return false;

@@ -20,6 +20,24 @@
       "phrase_template_ru": "В {corner} тормози позже на {meters}."
     },
     {
+      "id": "brake_release_too_early",
+      "label_short": "release_early",
+      "hint_en": "released the brake too early before the apex",
+      "hint_ru": "рано отпускает тормоз до апекса",
+      "cadence": "corner",
+      "priority": { "phase": "brake", "rank": 15 },
+      "requires_reference": true,
+      "when": [
+        { "field": "brake_release_diff_m", "op": "lt", "value": -2.0 },
+        { "field": "off_track", "op": "eq", "value": false }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" },
+        { "name": "meters", "from": "brake_release_diff_m", "transform": "abs_round0", "unit": "м" }
+      ],
+      "phrase_template_ru": "В {corner} дольше держи тормоз к апексу — отпускаешь на {meters} раньше."
+    },
+    {
       "id": "more_trail_brake",
       "label_short": "more_trail",
       "hint_en": "too little trail braking",
@@ -280,6 +298,40 @@
         { "name": "corner", "from": "corner_name" }
       ],
       "phrase_template_ru": "Меньше газа на выходе из {corner}, ловишь пробуксовку."
+    },
+    {
+      "id": "brake_lockup",
+      "label_short": "lockup",
+      "hint_en": "locking the front wheels under braking",
+      "hint_ru": "блокирует передние колёса при торможении",
+      "cadence": "corner",
+      "priority": { "phase": "brake", "rank": 16 },
+      "requires_reference": false,
+      "when": [
+        { "field": "brake_lockup_score", "op": "gt", "value": 0.3 },
+        { "field": "off_track", "op": "eq", "value": false }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "В {corner} мягче на тормоз в начале — блокируешь передние колёса."
+    },
+    {
+      "id": "short_shift",
+      "label_short": "short_shift",
+      "hint_en": "upshifting below the power band",
+      "hint_ru": "переключаешься вверх слишком рано, ниже полки мощности",
+      "cadence": "corner",
+      "priority": { "phase": "exit", "rank": 45 },
+      "requires_reference": false,
+      "when": [
+        { "field": "short_shift_score", "op": "gt", "value": 0.4 },
+        { "field": "off_track", "op": "eq", "value": false }
+      ],
+      "params": [
+        { "name": "corner", "from": "corner_name" }
+      ],
+      "phrase_template_ru": "На выходе из {corner} держи передачу дольше — переключаешься слишком рано."
     },
     {
       "id": "earlier_throttle",

@@ -62,6 +62,80 @@ public sealed class Phase3KernelsTests
         WheelspinKernels.WheelspinScore(mixed).Should().BeApproximately(0.5f, 1e-4f);
     }
 
+    [Theory]
+    // Locked front, no ABS: front slip saturates the lock band (−0.5) with the brake hard on → full score.
+    [InlineData("locked_front_no_abs", 0.95f, 1.0f)]
+    // Same lock, but ABS engaged on the peak frame → discounted to raw × 0.35, present but far below a true lockup.
+    [InlineData("abs_modulated", 0.25f, 0.45f)]
+    // Exit wheelspin: positive front slip on throttle, brake off → not a lockup at all → 0.
+    [InlineData("exit_wheelspin", 0.0f, 0.0f)]
+    public void Brake_lockup_score_distinguishes_locked_front_from_abs_and_wheelspin(string scenario, float lo, float hi)
+    {
+        TelemetryFrame[] window = scenario switch
+        {
+            "locked_front_no_abs" => [FrameLock(frontSlip: -0.1f, brake: 0.9f, abs: false), FrameLock(frontSlip: -0.5f, brake: 0.9f, abs: false)],
+            "abs_modulated" => [FrameLock(frontSlip: -0.1f, brake: 0.9f, abs: true), FrameLock(frontSlip: -0.5f, brake: 0.9f, abs: true)],
+            // Front rolling free (+slip), rear spinning under power, brake released — nothing to lock.
+            "exit_wheelspin" => [FrameLock(frontSlip: 0.02f, brake: 0f, abs: false, rearSlip: 0.5f, throttle: 0.9f)],
+            _ => throw new ArgumentOutOfRangeException(nameof(scenario)),
+        };
+
+        BrakeLockupKernels.BrakeLockupScore(window).Should().BeInRange(lo, hi);
+    }
+
+    [Fact]
+    public void Brake_lockup_score_ignores_light_brake_and_missing_slip_channel()
+    {
+        // A deep lock but the brake barely applied (coasting) must not read as a braking lockup.
+        BrakeLockupKernels.BrakeLockupScore([FrameLock(frontSlip: -0.6f, brake: 0.1f, abs: false)]).Should().Be(0f);
+        // No slip_ratio channel at all → 0, never a throw.
+        BrakeLockupKernels.BrakeLockupScore([new TelemetryFrame { BrakePct = 0.9f }]).Should().Be(0f);
+    }
+
+    [Fact]
+    public void Brake_lockup_score_abs_attenuates_below_the_same_unaided_lockup()
+    {
+        TelemetryFrame[] unaided = [FrameLock(frontSlip: -0.5f, brake: 0.9f, abs: false)];
+        TelemetryFrame[] withAbs = [FrameLock(frontSlip: -0.5f, brake: 0.9f, abs: true)];
+
+        float open = BrakeLockupKernels.BrakeLockupScore(unaided);
+        float aided = BrakeLockupKernels.BrakeLockupScore(withAbs);
+
+        aided.Should().BeLessThan(open, "an ABS-equipped GT3 rarely fully locks — the reading is discounted");
+        aided.Should().BeGreaterThan(0f, "but ABS can still be overwhelmed, so it is not zeroed");
+    }
+
+    [Theory]
+    // Upshift taken near the rev ceiling (peak 7000, shifts at 6800) → inside the power band → ~0.
+    [InlineData("power_band", 6800, 0.0f, 0.05f)]
+    // Same 7000 ceiling, but the driver upshifts at 4200 rpm — well below the band → high short-shift score.
+    [InlineData("short_shift", 4200, 0.7f, 1.0f)]
+    public void Short_shift_score_flags_upshift_below_the_power_band(string scenario, int shiftRpm, float lo, float hi)
+    {
+        _ = scenario;
+        // A common 7000 rpm ceiling is reached on entry, then the graded upshift out of the corner.
+        TelemetryFrame[] window =
+        [
+            FrameShift(gear: 4, rpm: 7000),      // entry: engine revved to the ceiling before braking
+            FrameShift(gear: 2, rpm: 3200),      // downshifted for the corner (ignored — not an upshift)
+            FrameShift(gear: 2, rpm: shiftRpm),  // accelerating in-gear up to the chosen shift point
+            FrameShift(gear: 3, rpm: 3000),      // UPSHIFT here → pre-shift rpm is the frame above
+        ];
+
+        ShortShiftKernels.ShortShiftScore(window).Should().BeInRange(lo, hi);
+    }
+
+    [Fact]
+    public void Short_shift_score_ignores_downshifts_neutral_pull_away_and_missing_rpm()
+    {
+        // A pure downshift chain (braking into the corner) is never a short-shift.
+        ShortShiftKernels.ShortShiftScore([FrameShift(gear: 5, rpm: 7000), FrameShift(gear: 3, rpm: 5000)]).Should().Be(0f);
+        // Pulling away out of neutral (0 → 1) is not an upshift below the power band.
+        ShortShiftKernels.ShortShiftScore([FrameShift(gear: 0, rpm: 1200), FrameShift(gear: 1, rpm: 3000)]).Should().Be(0f);
+        // No rpm data at all → 0, never a throw.
+        ShortShiftKernels.ShortShiftScore([new TelemetryFrame { Gear = 3 }, new TelemetryFrame { Gear = 4 }]).Should().Be(0f);
+    }
+
     [Fact]
     public void Brake_overlap_is_fraction_of_window_braking_while_steering()
     {
@@ -185,6 +259,15 @@ public sealed class Phase3KernelsTests
         T = Timestamp.FromDateTimeOffset(new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero).AddMilliseconds(ms)),
         SteerRad = steer,
     };
+
+    private static TelemetryFrame FrameLock(float frontSlip, float brake, bool abs, float rearSlip = 0f, float throttle = 0f)
+    {
+        TelemetryFrame frame = new() { BrakePct = brake, ThrottlePct = throttle, AbsActive = abs, Abs = abs ? 1 : 0 };
+        frame.SlipRatio.AddRange([frontSlip, frontSlip, rearSlip, rearSlip]);
+        return frame;
+    }
+
+    private static TelemetryFrame FrameShift(int gear, float rpm) => new() { Gear = gear, Rpm = rpm };
 
     private static TelemetryFrame FrameWithSlip(float fl, float fr, float rl, float rr, float throttle = 1f)
     {

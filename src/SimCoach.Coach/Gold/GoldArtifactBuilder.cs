@@ -49,6 +49,9 @@ public sealed class GoldArtifactBuilder
             EntryLineDeviationM = hasRef ? Rounding.Meters(e.EntryLineDeviationM) : null,
             ApexLineDeviationM = hasRef ? Rounding.Meters(e.ApexLineDeviationM) : null,
             ExitLineDeviationM = hasRef ? Rounding.Meters(e.ExitLineDeviationM) : null,
+            BrakeReleaseDiffM = hasRef ? Rounding.Meters(e.BrakeReleaseDiffM) : null,
+            BrakeLockupScore = Rounding.Score(e.BrakeLockupScore),
+            ShortShiftScore = Rounding.Score(e.ShortShiftScore),
         };
 
         return Envelope("corner", Header(ctx), payload, ctx.Locale);
@@ -102,9 +105,13 @@ public sealed class GoldArtifactBuilder
             TheoreticalBestGapMs: !hasOptimal && e.CleanLapCount >= 1 ? e.TheoreticalBestGapMs : null,
             OptimalGapMs: hasOptimal ? e.OptimalGapMs : null,
             SectorOptimalGapMs: hasOptimal ? e.SectorOptimalGapMs.ToList() : null,
-            SetupHint: null,
+            SetupHint: SetupHintSynthesizer.Synthesize(e.BalancePhaseTrend, _options.SetupHintBalanceThreshold),
             FuelTyre: new GoldFuelTyreSummary(Rounding.Fuel(e.AvgFuelPerLapL), Rounding.Percent(e.EndTyreWearPct)),
-            Stints: Stints(e.Stints));
+            Stints: Stints(e.Stints))
+        {
+            BalancePhaseTrends = BalancePhaseTrends(e.BalancePhaseTrend),
+            SectorCornerMemberships = SectorCornerMemberships(e.TrackId, e.SectorCornerMembership),
+        };
 
         // Session metadata comes off the event itself; only class/has-reference/locale ride the context.
         var header = new GoldSessionBlock(e.TrackId, ctx.CarClass, e.WeatherBucket, null, ctx.HasReference);
@@ -149,7 +156,32 @@ public sealed class GoldArtifactBuilder
                 _names.ResolveName(trackId, l.CornerId), l.TotalLossMs, l.AvgLossMs, l.SampleCount, l.DominantReason)
             {
                 CornerNameRu = _names.GetShort(trackId, l.CornerId),
+                DominantChannel = l.DominantChannel,
+                DominantChannelValue = l.DominantChannelValue,
+                LossTrend = TrendPoints(l.LossTrend),
             }),
+    ];
+
+    // M41 per-phase balance trend: one Gold record per sampled phase band, balance rounded for determinism.
+    private static IReadOnlyList<GoldBalancePhaseTrend> BalancePhaseTrends(IReadOnlyList<BalancePhaseTrend> trends) =>
+    [
+        .. trends.Select(t => new GoldBalancePhaseTrend(t.Phase, Rounding.Score(t.Balance), t.SampleCount)),
+    ];
+
+    // M41 grounded sector→corner membership: corner ids resolve to human names at the Coach layer (ADR-0010).
+    private IReadOnlyList<GoldSectorCornerMembership> SectorCornerMemberships(
+        string trackId, IReadOnlyList<SectorCornerMembership> memberships) =>
+    [
+        .. memberships.Select(m => new GoldSectorCornerMembership(
+            m.SectorIndex,
+            [.. m.CornerIds.Select(id => _names.ResolveName(trackId, id))])),
+    ];
+
+    // M41 per-corner loss trend: the lap-indexed magnitude series carried through verbatim (already ordered by
+    // lap upstream); never summed into total_loss_ms.
+    private static IReadOnlyList<GoldLossTrend> TrendPoints(IReadOnlyList<LossTrend> points) =>
+    [
+        .. points.Select(p => new GoldLossTrend(p.LapNumber, p.LossMs)),
     ];
 
     private static IReadOnlyList<GoldStint> Stints(IReadOnlyList<StintSummary> stints) =>

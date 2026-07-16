@@ -77,6 +77,27 @@ public sealed record ComputeOptions
     /// </summary>
     public float LineRelevanceMaxRadiusM { get; init; } = 300f;
 
+    /// <summary>
+    /// M36 cross-unit ranking scale: how many milliseconds one metre of brake-point error is worth when
+    /// choosing a corner's <c>dominant_channel</c>. The three <c>MsPer*</c> scales bring the signed
+    /// diagnostic diffs (metres, metres, km/h) onto one comparable ms axis so the argmax is not decided by
+    /// unit magnitude. A ranking heuristic only — the product is never summed into <c>total_loss_ms</c>.
+    /// Placeholder default — final value user-owned.
+    /// </summary>
+    public float MsPerMetreBrakePoint { get; init; } = 10f;
+
+    /// <summary>
+    /// M36 cross-unit ranking scale: milliseconds per metre of throttle-resume error, for the
+    /// <c>dominant_channel</c> argmax. See <see cref="MsPerMetreBrakePoint"/>. Placeholder default.
+    /// </summary>
+    public float MsPerMetreThrottleResume { get; init; } = 10f;
+
+    /// <summary>
+    /// M36 cross-unit ranking scale: milliseconds per km/h of min-speed deficit, for the
+    /// <c>dominant_channel</c> argmax. See <see cref="MsPerMetreBrakePoint"/>. Placeholder default.
+    /// </summary>
+    public float MsPerKmhMinSpeed { get; init; } = 20f;
+
     public void EnsureValid()
     {
         if (ApexWindowFraction is <= 0 or > 0.5)
@@ -127,6 +148,21 @@ public sealed record ComputeOptions
         if (LineRelevanceMaxRadiusM <= 0f)
         {
             throw new InvalidOperationException("ComputeOptions.LineRelevanceMaxRadiusM must be positive.");
+        }
+
+        if (MsPerMetreBrakePoint <= 0f)
+        {
+            throw new InvalidOperationException("ComputeOptions.MsPerMetreBrakePoint must be positive.");
+        }
+
+        if (MsPerMetreThrottleResume <= 0f)
+        {
+            throw new InvalidOperationException("ComputeOptions.MsPerMetreThrottleResume must be positive.");
+        }
+
+        if (MsPerKmhMinSpeed <= 0f)
+        {
+            throw new InvalidOperationException("ComputeOptions.MsPerKmhMinSpeed must be positive.");
         }
     }
 }

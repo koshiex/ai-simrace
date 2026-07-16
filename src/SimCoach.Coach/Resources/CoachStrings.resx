@@ -96,6 +96,22 @@
   <data name="Reason_slower" xml:space="preserve">
     <value>потеря времени</value>
   </data>
+  <data name="Channel_brake_point" xml:space="preserve">
+    <value>точка торможения</value>
+    <comment>M36 dominant loss channel (signed): the corner's biggest deficit is the braking point.</comment>
+  </data>
+  <data name="Channel_throttle_resume" xml:space="preserve">
+    <value>возврат к газу</value>
+    <comment>M36 dominant loss channel (signed): the corner's biggest deficit is picking the throttle back up.</comment>
+  </data>
+  <data name="Channel_min_speed" xml:space="preserve">
+    <value>минимальная скорость в повороте</value>
+    <comment>M36 dominant loss channel (signed): the corner's biggest deficit is the mid-corner minimum speed.</comment>
+  </data>
+  <data name="Debrief_Why_Channel_Format" xml:space="preserve">
+    <value>{0} (эвристика: {1})</value>
+    <comment>Debrief per-loss "why": {0} dominant-channel gloss, {1} the HEURISTIC scaled ranking magnitude (never a time; the real loss is the sibling "ms").</comment>
+  </data>
   <data name="Debrief_TopPriority_Format" xml:space="preserve">
     <value>Больше всего теряешь в {0}: {1}.</value>
     <comment>Deterministic debrief top-priority sentence; {0} corner name, {1} reason.</comment>
@@ -114,5 +130,29 @@
   <data name="Debrief_Metric_OptimalGap" xml:space="preserve">
     <value>Отставание от оптимального круга, мс</value>
     <comment>Neutral debrief label for the cross-session own-optimal gap (M46); supersedes the theoretical-best gap.</comment>
+  </data>
+  <data name="SetupHint_Understeer" xml:space="preserve">
+    <value>устойчивый снос</value>
+    <comment>M41 grounded setup_hint tendency: persistent understeer (balance positive) grounded in the per-phase balance trend.</comment>
+  </data>
+  <data name="SetupHint_Oversteer" xml:space="preserve">
+    <value>устойчивый занос</value>
+    <comment>M41 grounded setup_hint tendency: persistent oversteer (balance negative) grounded in the per-phase balance trend.</comment>
+  </data>
+  <data name="SetupHint_Phase_entry" xml:space="preserve">
+    <value>на входе в поворот</value>
+    <comment>M41 setup_hint phase gloss: entry band of the corner window.</comment>
+  </data>
+  <data name="SetupHint_Phase_apex" xml:space="preserve">
+    <value>в апексе</value>
+    <comment>M41 setup_hint phase gloss: apex band of the corner window.</comment>
+  </data>
+  <data name="SetupHint_Phase_exit" xml:space="preserve">
+    <value>на выходе</value>
+    <comment>M41 setup_hint phase gloss: exit band of the corner window.</comment>
+  </data>
+  <data name="SetupHint_Format" xml:space="preserve">
+    <value>{0} {1}</value>
+    <comment>M41 grounded setup_hint sentence; {0} tendency (снос/занос), {1} phase gloss.</comment>
   </data>
 </root>

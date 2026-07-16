@@ -109,4 +109,42 @@ public sealed class ComputeOptionsTests
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*ApexWindowFraction*");
     }
+
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(-1f)]
+    public void EnsureValid_throws_on_non_positive_brake_point_scale(float scale)
+    {
+        // M36: a zero/negative ms-per-metre scale would zero out (or invert) the brake-point channel in the
+        // dominant-channel argmax, silently defeating the cross-unit ranking.
+        var options = new ComputeOptions { MsPerMetreBrakePoint = scale };
+
+        Action act = options.EnsureValid;
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*MsPerMetreBrakePoint*");
+    }
+
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(-1f)]
+    public void EnsureValid_throws_on_non_positive_throttle_resume_scale(float scale)
+    {
+        var options = new ComputeOptions { MsPerMetreThrottleResume = scale };
+
+        Action act = options.EnsureValid;
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*MsPerMetreThrottleResume*");
+    }
+
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(-1f)]
+    public void EnsureValid_throws_on_non_positive_min_speed_scale(float scale)
+    {
+        var options = new ComputeOptions { MsPerKmhMinSpeed = scale };
+
+        Action act = options.EnsureValid;
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*MsPerKmhMinSpeed*");
+    }
 }

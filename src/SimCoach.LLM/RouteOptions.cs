@@ -20,6 +20,11 @@ public sealed record RouteOptions
 
     public bool Stream { get; init; }
 
+    /// <summary>When set, marks the system prompt with a provider <c>cache_control</c> breakpoint so a stable
+    /// prefix can be served from the provider's prompt cache. Default off — metering-prep only, so an unset route
+    /// keeps the current uncached behaviour on the wire.</summary>
+    public bool CacheSystemPrompt { get; init; }
+
     /// <summary>Sampling temperature. Null leaves it to the provider default; 0 = deterministic (preferred for
     /// short structured coaching output). Emitted to the provider only when set.</summary>
     public double? Temperature { get; init; }

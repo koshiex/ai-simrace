@@ -70,6 +70,15 @@ public sealed class Phase2ComputeE2EGoldenTests : IDisposable
         sessionEvent.AvgFuelPerLapL.Should().BeGreaterThan(0f, "synthetic frames carry a per-lap fuel estimate");
         List<LapEvent> lapEvents = [.. r.Events.Where(e => e.Kind == DomainEventKind.Lap).Select(e => (LapEvent)e.Payload)];
         lapEvents.Should().OnlyContain(l => l.Thermal != null && l.Thermal.MaxTyreTempC > 0f);
+
+        // (g) M41 session aggregates present end-to-end — the in-repo structural golden behind the manual
+        // replay check. sector_corner_membership(19) grounds each observed sector to the baked corners in its
+        // range; balance_phase_trend(20) resolves balance per entry/apex/exit band. loss_trend(12) rides
+        // aggregated_losses, which is EMPTY here by design (synthetic laps match the reference), so it is
+        // exercised at the unit level (SessionLossAccumulatorTests), not asserted non-empty on this fixture.
+        sessionEvent.SectorCornerMembership.Should().NotBeEmpty("each observed sector grounds to the baked corners in its range");
+        sessionEvent.BalancePhaseTrend.Select(b => b.Phase).Should().Equal("entry", "apex", "exit");
+        sessionEvent.BalancePhaseTrend.Should().OnlyContain(b => b.SampleCount > 0, "clean-lap corners feed every phase band");
     }
 
     [Fact]

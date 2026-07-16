@@ -116,6 +116,28 @@ message CornerEvent {
   float entry_line_deviation_m = 18;
   float apex_line_deviation_m = 19;
   float exit_line_deviation_m = 20;        // + = wider exit line, - = tighter (carries the former track_width intent)
+
+  // M33: reference-relative brake RELEASE point diff — self brake-off position minus reference brake-off
+  // position, in metres. Negative = self lets off the brake EARLIER than the reference (short trail-brake,
+  // gives up pressure before the apex). Reference-relative → 0 without a reference (nullable/omitted in Gold).
+  float brake_release_diff_m = 21;         // negative = released the brake too early
+
+  // M33: self-derived front-wheel brake-lockup score [0,1]. Peak FRONT-wheel longitudinal slip_ratio
+  // (field 43, indices FL/FR) in the LOCKING sign (negative = under-rotating vs ground) while brake_pct is
+  // high, normalized between an onset and a saturation magnitude. ATTENUATED when ABS is engaged
+  // (abs_active(30) OR abs(40) > 0) on the peak-lock frame — an ABS-equipped GT3 rarely fully locks, so a
+  // reading under ABS intervention is far more likely modulation than a true lockup. Self-derived →
+  // always-present in Gold (non-nullable, no reference gate).
+  float brake_lockup_score = 22;           // 0..1, higher = harder front lockup under braking
+
+  // M33: self-derived short-shift score [0,1]. For each UPSHIFT in the corner window (gear increases
+  // between consecutive frames, from a driving gear) the rpm just BEFORE the change is the rpm the driver
+  // chose to shift at; a short-shift is one taken well below the top of the usable rev range. No telemetry
+  // channel carries the car's redline, so the reference is the PEAK rpm(15) seen anywhere in the window —
+  // the highest the engine is revved is the best self-derived proxy for the power-band ceiling. The score
+  // is the LARGEST shift-rpm deficit below that peak, normalized between an onset and a saturation fraction.
+  // Self-derived → always-present in Gold (non-nullable, no reference gate).
+  float short_shift_score = 23;            // 0..1, higher = upshifted further below the power band
 }
 
 // Per-sector summary emitted at sector cross.
@@ -186,8 +208,16 @@ message SessionEvent {
   float avg_fuel_per_lap_l = 17;                   // averaged over racing laps
   float end_tyre_wear_pct = 18;                    // 0..1; honest-zero on ACC (no wear channel)
 
-  // Own-optimal ("theoretical best", M46) debrief headline. Fields 19/20 are RESERVED for M41 per the P3
-  // ratified additive map — M46 takes 21/22, do not renumber. Cross-session, current-session-aware:
+  // M41 session aggregates (append-only, B2). Both repeated/non-scalar. sector_corner_membership grounds
+  // each observed sector to the baked corners whose apex falls within it (derived at session end by
+  // intersecting current_sector_index(33) cross positions with baked apex positions; NOT persisted to the
+  // track model, ADR-0010). balance_phase_trend carries per-phase (entry/apex/exit) balance, distinct from
+  // the single understeer_trend(11) scalar. Producers land in a later commit (proto-only here).
+  repeated SectorCornerMembership sector_corner_membership = 19;
+  repeated BalancePhaseTrend balance_phase_trend = 20;
+
+  // Own-optimal ("theoretical best", M46) debrief headline. M46 takes 21/22 (19/20 went to M41 above),
+  // do not renumber. Cross-session, current-session-aware:
   // optimal_gap_ms = best lap − Σ min(persisted-optimal-sector, this-session-best-sector); it SUPERSEDES the
   // within-session field 16 (which demotes to a first-session-only fallback at the Gold layer). Both are
   // empty when no persisted optimal exists yet. sector_optimal_gap_ms is the per-sector deficit vector
@@ -204,6 +234,30 @@ message AggregatedLoss {
   int32 avg_loss_ms = 3;
   int32 sample_count = 4;
   string dominant_reason = 5;
+  // Report-only diagnostic diffs (M35, ADR-0020): each is the abs-then-average of a per-corner diff
+  // channel over the same DeltaMs>0 lossy-corner set the losses roll up from — mean(|per_corner_diff|),
+  // never |mean|, so a wrong-on-every-corner driver is not cancelled to ~0. Magnitudes, not times: never
+  // summed into total_loss_ms. avg_min_speed_diff_kmh is same-sign when lossy; the two brake/throttle
+  // diffs are bidirectional (the sign-fault invariant, ADR-0020, targets those).
+  float avg_brake_point_diff_m = 6;        // mean(|brake_point_diff_m|) over lossy samples
+  float avg_throttle_resume_diff_m = 7;    // mean(|throttle_resume_diff_m|)
+  float avg_min_speed_diff_kmh = 8;        // mean(|min_speed_diff_kmh|)
+  float avg_line_deviation_m = 9;          // mean(|racing_line_deviation_m|), unsigned RMS input
+  // M36 scaled dominant-channel picker. The authoritative loss stays total_loss_ms(2); dominant_reason(5)
+  // is retained for back-compat but no longer authoritative. dominant_channel is the argmax over the THREE
+  // SIGNED diagnostic channels ONLY — {"brake_point", "throttle_resume", "min_speed"} — each ranked by
+  // mean(|diff|) x an IOptions ms-per-unit scale (ComputeOptions.MsPer*). The unsigned RMS line_deviation
+  // (field 9) is DELIBERATELY EXCLUDED from the domain (it would spuriously win the cross-unit argmax).
+  // Empty string when no signed channel has a non-zero scaled magnitude.
+  string dominant_channel = 10;
+  // Scaled ranking magnitude of the winning channel (mean(|diff|) x scale, rounded to ms). A HEURISTIC
+  // cross-unit ranking number, NOT an additive time — it MUST NEVER be summed into total_loss_ms.
+  int32 dominant_channel_value = 11;
+  // M41 per-corner loss trend (append-only, B2): this corner's loss across the session's laps as a
+  // lap-indexed series, one LossTrend point per lap the corner was driven. Enables a "getting worse /
+  // improving" read per corner. Non-scalar → rides GoldAggregatedLoss (per-corner), not GoldSessionPayload.
+  // Points are magnitudes over laps, never summed into total_loss_ms(2). Producer lands in a later commit.
+  repeated LossTrend loss_trend = 12;
 }
 
 message StintSummary {
@@ -212,4 +266,31 @@ message StintSummary {
   int32 tyre_compound = 3;
   float tyre_degradation_pct = 4;          // 0..1
   int32 avg_lap_ms = 5;
+}
+
+// M41 (B2): grounded sector→corner membership. Maps one observed sector index to the baked corners whose
+// apex falls within that sector's distance range. Derived at session end (ADR-0010: sectors stay OUT of the
+// track model — this is derived, not persisted). Rides SessionEvent(19) as repeated, one entry per observed
+// sector that contains at least one corner apex; each emitted entry maps to >=1 corner.
+message SectorCornerMembership {
+  int32 sector_index = 1;                  // 0-based observed sector
+  repeated string corner_ids = 2;          // baked corner ids whose apex lies in this sector (>=1)
+}
+
+// M41 (B2): per-phase (entry/apex/exit) balance trend. Balance is understeer-positive / oversteer-negative,
+// same convention as understeer_trend(11), but scored independently per CornerPhaseBands band so an
+// entry-oversteer / exit-understeer car is distinguishable from a single session scalar. Rides
+// SessionEvent(20) as repeated, one entry per phase band.
+message BalancePhaseTrend {
+  string phase = 1;                        // closed set: "entry" | "apex" | "exit"
+  float balance = 2;                       // -1..1 (negative = oversteer, positive = understeer)
+  int32 sample_count = 3;                  // corners contributing to this phase band
+}
+
+// M41 (B2): one point of a per-corner lap-indexed loss series. Rides AggregatedLoss(12) as repeated to give
+// the corner's loss across the laps it was driven — a multi-lap trend. A magnitude series, never summed with
+// total_loss_ms(2).
+message LossTrend {
+  int32 lap_number = 1;                    // 1-based lap
+  int32 loss_ms = 2;                       // this corner's loss on that lap vs reference (positive = slower)
 }

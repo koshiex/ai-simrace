@@ -40,3 +40,17 @@ Then the gotcha that fails ~70 tests at once:
 
 RU phrase text stays in `phrase_template_ru` / `.resx`; the `hint_ru`/`hint_en` ride the registry entry and
 auto-appear in the prompt menu (no prompt-file edit needed).
+
+## A `when`-clause gate on a kernel score must clear the kernel's attainable ceiling
+
+An action gated on a computed `[0,1]` score can ship **dead** if the gate sits above the score the
+kernel can actually reach for the target car class — the registry loads, the Gold field resolves, all
+tests pass, and the action simply never fires in-game. `brake_lockup_score` is the worked example: the
+kernel **attenuates any ABS-caught lock** (`BrakeLockupKernels`, ABS branch caps at `raw * AbsAttenuation`,
+`AbsAttenuation = 0.35`), so on the MVP target (ACC GT3, ABS on) the deepest-lock frame reads **≤ 0.35** by
+construction — a `brake_lockup_score gt 0.4` gate is unreachable there. When you add or retune a
+kernel-gated action, verify the gate against the kernel's worst-case attainable value for the primary car,
+not against `1.0`. Guard it with a **reachability test** (see
+`tests/SimCoach.Coach.Tests/BrakeLockupActionReachabilityTests.cs`): load the registry, extract the gate
+from the `when` clause, compute the kernel score for the saturating fixture, assert `score > gate`. A
+range-only `score in [0,1]` assertion proves nothing here — it passes for any constant.

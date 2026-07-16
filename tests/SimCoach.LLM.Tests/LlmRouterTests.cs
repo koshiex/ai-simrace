@@ -65,6 +65,20 @@ public sealed class LlmRouterTests
         route.Stream.Should().BeFalse();
         route.Temperature.Should().Be(0);
         route.TopP.Should().Be(1.0);
+        route.CacheSystemPrompt.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Passes_cache_system_prompt_flag_to_provider_when_route_enables_it()
+    {
+        var capture = new CaptureProvider();
+        var router = new LlmRouter(
+            OptionsWith(CornerRoute() with { CacheSystemPrompt = true }),
+            new Dictionary<string, ILlmProvider> { ["openrouter-google"] = capture });
+
+        await router.CompleteAsync(_cornerRequest, CancellationToken.None);
+
+        capture.LastRoute!.Value.CacheSystemPrompt.Should().BeTrue();
     }
 
     [Fact]

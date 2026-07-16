@@ -26,6 +26,7 @@ public sealed class GoldHasReferenceDropTests
         json.Should().NotContain("entry_line_deviation_m");
         json.Should().NotContain("apex_line_deviation_m");
         json.Should().NotContain("exit_line_deviation_m");
+        json.Should().NotContain("brake_release_diff_m");
         json.Should().NotContain("trail_brake_pct_ref");
         json.Should().NotContain("trail_brake_diff_pct");
     }
@@ -38,6 +39,8 @@ public sealed class GoldHasReferenceDropTests
         json.Should().Contain("trail_brake_pct_self");
         json.Should().Contain("understeer_score");
         json.Should().Contain("wheelspin_score");
+        json.Should().Contain("brake_lockup_score");
+        json.Should().Contain("short_shift_score");
         json.Should().Contain("off_track");
         json.Should().Contain("corner_name");
     }

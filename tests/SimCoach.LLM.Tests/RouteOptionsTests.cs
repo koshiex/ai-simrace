@@ -77,4 +77,13 @@ public sealed class RouteOptionsTests
     public void Boundary_temperature_zero_and_top_p_one_passes()
         => (Valid() with { Temperature = 0d, TopP = 1d }).Invoking(o => o.EnsureValid())
             .Should().NotThrow();
+
+    [Fact]
+    public void Cache_system_prompt_defaults_off()
+        => Valid().CacheSystemPrompt.Should().BeFalse();
+
+    [Fact]
+    public void Cache_system_prompt_enabled_passes()
+        => (Valid() with { CacheSystemPrompt = true }).Invoking(o => o.EnsureValid())
+            .Should().NotThrow();
 }

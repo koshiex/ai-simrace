@@ -30,9 +30,21 @@ public sealed class GoldCornerArtifactTests
         e.CornerName.Should().Be("Eau Rouge");
         e.CornerNameRu.Should().Be("О-Руж");
         e.WheelspinScore.Should().Be(0.18);
+        e.BrakeLockupScore.Should().Be(0.55);
+        e.ShortShiftScore.Should().Be(0.42);
         e.BrakeOverlapSteerPct.Should().Be(0.31);
         e.SteeringJitter.Should().Be(0.09);
         e.Reason.Should().Be("low_min_speed");
+    }
+
+    [Fact]
+    public void Brake_lockup_score_is_present_even_without_a_reference()
+    {
+        // Self-derived → non-nullable and never gated on a reference (unlike the *_diff_m fields).
+        GoldCornerEvent e = GoldTestData.Builder().BuildCorner(GoldTestData.Corner(), GoldTestData.Ctx(hasReference: false)).Event;
+
+        e.BrakeLockupScore.Should().Be(0.55);
+        e.ShortShiftScore.Should().Be(0.42);
     }
 
     [Fact]
