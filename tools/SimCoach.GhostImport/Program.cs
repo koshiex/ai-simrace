@@ -118,10 +118,13 @@ static async Task<int> RunImportAsync(string[] args)
         int considered = 0;
         foreach (AccReplayLap lap in board)
         {
-            if (considered++ >= maxCandidates)
+            if (considered >= maxCandidates)
             {
+                Console.WriteLine($"reached the {maxCandidates}-lap scan cap for '{track}' without a usable lap");
                 break;
             }
+
+            considered++;
 
             try
             {
@@ -184,8 +187,10 @@ static async Task<int> RunImportAsync(string[] args)
             $"no usable lap in the top {considered} GT3 laps for '{track}' (all partial or off-centerline)");
         return 1;
     }
-    catch (Exception ex) when (ex is InvalidDataException or ArgumentException or HttpRequestException or IOException)
+    catch (Exception ex)
     {
+        // Dev-tool top level: any failure (decode, network timeout, JSON shape drift, IO) becomes a clean
+        // non-zero exit with a one-line message instead of a raw stack trace.
         Console.Error.WriteLine($"import failed: {ex.Message}");
         return 1;
     }

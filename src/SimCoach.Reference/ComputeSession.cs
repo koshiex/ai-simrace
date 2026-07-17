@@ -310,9 +310,18 @@ internal sealed class ComputeSession
         }
         catch (Exception ex) when (ex is InvalidOperationException or InvalidDataException)
         {
+            // A corrupt DB import (null parquet_path → InvalidOperationException; unreadable/multi-row-group
+            // parquet → InvalidDataException) must degrade to EXACTLY the absent-import path, not worse: try the
+            // vendored embedded dry line before falling to the centerline. TryGetAlienLine is a pure dict
+            // lookup and cannot throw, so a corrupt override never leaves us below the OD10 out-of-box baseline.
             _logger.LogWarning(
-                ex, "alien_line reference for {Track}/{Car}/{Weather} failed to load; falling back to centerline/PB line",
+                ex, "alien_line reference for {Track}/{Car}/{Weather} failed to load; trying embedded/centerline line",
                 _trackId, _carId, _weatherBucket);
+            if (IsDryWeather && _alienLines.TryGetAlienLine(_trackId, out ResampledLap? embedded) && embedded is not null)
+            {
+                return embedded;
+            }
+
             return null;
         }
     }

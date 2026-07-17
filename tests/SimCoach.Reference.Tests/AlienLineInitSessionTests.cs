@@ -19,9 +19,6 @@ public sealed class AlienLineInitSessionTests
     private const string SessionId = "20260601-120000-000";
     private static readonly DateTimeOffset _now = new(2026, 7, 17, 12, 0, 0, TimeSpan.Zero);
 
-    // The synthetic Spa stream's identity (SyntheticSessionBuilder: acc / synthetic_gt3 / dry-warm).
-    private static ReferenceTriple SyntheticTriple => new("spa", "synthetic_gt3", "dry-warm");
-
     [Fact]
     public async Task A_corrupt_alien_parquet_is_fault_isolated_and_the_session_still_completes()
     {
@@ -43,13 +40,50 @@ public sealed class AlienLineInitSessionTests
     }
 
     [Fact]
+    public void A_malformed_alien_parquet_is_fault_isolated_and_the_embedded_dry_line_still_activates()
+    {
+        using var harness = new ComputeTestHarness();
+        // Garbage (non-parquet) bytes at the import path: ParquetFileReader's ctor throws ParquetException
+        // BEFORE the row-group check — the codec now normalizes it to InvalidDataException so the M3 guard
+        // catches it instead of it escaping InitSession and nulling the line tier + optimal for the session.
+        // In the dry the catch must still fall to the vendored embedded alien line, not merely the centerline.
+        Directory.CreateDirectory(harness.ReferencesDirectory);
+        string garbage = Path.Combine(harness.ReferencesDirectory, "garbage.parquet");
+        File.WriteAllBytes(garbage, "this is not a parquet file"u8.ToArray());
+        harness.References.Upsert(AlienRow(garbage, "dry-warm"));
+
+        var logger = new CollectingLogger();
+        ComputeSession session = NewSpaSession(harness, logger);
+
+        foreach (TelemetryFrame frame in
+            SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 1, weatherBucket: "dry-warm"))
+        {
+            session.Accept(frame);
+        }
+
+        // Reaching the "Compute started ... line alien_line" log proves InitSession completed (no escape) AND
+        // the catch's embedded dry fallback fired — a corrupt override degraded to exactly the absent path.
+        logger.Snapshot().Should().Contain(
+            e => e.Message.Contains("line alien_line", StringComparison.Ordinal),
+            "a corrupt dry import must fault-isolate to the vendored embedded alien line, not disable the line tier");
+    }
+
+    [Fact]
     public async Task An_alien_line_never_shifts_the_time_delta_it_is_line_only()
     {
-        IReadOnlyList<TelemetryFrame> frames = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
+        // Wet frames: the dry-baked embedded line is gated OFF, so the baseline arm carries NO alien line
+        // (centerline/PB only). The withAlien arm adds a triple-exact WET DB import (OD6 exact match is not
+        // weather-gated). The ONLY difference between the arms is that alien line, so a regression that fed it
+        // into _reference/TIME would diverge the deltas — the assertion can actually falsify a TIME leak.
+        IReadOnlyList<TelemetryFrame> frames =
+            SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4, weatherBucket: "wet");
+        var wetTriple = new ReferenceTriple("spa", "synthetic_gt3", "wet");
 
         IReadOnlyList<int> baseline;
         using (var harness = new ComputeTestHarness())
         {
+            harness.Lookup.Get(wetTriple, ReferenceKind.AlienLine).Should().BeNull(
+                "precondition: no DB import, and the dry embedded line is wet-gated, so the baseline has no alien line");
             baseline = LapDeltas(await harness.RunAsync(frames, SessionId));
         }
 
@@ -58,8 +92,8 @@ public sealed class AlienLineInitSessionTests
         {
             string parquet = Path.Combine(harness.ReferencesDirectory, "alien.parquet");
             ReferenceParquetCodec.Write(LineOnlyLap.Circle(200, 100f), parquet);
-            harness.References.Upsert(AlienRow(parquet, "dry-warm"));
-            harness.Lookup.Get(SyntheticTriple, ReferenceKind.AlienLine).Should().NotBeNull(
+            harness.References.Upsert(AlienRow(parquet, "wet"));
+            harness.Lookup.Get(wetTriple, ReferenceKind.AlienLine).Should().NotBeNull(
                 "precondition: the alien line resolves so the run actually exercises it as _lineReference");
 
             withAlien = LapDeltas(await harness.RunAsync(frames, SessionId));
