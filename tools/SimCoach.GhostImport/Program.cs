@@ -108,51 +108,81 @@ static async Task<int> RunImportAsync(string[] args)
     {
         int accTrackId = AccReplayClient.TrackIdFor(track);
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-        AccReplayLap lap = await AccReplayClient
-            .FetchFastestGt3LapAsync(http, accTrackId, CancellationToken.None)
-            .ConfigureAwait(false);
-        byte[] ghost = await AccReplayClient
-            .DownloadGhostAsync(http, lap.LapId, track, CancellationToken.None)
+        IReadOnlyList<AccReplayLap> board = await AccReplayClient
+            .FetchGt3LeaderboardAsync(http, accTrackId, CancellationToken.None)
             .ConfigureAwait(false);
 
-        byte[] payload = GhostContainer.Inflate(ghost);
-        GhostPayloadHeader header = GhostPayload.ReadHeader(payload);
-        ImportGuards.CheckArithmetic(header);
-        IReadOnlyList<GhostRecord> records = GhostPayload.ReadRecords(payload, header);
-
-        IReadOnlyList<IReadOnlyList<GhostRecord>> laps = LapSplitter.Split(records, importOptions);
-        if (laps.Count == 0)
+        // Walk the board fastest-first to the first lap whose ghost yields a complete, centerline-tracking
+        // loop. The outright-fastest entry is frequently a reconnaissance drive that never closes the loop.
+        const int maxCandidates = 20;
+        int considered = 0;
+        foreach (AccReplayLap lap in board)
         {
-            Console.Error.WriteLine("no complete lap in the ghost (loop-closure split returned nothing)");
-            return 1;
+            if (considered++ >= maxCandidates)
+            {
+                break;
+            }
+
+            try
+            {
+                byte[] ghost = await AccReplayClient
+                    .DownloadGhostAsync(http, lap.LapId, track, CancellationToken.None)
+                    .ConfigureAwait(false);
+                byte[] payload = GhostContainer.Inflate(ghost);
+                GhostPayloadHeader header = GhostPayload.ReadHeader(payload);
+                ImportGuards.CheckArithmetic(header);
+                IReadOnlyList<GhostRecord> records = GhostPayload.ReadRecords(payload, header);
+
+                IReadOnlyList<IReadOnlyList<GhostRecord>> laps = LapSplitter.Split(records, importOptions);
+                if (laps.Count == 0)
+                {
+                    Console.WriteLine(
+                        $"skip lap {lap.LapId} ({lap.Car}, {lap.LapTimeMs} ms): no complete loop");
+                    continue;
+                }
+
+                float medianDeviationM = CenterlineAligner.MedianDeviationM(laps[0], centerline);
+                Console.WriteLine(
+                    $"lap {lap.LapId} ({lap.Car}, {lap.LapTimeMs} ms): align median {medianDeviationM:0.00} m "
+                    + $"(ceiling {importOptions.AlignmentDeviationCeilingM:0.00} m)");
+                IReadOnlyList<AlignedPoint> aligned =
+                    CenterlineAligner.Align(laps[0], centerline, importOptions);
+                ResampledLap grid =
+                    LineResampler.Resample(aligned, centerline.LapLengthM, lapNumber: 1, importOptions);
+                ResampledLap masked = SeamMask.Apply(grid, importOptions.SeamBands);
+
+                var triple = new ReferenceTriple(track, car, weather);
+                var provenance = GhostProvenance.FromAccReplay(lap, track);
+
+                options.TryGetValue("data-root", out string? dataRootArg);
+                string dataRoot = DataRootResolver.Resolve(dataRootArg);
+                var factory = new SqliteConnectionFactory(
+                    new DatabaseOptions { DbPath = DataRootResolver.DatabasePath(dataRoot) });
+                new DatabaseMigrator(factory).Migrate();
+
+                string parquetPath = AlienReferenceWriter.Persist(
+                    new ReferenceRepository(factory),
+                    DataRootResolver.ReferencesDirectory(dataRoot),
+                    triple,
+                    masked,
+                    lap.LapTimeMs,
+                    provenance,
+                    DateTimeOffset.UtcNow);
+
+                Console.WriteLine(
+                    $"alien_line persisted for {triple.TrackId}/{triple.CarId}/{triple.WeatherBucket} "
+                    + $"(source {lap.Car}, {lap.LapTimeMs} ms, median {medianDeviationM:0.00} m) -> {parquetPath}");
+                return 0;
+            }
+            catch (InvalidDataException ex)
+            {
+                Console.WriteLine($"skip lap {lap.LapId} ({lap.Car}): {ex.Message}");
+            }
         }
 
-        IReadOnlyList<AlignedPoint> aligned = CenterlineAligner.Align(laps[0], centerline, importOptions);
-        ResampledLap grid = LineResampler.Resample(aligned, centerline.LapLengthM, lapNumber: 1, importOptions);
-        ResampledLap masked = SeamMask.Apply(grid, importOptions.SeamBands);
-
-        var triple = new ReferenceTriple(track, car, weather);
-        var provenance = GhostProvenance.FromAccReplay(lap, track);
-
-        options.TryGetValue("data-root", out string? dataRootArg);
-        string dataRoot = DataRootResolver.Resolve(dataRootArg);
-        var factory = new SqliteConnectionFactory(
-            new DatabaseOptions { DbPath = DataRootResolver.DatabasePath(dataRoot) });
-        new DatabaseMigrator(factory).Migrate();
-
-        string parquetPath = AlienReferenceWriter.Persist(
-            new ReferenceRepository(factory),
-            DataRootResolver.ReferencesDirectory(dataRoot),
-            triple,
-            masked,
-            lap.LapTimeMs,
-            provenance,
-            DateTimeOffset.UtcNow);
-
-        Console.WriteLine(
-            $"alien_line persisted for {triple.TrackId}/{triple.CarId}/{triple.WeatherBucket} "
-            + $"(source car {lap.Car}, {lap.LapTimeMs} ms) -> {parquetPath}");
-        return 0;
+        Console.Error.WriteLine(
+            $"no usable lap in the top {considered} GT3 laps for '{track}' (all partial or off-centerline)");
+        return 1;
     }
     catch (Exception ex) when (ex is InvalidDataException or ArgumentException or HttpRequestException or IOException)
     {

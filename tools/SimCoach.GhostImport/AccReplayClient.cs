@@ -21,11 +21,15 @@ internal static class AccReplayClient
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
         + "Chrome/124.0 Safari/537.36";
 
-    // In-tool string -> accreplay numeric trackId map (no such map exists elsewhere in the repo). Only
-    // monza=3 is confirmed; spa's id is unknown and must be discovered + re-validated before it is trusted.
+    // In-tool string -> accreplay numeric trackId map (no such map exists elsewhere in the repo). The full
+    // 14-track table was read off the download-ghost ZIP paths and is recorded in
+    // docs/05-implementation/acc-ghost-format-re.md; only tracks with a vendored centerline can actually be
+    // aligned + imported, so this map carries the importable set (monza=3, spa=2). Add a track's id here once
+    // its centerline is vendored.
     private static readonly Dictionary<string, int> _trackIds = new(StringComparer.OrdinalIgnoreCase)
     {
         ["monza"] = 3,
+        ["spa"] = 2,
     };
 
     internal static int TrackIdFor(string track)
@@ -39,10 +43,12 @@ internal static class AccReplayClient
     }
 
     /// <summary>
-    /// GET the GT3 leaderboard and return the fastest entry (board is sorted fastest-first → position 1;
-    /// OD2 ships the fastest GT3 lap per track regardless of car). Driver name is not read.
+    /// GET the GT3 leaderboard (sorted fastest-first) and return every entry in board order. The importer
+    /// walks these to the fastest lap whose ghost yields a COMPLETE loop — the fastest board lap is often a
+    /// slow reconnaissance drive whose ghost never closes the loop, so "fastest per track" (OD2) means the
+    /// fastest USABLE lap regardless of car. Driver name is not read.
     /// </summary>
-    internal static async Task<AccReplayLap> FetchFastestGt3LapAsync(
+    internal static async Task<IReadOnlyList<AccReplayLap>> FetchGt3LeaderboardAsync(
         HttpClient http, int trackId, CancellationToken cancellationToken)
     {
         var url = new Uri($"{ApiBase}/api/leaderboards/laps?trackId={trackId}&group=GT3");
@@ -67,13 +73,18 @@ internal static class AccReplayClient
             throw new InvalidDataException($"accreplay leaderboard for trackId {trackId} returned no laps");
         }
 
-        JsonElement fastest = root[0];
-        long lapId = fastest.GetProperty("lapId").GetInt64();
-        string car = fastest.TryGetProperty("car", out JsonElement carElement)
-            ? carElement.GetString() ?? string.Empty
-            : string.Empty;
-        int lapTimeMs = ParseLapTimeMs(fastest.GetProperty("lapTime"));
-        return new AccReplayLap(lapId, car, lapTimeMs);
+        var laps = new List<AccReplayLap>(root.GetArrayLength());
+        foreach (JsonElement entry in root.EnumerateArray())
+        {
+            long lapId = entry.GetProperty("lapId").GetInt64();
+            string car = entry.TryGetProperty("car", out JsonElement carElement)
+                ? carElement.GetString() ?? string.Empty
+                : string.Empty;
+            int lapTimeMs = ParseLapTimeMs(entry.GetProperty("lapTime"));
+            laps.Add(new AccReplayLap(lapId, car, lapTimeMs));
+        }
+
+        return laps;
     }
 
     /// <summary>

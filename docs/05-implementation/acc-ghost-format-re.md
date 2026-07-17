@@ -89,6 +89,21 @@ leaderboard `GET /api/leaderboards/laps?trackId=3&group=GT3` (Monza = trackId 3)
 laps (01:45–01:47, top of board) to `C:\Users\koba9\Desktop\ghosts\`. Filenames encode car + laptime + driver,
 so **every ghost has a KNOWN laptime** — the clock-calibration anchor we lacked.
 
+**Verified accreplay `trackId` map** (read off the `download-ghost` ZIP path `GhostCars/Offline/<track>/…` of
+each board's top lap; the ZIP path is the ground-truth track slug, not the leaderboard label):
+
+| id | track | id | track | id | track |
+|----|-------|----|-------|----|-------|
+| 1 | brands_hatch | 6 | silverstone | 11 | zandvoort |
+| 2 | spa | 7 | hungaroring | 12 | kyalami |
+| 3 | monza | 8 | nurburgring | 13 | mount_panorama |
+| 4 | misano | 9 | barcelona | 14 | laguna_seca |
+| 5 | paul_ricard | 10 | zolder | | |
+
+Only tracks with a **vendored centerline** (alignment target for the ~2 m guard + pn mapping) can be imported
+today — Monza + Spa. `SimCoach.GhostImport`'s in-tool `_trackIds` map carries just that importable subset; add
+an id here (and to the tool) once its centerline is baked.
+
 **Decisive test — alien BMW M4 GT3 (01:46.037 = 106.037 s, ~7 s faster than our 113.000 s PB, same car/track)
 vs OUR OWN recorded BMW line** (`references/monza_bmw_m4_gt3_dry-warm.parquet`, nearest-point):
 - deviation **median 0.98 m, mean 1.43 m, p95 4.0 m, max 5.95 m**; 49% of points >1 m, 24% >2 m, 12% >3 m.
