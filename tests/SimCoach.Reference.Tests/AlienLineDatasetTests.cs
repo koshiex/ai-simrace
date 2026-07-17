@@ -27,15 +27,29 @@ public sealed class AlienLineDatasetTests
         resolved.Should().BeNull();
     }
 
-    [Fact]
-    public void Load_is_inert_while_no_alien_line_is_vendored()
+    [Theory]
+    [InlineData("monza")]
+    [InlineData("spa")]
+    public void Load_resolves_a_vendored_alien_line(string trackId)
     {
-        // Guards the scaffold contract: the embed glob matches nothing today, so Load() resolves no track and
-        // callers fall back to the centerline / PB line. Flips the day a real asset is vendored.
+        // Each vendored alien LINE (a real accreplay GT3 lap, decoded + centerline-aligned + seam-masked) is
+        // embedded as Data/alien_line.<track>.parquet, so Load() resolves it and ComputeSession prefers it over
+        // the centerline. "spa" also guards the culture-inference fix: its id is a valid culture code, so the
+        // asset only survives embedding with the csproj LogicalName/WithCulture pin.
         var dataset = AlienLineDataset.Load();
 
-        dataset.TryGetAlienLine("monza", out ResampledLap? resolved).Should().BeFalse();
-        resolved.Should().BeNull();
+        dataset.TryGetAlienLine(trackId, out ResampledLap? line).Should().BeTrue();
+        line.Should().NotBeNull();
+        line!.GridLength.Should().BeGreaterThan(0);
+        line.WorldX.Should().HaveCount(line.GridLength);
+        line.SpeedMps.Should().OnlyContain(v => v == 0f); // LINE-only: alien never carries TIME/speed
+    }
+
+    [Fact]
+    public void Load_falls_back_for_a_track_with_no_vendored_alien_line()
+    {
+        AlienLineDataset.Load().TryGetAlienLine("kyalami", out ResampledLap? unknown).Should().BeFalse();
+        unknown.Should().BeNull();
     }
 
     [Fact]

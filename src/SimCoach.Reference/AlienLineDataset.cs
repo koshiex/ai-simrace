@@ -9,12 +9,9 @@ namespace SimCoach.Reference;
 /// indexes by track id, and resolves a track's LINE-only <see cref="ResampledLap"/> (world path, no TIME).
 /// One alien line per track; the full-triple stamp lives on the DB row (PR-B3 commit 21), not the asset.
 /// When no alien line is embedded for a track the caller falls back to the centerline / PB line, so an
-/// absent asset is never worse than the status quo.
-/// <para>
-/// <b>Scaffold:</b> no alien-line asset is vendored yet — the embed glob currently matches nothing and
-/// <see cref="Load"/> returns an empty dataset. The real per-track parquet is produced dev-time by the
-/// PR-B3 GhostImport tool and vendored later.
-/// </para>
+/// absent asset is never worse than the status quo. Monza + Spa are vendored (produced dev-time by the PR-B3
+/// GhostImport tool); more tracks are added as their alien LINE is baked. The embed glob pins the manifest
+/// name (csproj LogicalName/WithCulture) so a track whose id is a valid culture code — Spa — is not stripped.
 /// </summary>
 public sealed class AlienLineDataset
 {

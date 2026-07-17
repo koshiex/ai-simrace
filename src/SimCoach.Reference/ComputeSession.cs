@@ -280,13 +280,15 @@ internal sealed class ComputeSession
 
     // PR-B3 tier-1 LINE source: the imported alien_line for the triple, read through the kind-parameterized
     // lookup (M4 — one singleton, no sibling). The DB row is the dev/override path (written only where
-    // GhostImport ran); when absent, the vendored embedded alien line takes over so the feature works
-    // out-of-box (OD10 — mirrors the centerline embed). The embedded asset is keyed by track id ONLY (like
-    // the centerline), so it activates for any car/weather on that track — broader than the triple-exact DB
-    // row, accepted per OD2's car-difference caveat. Fault-isolated (M3): a corrupt import (null parquet_path →
-    // InvalidOperationException; a bad/multi-row-group parquet → InvalidDataException) degrades to "no alien
-    // line" and the centerline/PB line takes over — exactly as an absent import would, so a third-party file
-    // can never poison the session. _reference/TIME is UNTOUCHED, keeping the alien corridor advisory LINE-only.
+    // GhostImport ran) and is triple-exact (its own weather bucket, OD6); when absent, the vendored embedded
+    // alien line takes over so the feature works out-of-box (OD10 — mirrors the centerline embed). The embedded
+    // asset is keyed by track id ONLY and baked from a DRY hotlap, so it activates for any car on that track
+    // but ONLY in dry conditions: a dry racing line is shared across the dry buckets (dry-cool ≈ dry-warm) yet
+    // is wrong once the surface is damp/wet, so damp/wet fall through to the centerline + the M7 diagnostic.
+    // Fault-isolated (M3): a corrupt import (null parquet_path → InvalidOperationException; a bad/multi-row-group
+    // parquet → InvalidDataException) degrades to "no alien line" and the centerline/PB line takes over — exactly
+    // as an absent import would, so a third-party file can never poison the session. _reference/TIME is
+    // UNTOUCHED, keeping the alien corridor advisory LINE-only.
     private ResampledLap? TryLoadAlienLine()
     {
         try
@@ -297,7 +299,8 @@ internal sealed class ComputeSession
                 return alien;
             }
 
-            if (_alienLines.TryGetAlienLine(_trackId, out ResampledLap? embedded) && embedded is not null)
+            if (IsDryWeather
+                && _alienLines.TryGetAlienLine(_trackId, out ResampledLap? embedded) && embedded is not null)
             {
                 return embedded;
             }
@@ -313,6 +316,13 @@ internal sealed class ComputeSession
             return null;
         }
     }
+
+    // Dry-condition gate for the weather-agnostic embedded alien line. The weather bucket is a sim-agnostic
+    // contract on the frame (AccFrameMapper.DeriveWeatherBucket emits "dry-cool"/"dry-warm"/"damp"/"wet"); the
+    // "dry-" prefix is the dry family, so any future dry sub-bucket counts without touching this.
+    private const string DryWeatherBucketPrefix = "dry-";
+
+    private bool IsDryWeather => _weatherBucket.StartsWith(DryWeatherBucketPrefix, StringComparison.Ordinal);
 
     // M38 tier-2 LINE source: the baked median centerline for the track, when one is vendored and a lap
     // length is known; otherwise null → CornerEventBuilder falls back to the PB world line (ADR-0019).

@@ -70,31 +70,58 @@ public sealed class AlienLineInitSessionTests
     }
 
     [Fact]
-    public void A_weather_mismatched_alien_line_logs_the_present_but_inactive_diagnostic()
+    public void A_wet_session_gates_off_the_embedded_line_and_logs_a_mismatched_import_as_inactive()
     {
         using var harness = new ComputeTestHarness();
-        // The live session is dry-warm; the only alien_line is stamped dry-cool → it never resolves (OD6),
-        // but M7 surfaces it. The parquet path is never read (GetAllByKind reads the row, not the file).
+        // Wet session: the dry-baked embedded alien line is gated OFF, and the only import is stamped dry-cool →
+        // it never resolves (OD6). The session runs on the centerline/PB line; M7 surfaces the inactive import.
         harness.References.Upsert(AlienRow("unused.parquet", "dry-cool"));
 
         var logger = new CollectingLogger();
-        var session = new ComputeSession(
-            harness.DomainFanOut, harness.TrackModels, harness.Centerlines, harness.AlienLines, harness.Lookup,
-            harness.OptimalLookup, harness.ReferenceStore, harness.Laps, FakeTrackLengths.Spa(), new ComputeOptions(),
-            logger, new SessionIdentity("m7", DateTimeOffset.UnixEpoch));
+        ComputeSession session = NewSpaSession(harness, logger);
 
         // A single partial lap: InitSession runs on the first frame; no lap completes, so no FK/persistence.
-        foreach (TelemetryFrame frame in SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 1))
+        foreach (TelemetryFrame frame in
+            SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 1, weatherBucket: "wet"))
+        {
+            session.Accept(frame);
+        }
+
+        IReadOnlyList<(LogLevel Level, string Message)> snapshot = logger.Snapshot();
+        snapshot.Should().Contain(
+            e => e.Level == LogLevel.Information
+                && e.Message.Contains("alien_line present", StringComparison.Ordinal)
+                && e.Message.Contains("dry-cool", StringComparison.Ordinal),
+            "a bucket-mismatched alien_line must be surfaced as present-but-inactive");
+        snapshot.Should().NotContain(
+            e => e.Message.Contains("line alien_line", StringComparison.Ordinal),
+            "the dry-baked embedded alien line must NOT activate in the wet");
+    }
+
+    [Fact]
+    public void A_dry_session_activates_the_vendored_embedded_alien_line()
+    {
+        using var harness = new ComputeTestHarness();
+        // Dry session, no import row: the vendored embedded Spa alien line takes over as the LINE reference
+        // (OD10, works out-of-box). Dry buckets share the dry-baked line (dry-cool ≈ dry-warm).
+        var logger = new CollectingLogger();
+        ComputeSession session = NewSpaSession(harness, logger);
+
+        foreach (TelemetryFrame frame in
+            SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 1, weatherBucket: "dry-warm"))
         {
             session.Accept(frame);
         }
 
         logger.Snapshot().Should().Contain(
-            e => e.Level == LogLevel.Information
-                && e.Message.Contains("alien_line present", StringComparison.Ordinal)
-                && e.Message.Contains("dry-cool", StringComparison.Ordinal),
-            "a bucket-mismatched alien_line must be surfaced as present-but-inactive");
+            e => e.Message.Contains("line alien_line", StringComparison.Ordinal),
+            "in the dry the vendored embedded alien line activates as the LINE reference");
     }
+
+    private static ComputeSession NewSpaSession(ComputeTestHarness harness, CollectingLogger logger) => new(
+        harness.DomainFanOut, harness.TrackModels, harness.Centerlines, harness.AlienLines, harness.Lookup,
+        harness.OptimalLookup, harness.ReferenceStore, harness.Laps, FakeTrackLengths.Spa(), new ComputeOptions(),
+        logger, new SessionIdentity("m7", DateTimeOffset.UnixEpoch));
 
     private static ReferenceRow AlienRow(string parquetPath, string weather) => new()
     {
