@@ -20,6 +20,20 @@ public sealed class CenterlineGeometryDatasetTests
     }
 
     [Fact]
+    public void Loads_the_embedded_spa_centerline()
+    {
+        // Regression guard for the culture-inference trap: "spa" is a valid culture code, so without the csproj
+        // LogicalName/WithCulture pin MSBuild's AssignCulture strips centerline.spa.json into a phantom satellite
+        // and Load() silently loses it — the whole Spa M38 LINE reference goes inert.
+        var dataset = CenterlineGeometryDataset.Load();
+
+        dataset.TryGetCenterline("spa", 7004f, out MedianCenterline? centerline).Should().BeTrue();
+        centerline.Should().NotBeNull();
+        centerline!.Bins.Should().NotBeEmpty();
+        centerline.LapCount.Should().BeGreaterThanOrEqualTo(MedianCenterlineBuilder.MinLapsForTrust);
+    }
+
+    [Fact]
     public void Resolves_a_trustworthy_centerline()
     {
         var dataset = CenterlineGeometryDataset.FromDocuments([Document("monza", 1000f, lapCount: 4)]);
