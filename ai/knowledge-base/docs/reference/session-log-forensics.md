@@ -7,7 +7,7 @@ How to assess what the coach actually did in a recorded/live session, and the go
 Data root `%LOCALAPPDATA%/SimCoach` (WSL: `/mnt/c/Users/<you>/AppData/Local/SimCoach`):
 - `recordings/<sessionId>/` — `segment-*.mcap` (raw frames) + `laps.parquet`. `sessionId` = `YYYYMMDD-HHMMSS-fff` in **UTC**.
 - `logs/simcoach-YYYYMMDD.log` — Serilog text; one file per local day. Lines are timestamped in **local time** (e.g. `+03:00`).
-- `simcoach.db` — SQLite: `sessions`, `laps`, `coach_tips`, `llm_usage`, `references`, `reference_snapshots`, `settings`. No `sqlite3` CLI on this box — use `python3` + `sqlite3` module. `laps` columns are `lap_number,lap_time_ms,delta_vs_reference_ms,is_pb,is_clean,s1_ms,s2_ms,s3_ms,raw_offset_in_mcap` — there is **no `is_valid`** (only `is_clean`); a query assuming it errors `no such column`.
+- `simcoach.db` — SQLite: `sessions`, `laps`, `coach_tips`, `llm_usage`, `references`, `reference_snapshots`, `settings`. No `sqlite3` CLI on this box — use `python3` + `sqlite3` module. `laps` columns are `lap_number,lap_time_ms,delta_vs_reference_ms,is_pb,is_clean,s1_ms,s2_ms,s3_ms,raw_offset_in_mcap` — there is **no `is_valid`** (only `is_clean`); a query assuming it errors `no such column`. **`references` is a SQL reserved word — quote it (`FROM "references"`) or the query is a syntax error.** `sessions` PK is **`id`** (the `YYYYMMDD-...` session id), not `session_id`; `laps.session_id` / `references.source_session_id` FK to it.
 
 ## Gotcha 1 — `coach_tips.lap_number` is off-by-one; use the LOG timeline for true per-lap cadence
 
@@ -37,3 +37,15 @@ Corner tips are stamped with the *previous/just-completed* lap number, not the l
 - **Bake confirmation** is in the log at app start (the baker is a one-shot `StartAsync` catch-up, off the hot path): `Optimal baked for <track>/<car>/<weather>: target <N> ms vs PB <M> ms` and `Optimal catch-up bake complete: X of Y PB triples produced an optimal`. `Compute started ... optimal true` confirms the session loaded it.
 - **`X of Y` < all is normal:** a PB triple yields no optimal when it lacks enough clean-lap sector coverage or the gain is below `MinOptimalGainMs` — a triple with a single early session legitimately produces no optimal row.
 - **The debrief may not verbalize the optimal gap** even when it fired: the gap is one metric in the Gold payload; the LLM can (correctly) lead the debrief from the largest actionable corner loss instead. Absence of the words "теоретический предел"/gap in `phrase_ru` is not evidence the metric was missing (see Gotcha 3 — you can't see the Gold input).
+
+## Which LINE reference activated — read it off the compute-start log
+
+- `Compute started ... line {source}` names the active LINE tier for the session: **`alien_line`** (PR-B3 imported/vendored beyond-PB corridor), **`centerline`** (M38 baked median), or **`pb-fallback`** (the PB world path — no line vendored). This is the fastest way to confirm in-game that the alien line resolved (e.g. `line alien_line` for a dry Monza/Spa session). The alien line is the **embedded vendored** asset — it writes NO `references` row, so a "no alien_line row in the DB" is expected and not a failure. The dry-weather gate (OD12) means a `damp`/`wet` session logs `line centerline`/`pb-fallback` even where an alien line is vendored.
+
+## Gotcha 4 — `is_pb` = session-best AND beat the stored PB (two decoupled notions)
+
+`ComputeSession.HandleLap` tracks two different "best" notions that were once conflated:
+- **`isSessionBest`** = `clean && LapTimeMs < _runningBestMs` (running best of THIS session, seeded fresh). Drives `_runningBestMs`, `sessions.pb_time_ms`, and the M3 pre-overwrite deficit budget (`_bestLapDeficitMs`).
+- **`IsPb`** (`LapEvent`/`laps.is_pb` + the `lap_pb` "Личный рекорд" tip + Gold) = `isSessionBest && deltaMs is null or < 0` — a session best that ALSO beats the stored PB reference (`deltaMs < 0`), or the first record when no PB exists yet (`deltaMs` null). A session best that is still **slower** than the stored PB (`delta_vs_reference_ms > 0`) is NOT `is_pb` and does **not** announce a record.
+
+So `is_pb=1` now means a genuine PB. The all-time PB is the `references` row with `kind='pb'`; `laps.delta_vs_reference_ms` is measured against it (negative = beat it). Historically (pre-fix) `is_pb` was session-best only, so a slower-than-PB lap could falsely claim "Личный рекорд" — if you see that in an OLD session's data, it predates this fix.
