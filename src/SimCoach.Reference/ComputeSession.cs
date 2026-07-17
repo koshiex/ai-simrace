@@ -516,10 +516,16 @@ internal sealed class ComputeSession
             ? completed.LapTimeMs - _reference.TMsFromLapStart[^1]
             : null;
 
-        bool isPb = false;
-        if (clean && completed.LapTimeMs < _runningBestMs)
+        bool isSessionBest = clean && completed.LapTimeMs < _runningBestMs;
+        // "Personal record" (LapEvent/LapRow.IsPb → the lap_pb "Личный рекорд" tip, Gold, is_pb column) requires
+        // the session-best clean lap to also BEAT the stored PB reference (deltaMs < 0) — OR that there is no PB
+        // yet to beat (deltaMs is null, first record on this triple). A session best that is still SLOWER than an
+        // existing all-time PB (deltaMs > 0) must not claim a record. deltaMs is measured against the pre-update
+        // reference (see the M3 note below), i.e. the PB that stood when the lap started. Session-best tracking
+        // (running best, session pb_time, the M3 deficit budget) stays on isSessionBest and is unchanged.
+        bool isPb = isSessionBest && deltaMs is null or < 0;
+        if (isSessionBest)
         {
-            isPb = true;
             _runningBestMs = completed.LapTimeMs;
             _pbTimeMs = completed.LapTimeMs;
             // M3: capture the best lap's deficit HERE, while deltaMs is still measured against the

@@ -100,6 +100,33 @@ public sealed class ComputeSessionTests
     }
 
     [Fact]
+    public async Task A_session_best_still_slower_than_the_stored_pb_is_not_a_personal_record()
+    {
+        // Regression: is_pb / the lap_pb "Личный рекорд" tip must require BEATING the stored PB, not merely
+        // being the session's best clean lap. Seed a fast PB, then run laps all slower than it: the first
+        // flying lap is the session best (running-best tracking still fires) yet is slower than the PB
+        // (deltaMs > 0), so no lap may claim a personal record.
+        IReadOnlyList<TelemetryFrame> seed = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
+
+        using var harness = new ComputeTestHarness();
+        harness.SeedReference(seed, "20260601-110000-000");
+
+        IReadOnlyList<TelemetryFrame> eval = SyntheticSessionBuilder.Build(SyntheticTracks.Spa, lapCount: 4);
+        foreach (int lap in new[] { 2, 3 })
+        {
+            eval = StretchBand(eval, lapNumber: lap, from: 0f, to: 1f, extraMs: 5000);
+        }
+
+        IReadOnlyList<DomainEvent> events = await harness.RunAsync(eval, SessionId);
+
+        List<LapEvent> lapEvents = [.. events.OfType<LapEvent>(DomainEventKind.Lap)];
+        lapEvents.Should().NotBeEmpty();
+        lapEvents.Should().Contain(e => e.DeltaMs > 0, "the laps are genuinely slower than the seeded PB");
+        lapEvents.Should().OnlyContain(
+            e => !e.IsPb, "a session best still slower than the stored PB must not announce Личный рекорд");
+    }
+
+    [Fact]
     public async Task Pit_return_lap_counter_reset_writes_distinct_rows_without_dropping_a_lap()
     {
         // Reproduce issue #13: two stints whose sim lap_number restarts at the box (the second stint
