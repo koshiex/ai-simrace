@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Dev-only ACC .ghost importer: run on whatever shared runtime the box has (no 9.0 install
+         required), mirroring SimCoach.Bake/GroundTruthDump. -->
+    <RollForward>LatestMajor</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ACC-specific decode lives ONLY here (never the sim-agnostic runtime). Reference/Storage/Contracts
+         carry the reference taxonomy + parquet codec later commits persist into; NOT Adapters.ACC. -->
+    <ProjectReference Include="..\..\src\SimCoach.Reference\SimCoach.Reference.csproj" />
+    <ProjectReference Include="..\..\src\SimCoach.Storage\SimCoach.Storage.csproj" />
+    <ProjectReference Include="..\..\src\SimCoach.Contracts\SimCoach.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SimCoach.GhostImport.Tests" />
+  </ItemGroup>
+
+</Project>

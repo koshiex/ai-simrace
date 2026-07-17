@@ -166,7 +166,16 @@ internal static class CornerEventBuilder
         float throttleResumeDiffM =
             ((speedRef.ThrottleOnPosition ?? corner.EndPosition) - (speedSelf.ThrottleOnPosition ?? corner.EndPosition))
             * lapLengthM;
-        float racingLineDeviationM = RacingLineDeviation(selfSpan, lineRef);
+        // M1 (PR-B3 seam mask, CRITICAL): the alien LINE reference NaN-masks its noisy seam bins (Parabolica /
+        // start-finish loop-closure artefacts, ADR-0021). racing_line_deviation_m is the SOLE driver of
+        // tighten_apex and is assigned UNCONDITIONALLY below (behind NEITHER short-circuit — the M6 anchor is
+        // cs:200-202, not cs:165), so a corner whose [Start,End] band STRADDLES a masked seam would otherwise
+        // voice a fabricated partial-RMS "ближе к апексу" over its unmasked frames. Gate the whole corner: any
+        // NaN world bin inside the band suppresses its line coaching. RacingLineDeviation itself skips NaN bins
+        // so a straddling band's real portion never propagates a NaN. A centerline/PB line carries no NaN, so
+        // cornerMasked is always false outside the alien-line path (a behavioral no-op there).
+        bool cornerMasked = CornerBandMasked(lineRef, corner.StartPosition, corner.EndPosition);
+        float racingLineDeviationM = cornerMasked ? 0f : RacingLineDeviation(selfSpan, lineRef);
 
         // M33: reference-relative brake-release diff — where the driver lets off the brake vs where the
         // reference does, over the SAME [Start,End] span the brake profile above measured. Negative = self
@@ -188,7 +197,8 @@ internal static class CornerEventBuilder
         // neutralisation still applies).
         bool lineRelevant =
             (corner.ApexRadiusM <= 0f || corner.ApexRadiusM <= lineRelevanceMaxRadiusM)
-            && !string.Equals(corner.Trigger, "LateralG", StringComparison.Ordinal);
+            && !string.Equals(corner.Trigger, "LateralG", StringComparison.Ordinal)
+            && !cornerMasked;
 
         ev.DeltaMs = deltaMs;
         ev.BrakePointDiffM = brakePointDiffM;
@@ -233,6 +243,32 @@ internal static class CornerEventBuilder
         return span;
     }
 
+    /// <summary>
+    /// True when any bin of the LINE reference inside the corner's normalized-position band
+    /// <c>[start, end]</c> carries a NaN world coordinate — the PR-B3 seam-mask sentinel. A STRADDLING band
+    /// (real bins before the seam, NaN after) counts as masked, so the whole corner's line coaching is
+    /// suppressed (M1, the runtime half of MUST-FIX #1). A centerline/PB world line never carries NaN, so
+    /// this returns false everywhere outside the alien-line path.
+    /// </summary>
+    private static bool CornerBandMasked(ResampledLap lineRef, float start, float end)
+    {
+        for (int k = 0; k < lineRef.GridLength; k++)
+        {
+            float pos = lineRef.PositionNormalized[k];
+            if (pos < start || pos > end)
+            {
+                continue;
+            }
+
+            if (float.IsNaN(lineRef.WorldX[k]) || float.IsNaN(lineRef.WorldZ[k]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool OffTrack(IReadOnlyList<TelemetryFrame> frames)
     {
         foreach (TelemetryFrame frame in frames)
@@ -270,6 +306,15 @@ internal static class CornerEventBuilder
             }
 
             (float refX, float refZ) = GridMetrics.InterpWorldXZ(reference, frame.NormalizedCarPosition);
+            // PR-B3 seam mask: a bin (or a segment touching one) NaN-masked in the alien LINE reference
+            // interpolates to NaN. Skip it so a straddling corner band's UNMASKED portion still yields a
+            // finite RMS (the corner-level cornerMasked gate then zeroes the whole corner). Without this the
+            // RMS would be NaN and NaN>0.5 is false, silently defeating the falsifiable suppression test.
+            if (float.IsNaN(refX) || float.IsNaN(refZ))
+            {
+                continue;
+            }
+
             double dx = worldPos.X - refX;
             double dz = worldPos.Z - refZ;
             sumSquares += (dx * dx) + (dz * dz);

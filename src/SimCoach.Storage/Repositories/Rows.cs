@@ -109,8 +109,10 @@ public sealed record ReferenceRow
     /// <c>"optimal"</c>.</summary>
     public string? OptimalSectorMs { get; init; }
 
-    /// <summary>JSON describing which session/lap each optimal sector best came from. Null unless
-    /// <see cref="Kind"/> is <c>"optimal"</c>.</summary>
+    /// <summary>For <c>"optimal"</c>: JSON describing which session/lap each optimal sector best came from.
+    /// For <c>"alien_line"</c> (PR-B3): reused verbatim to hold the ghost import provenance — source car +
+    /// laptime + accreplay lap id + track, never a driver name (OD1). No struct/schema change; the same
+    /// column carries per-kind auditability. Null for <c>"pb"</c>.</summary>
     public string? SectorSourcesJson { get; init; }
 }
 

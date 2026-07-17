@@ -37,16 +37,27 @@ public static class ReferenceParquetCodec
             throw new FileNotFoundException($"Reference parquet '{path}' does not exist.", path);
         }
 
-        using var reader = new ParquetFileReader(path);
-        // A reference is exactly one lap = one row group. Reject anything else (e.g. a path
-        // accidentally pointed at a multi-lap laps.parquet) rather than silently reading only lap 1.
-        if (reader.FileMetaData.NumRowGroups != 1)
+        try
         {
-            throw new InvalidDataException(
-                $"Reference parquet '{path}' must have exactly one row group, found {reader.FileMetaData.NumRowGroups}.");
-        }
+            using var reader = new ParquetFileReader(path);
+            // A reference is exactly one lap = one row group. Reject anything else (e.g. a path
+            // accidentally pointed at a multi-lap laps.parquet) rather than silently reading only lap 1.
+            if (reader.FileMetaData.NumRowGroups != 1)
+            {
+                throw new InvalidDataException(
+                    $"Reference parquet '{path}' must have exactly one row group, found {reader.FileMetaData.NumRowGroups}.");
+            }
 
-        using RowGroupReader rowGroup = reader.RowGroup(0);
-        return ResampledLapParquet.ReadRowGroup(rowGroup);
+            using RowGroupReader rowGroup = reader.RowGroup(0);
+            return ResampledLapParquet.ReadRowGroup(rowGroup);
+        }
+        catch (ParquetException ex)
+        {
+            // A truncated / non-parquet / garbage file throws ParquetException straight from the reader ctor
+            // (before the row-group check) or a column read. Present it as the domain "corrupt parquet" signal
+            // so fault-isolating callers (e.g. ComputeSession's M3 alien-line guard) catch it uniformly with
+            // the row-group case instead of it escaping as an unfiltered exception and poisoning the session.
+            throw new InvalidDataException($"Reference parquet '{path}' could not be read: {ex.Message}", ex);
+        }
     }
 }

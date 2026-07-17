@@ -286,6 +286,25 @@ public sealed class ActionRegistryFilterTests
     }
 
     [Fact]
+    public void Dirty_lap_yields_no_lap_cadence_limits_tip()
+    {
+        // OD4/C23: the spoken lap_dirty announcement is dropped — the driver already knows the lap was
+        // invalidated. A lap-cadence gold view keyed off is_clean==false must emit no lap-cadence tip
+        // (neither lap_dirty nor any other action gated on is_clean==false).
+        // delta_ms held at 0 so nothing but an is_clean==false gate can fire — isolates the dropped tip.
+        var dirtyLap = new DictionaryGoldView(
+            CoachCadence.Lap,
+            hasReference: true,
+            numbers: new Dictionary<string, double>(StringComparer.Ordinal) { ["delta_ms"] = 0.0 },
+            bools: new Dictionary<string, bool>(StringComparer.Ordinal) { ["is_clean"] = false });
+
+        IReadOnlyList<CoachAction> subset = _registry.ValidSubset(dirtyLap, new CoachOptions());
+
+        subset.Select(a => a.Id).Should().NotContain("lap_dirty");
+        subset.Where(a => a.Cadence == CoachCadence.Lap).Should().BeEmpty();
+    }
+
+    [Fact]
     public void Caps_at_max_actions_in_menu()
     {
         var options = new CoachOptions { MaxActionsInMenu = 2 };

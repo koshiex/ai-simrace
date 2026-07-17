@@ -20,11 +20,28 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Vendored per-track baked assets. LogicalName is pinned + WithCulture=false because a track whose id
+         is a valid culture code (e.g. "spa" = ISO 639-2 Spanish) would otherwise be mistaken by MSBuild's
+         AssignCulture for a satellite resource and silently dropped from the assembly — the manifest name is
+         what the *Dataset loaders match on, so it must stay <RootNamespace>.Data.<file>. -->
     <!-- First-party baked corner geometry, one file per track: cornerGeometry.<trackId>.json (ADR-0014). -->
-    <EmbeddedResource Include="Data\cornerGeometry.*.json" />
+    <EmbeddedResource Include="Data\cornerGeometry.*.json">
+      <LogicalName>SimCoach.Reference.Data.%(Filename)%(Extension)</LogicalName>
+      <WithCulture>false</WithCulture>
+    </EmbeddedResource>
     <!-- First-party baked median centerline, one file per track: centerline.<trackId>.json (ADR-0019, M38) —
          the runtime LINE reference loaded by CenterlineGeometryDataset. -->
-    <EmbeddedResource Include="Data\centerline.*.json" />
+    <EmbeddedResource Include="Data\centerline.*.json">
+      <LogicalName>SimCoach.Reference.Data.%(Filename)%(Extension)</LogicalName>
+      <WithCulture>false</WithCulture>
+    </EmbeddedResource>
+    <!-- Vendored alien racing-line reference, one LINE-only parquet per track: alien_line.<trackId>.parquet
+         (ADR-0021, PR-B3) — loaded by AlienLineDataset. Monza is vendored; more tracks are added as their
+         alien LINE is baked. -->
+    <EmbeddedResource Include="Data\alien_line.*.parquet">
+      <LogicalName>SimCoach.Reference.Data.%(Filename)%(Extension)</LogicalName>
+      <WithCulture>false</WithCulture>
+    </EmbeddedResource>
   </ItemGroup>
 
 </Project>

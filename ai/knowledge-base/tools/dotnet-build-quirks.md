@@ -200,6 +200,39 @@ its fallback. The full checklist to vendor an embedded asset: (1) `.gitignore` n
 (2) DI/consumer wiring, (3) the csproj glob, **and** (4) a test over the real `Load()` embedded path so a
 missing glob fails CI. All three of (1)–(3) are independent; having two of them silently disables the feature.
 
+## A per-track embedded asset whose track id is a culture code is silently stripped
+
+`Data/<asset>.<trackId>.<ext>` names put the track id in the sub-extension MSBuild treats as a **culture
+designator**. `AssignCulture` runs on every `EmbeddedResource`, and if the middle segment is a valid .NET
+culture it routes the file into a phantom satellite assembly instead of the main manifest — so the resource
+is **never embedded**, with no error and no warning. Among ACC's 14 tracks only **`spa`** collides
+(`[CultureInfo]::GetCultureInfo("spa")` resolves — ISO 639-2 for Spanish; `monza`/`misano`/`kyalami`/… all
+throw). Effect: `centerline.spa.json` and `cornerGeometry.spa.json` compiled fine but were absent from the
+assembly, so the M38 Spa LINE reference was inert while Monza worked — a per-track silent gap.
+
+Two diagnostics **lie** here:
+- `dotnet build --getItem:EmbeddedResource` LISTS the spa item with a valid `FullPath` even though it is
+  culture-stripped and not embedded — it reflects item evaluation, not the final manifest.
+- `strings <dll> | grep spa` is unreliable (misses/fragments).
+
+Authoritative check is reflection on the built dll (drive from WSL):
+```bash
+powershell.exe -NoProfile -Command "[Reflection.Assembly]::LoadFile('C:\...\SimCoach.Reference.dll').GetManifestResourceNames()"
+```
+
+Fix: pin the manifest name and disable culture inference on the glob, so the name the `*Dataset` loaders
+match on (`<RootNamespace>.Data.<file>`) is fixed:
+```xml
+<EmbeddedResource Include="Data\centerline.*.json">
+  <LogicalName>SimCoach.Reference.Data.%(Filename)%(Extension)</LogicalName>
+  <WithCulture>false</WithCulture>
+</EmbeddedResource>
+```
+`%(Filename)` of `centerline.spa.json` is `centerline.spa`, `%(Extension)` is `.json` → LogicalName
+`SimCoach.Reference.Data.centerline.spa.json` (identical to what non-culture siblings get). Add this to
+**every** per-track embed glob (centerline, cornerGeometry, alien_line) and guard with a test that
+`Load()` resolves a culture-named track (`spa`) — it is the only regression signal.
+
 ## NuGet packages that do not exist (verified against nuget.org)
 
 - **MCAP**: no C# package at all (`Mcap.Core` was a scaffold placeholder, removed).

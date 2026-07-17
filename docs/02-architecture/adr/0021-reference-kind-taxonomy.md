@@ -75,3 +75,34 @@ are the per-kind CHECKs and the FK-integrity guard that landed in 007).
   unchanged for existing callers. On the `pb`/`alien_line` read path a null `parquet_path` is a **hard
   error** (log + throw), so only `optimal` is legitimately file-less.
 - `AlienLine` is deferred to PR-B3 — the enum ships with `Pb` and `Optimal` only.
+
+## Addendum (PR-B3): `alien_line` ratified
+
+**Status**: Accepted · **Date**: 2026-07-17
+
+PR-B3 lands the third kind, `alien_line`, on the same `[references]` table — **no migration, no new
+column**. Migration 007 already admits it: a non-`optimal` kind with a non-null `parquet_path` satisfies
+both `CHECK`s, and `UNIQUE(track_id, car_id, weather_bucket, kind)` lets an `alien_line` row coexist with
+`pb` and `optimal` on the same triple.
+
+- **Shape — LINE-only Parquet.** `alien_line` is a per-metre world path (`position_normalized` + `world_x/y/z`
+  populated; time/speed/pedals zeroed), exactly the shape `CenterlineLineReference.Build` emits. It is read
+  **only** as a LINE reference (world-coordinate racing-line deviation) and **never** feeds the TIME path —
+  there is no boundary `TimeAt` to call. This keeps an imported line from ever corrupting delta/PB coaching.
+- **Filename — kind-encoded.** To stop an `alien_line` parquet colliding with a `pb` parquet on the same
+  triple, references gain a kind-suffixed filename helper `ReferenceTriple.ParquetFileNameFor(kind)` →
+  `<track>_<car>_<weather>_<kind>.parquet`. (`pb` production writes still use the versioned
+  `SnapshotFileName`; the kind-less `ParquetFileName` property stays test-only. A distinct method name is
+  required because C# forbids a property and a method sharing a name.)
+- **Vendored, LINE-only (OD10 override).** The derived `alien_line` LINE parquet is committed as an embedded
+  resource — one `Data/alien_line.<trackId>.parquet` per track, loaded by `AlienLineDataset` (mirrors the M38
+  `centerline.<trackId>.json` embed + `CenterlineGeometryDataset` loader) — so the feature works out of the
+  box. Only the **derived** aggregate line ships: the raw `.ghost` is never committed and the source driver
+  name is dropped at parse. Track scope = tracks with a centerline alignment target (Monza + Spa today).
+- **Ghost decode is provisional.** The ACC `.ghost` decoder lives only in the offline `SimCoach.GhostImport`
+  tool (never the sim-agnostic runtime). It is verified against a single Monza/BMW ghost; any new car or
+  track must be re-validated against a real ghost before its `alien_line` is trusted and vendored.
+- **Single-ghost + full seam suppression.** PR-B3 ships one ghost per track with the noisy loop-closure /
+  Parabolica seam bins masked out (no consensus-median line yet); the derived line is stamped under the
+  owner's raced triple (`bmw_m4_gt3`, `dry-warm`), with `sector_sources_json` recording the source car and
+  lap time (no driver name).

@@ -27,9 +27,11 @@ public static class SyntheticSessionBuilder
         IReadOnlySet<int>? dirtyLaps = null,
         int samplesPerLap = 200,
         DateTimeOffset? startUtc = null,
-        IReadOnlySet<int>? pitLaps = null)
+        IReadOnlySet<int>? pitLaps = null,
+        string weatherBucket = "dry-warm")
     {
         ArgumentNullException.ThrowIfNull(track);
+        ArgumentException.ThrowIfNullOrEmpty(weatherBucket);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(lapCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(samplesPerLap);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(track.SectorCount);
@@ -47,14 +49,16 @@ public static class SyntheticSessionBuilder
             bool isValid = dirtyLaps is null || !dirtyLaps.Contains(lapNumber);
             bool inPit = pitLaps is not null && pitLaps.Contains(lapNumber);
 
-            frames.Add(BuildFrame(track, lapNumber, pos, radiusM, isValid, inPit, start + (i * _frameInterval)));
+            frames.Add(BuildFrame(
+                track, lapNumber, pos, radiusM, isValid, inPit, start + (i * _frameInterval), weatherBucket));
         }
 
         return frames;
     }
 
     private static TelemetryFrame BuildFrame(
-        SyntheticTrack track, int lapNumber, float pos, float radiusM, bool isValid, bool inPit, DateTimeOffset t)
+        SyntheticTrack track, int lapNumber, float pos, float radiusM, bool isValid, bool inPit, DateTimeOffset t,
+        string weatherBucket)
     {
         CornerState corner = CornerStateAt(track.Corners, pos);
         int sectorIndex = Math.Min((int)(pos * track.SectorCount), track.SectorCount - 1);
@@ -65,7 +69,7 @@ public static class SyntheticSessionBuilder
             Sim = "acc",
             TrackId = track.TrackId,
             CarId = "synthetic_gt3",
-            WeatherBucket = "dry-warm",
+            WeatherBucket = weatherBucket,
             LapNumber = lapNumber,
             LapDistanceM = pos * track.LapLengthM,
             NormalizedCarPosition = pos,
