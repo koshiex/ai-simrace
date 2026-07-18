@@ -51,6 +51,22 @@ public static class CornerCenterlineDetector
     /// <summary>Two confirming per-lap apexes must be at least this far apart (metres).</summary>
     public const int MinApexSeparationM = 12;
 
+    /// <summary>
+    /// Half-window (metres) over which sub-threshold curvature is integrated for the sustained-bend channel.
+    /// Wide enough that a genuine long fast arc (Curva Grande, spa Blanchimont) accumulates a large heading
+    /// change over the window, while a short gentle kink does not. Tuned against the Monza/Spa oracle.
+    /// </summary>
+    public const int SustainedWindowM = 110;
+
+    /// <summary>
+    /// Scales the integrated moderate curvature (radians of heading change sustained over the window) into
+    /// fused load, so a long arc held at R just above <see cref="CornerRadiusThresholdM"/> reaches
+    /// <see cref="ActiveThreshold"/> even with no lateral-g signal — the ghost-centerline case where fast
+    /// corners would otherwise vanish (ADR-0022 / OD-B1) — while straights and short kinks stay below it.
+    /// Tuned against the Monza/Spa oracle (recovers Curva Grande / spa_t02 / spa_t16 at zeroed g).
+    /// </summary>
+    public const float SustainedScale = 2.7f;
+
     private const int HeadingSpanM = 8;
     private const int SmoothRadius = 3;
 
@@ -63,7 +79,17 @@ public static class CornerCenterlineDetector
     /// consensus split rule.
     /// </summary>
     public static IReadOnlyList<DetectedCorner> Detect(
-        MedianCenterline centerline, IReadOnlyList<MedianCenterline> perLapCenterlines)
+        MedianCenterline centerline, IReadOnlyList<MedianCenterline> perLapCenterlines) =>
+        Detect(centerline, perLapCenterlines, SustainedScale);
+
+    /// <summary>
+    /// Core detection with an injectable sustained-bend scale. The calibration oracle drives it with 0
+    /// (channel off, i.e. the pre-channel absK·180/|g| fusion) and <see cref="SustainedScale"/> (channel on)
+    /// on the Monza/Spa owner centerlines: with lateral g present the two runs must agree (no regression),
+    /// and with g zeroed the on-run must recover the fast corners the off-run drops (ADR-0022 / OD-B1).
+    /// </summary>
+    internal static IReadOnlyList<DetectedCorner> Detect(
+        MedianCenterline centerline, IReadOnlyList<MedianCenterline> perLapCenterlines, float sustainedScale)
     {
         ArgumentNullException.ThrowIfNull(centerline);
         ArgumentNullException.ThrowIfNull(perLapCenterlines);
@@ -74,11 +100,15 @@ public static class CornerCenterlineDetector
             return [];
         }
 
-        (float[] absK, float[] gs, float[] fused) = SignalsFor(centerline, n);
-        List<float[]> lapFused = new(perLapCenterlines.Count);
+        // The sustained-bend channel only ADDS activation: it may bring a fast arc up to the active load,
+        // but the split/merge topology (below) is decided on the BASE load (absK·180 / |g|, no sustained), so
+        // the channel can never fill a de-load valley the base detector saw and thereby merge or fold away an
+        // owner corner. This is what keeps Monza/Spa detection unchanged when lateral g is present.
+        (float[] absK, float[] gs, float[] baseLoad, float[] fused) = SignalsFor(centerline, n, sustainedScale);
+        List<float[]> lapBase = new(perLapCenterlines.Count);
         foreach (MedianCenterline lap in perLapCenterlines)
         {
-            lapFused.Add(SignalsFor(lap, n).Fused);
+            lapBase.Add(SignalsFor(lap, n, sustainedScale).Base);
         }
 
         bool[] active = new bool[n];
@@ -111,18 +141,18 @@ public static class CornerCenterlineDetector
         {
             (int Pos, int RunStart, int RunEnd) current = kept[^1];
             (int Pos, int RunStart, int RunEnd) next = candidates[c];
-            float valley = MinOver(fused, current.Pos, next.Pos);
+            float valley = MinOver(baseLoad, current.Pos, next.Pos);
 
             bool keep;
             if (valley < LoadFloor)
             {
-                keep = true; // a clear de-load gap always separates corners
+                keep = true; // a clear base de-load gap always separates corners
             }
             else
             {
-                bool deep = valley < ValleyRatio * MathF.Min(fused[current.Pos], fused[next.Pos]);
+                bool deep = valley < ValleyRatio * MathF.Min(baseLoad[current.Pos], baseLoad[next.Pos]);
                 bool tight = (absK[current.Pos] * 180f) >= CurvatureFloor && (absK[next.Pos] * 180f) >= CurvatureFloor;
-                bool consensus = ConsensusFractionOf(lapFused, current.Pos, next.Pos) >= ConsensusFraction;
+                bool consensus = ConsensusFractionOf(lapBase, current.Pos, next.Pos) >= ConsensusFraction;
                 keep = deep && tight && consensus;
             }
 
@@ -132,7 +162,7 @@ public static class CornerCenterlineDetector
             }
             else
             {
-                kept[^1] = fused[current.Pos] >= fused[next.Pos] ? current : next;
+                kept[^1] = baseLoad[current.Pos] >= baseLoad[next.Pos] ? current : next;
             }
         }
 
@@ -325,7 +355,8 @@ public static class CornerCenterlineDetector
         return -1;
     }
 
-    private static (float[] AbsK, float[] Gs, float[] Fused) SignalsFor(MedianCenterline centerline, int n)
+    private static (float[] AbsK, float[] Gs, float[] Base, float[] Fused) SignalsFor(
+        MedianCenterline centerline, int n, float sustainedScale)
     {
         (float[] x, float[] z, float[] g) = ToArrays(centerline, n);
         float[] heading = new float[n];
@@ -344,13 +375,51 @@ public static class CornerCenterlineDetector
 
         float[] absK = SmoothCircular(Absolute(kappa), n);
         float[] gs = SmoothCircular(g, n);
+        float[] sustained = SustainedBend(absK, n);
+        float[] baseLoad = new float[n];
         float[] fused = new float[n];
         for (int i = 0; i < n; i++)
         {
-            fused[i] = MathF.Max(absK[i] * 180f, gs[i]);
+            baseLoad[i] = MathF.Max(absK[i] * 180f, gs[i]);
+            fused[i] = MathF.Max(baseLoad[i], sustained[i] * sustainedScale);
         }
 
-        return (absK, gs, fused);
+        return (absK, gs, baseLoad, fused);
+    }
+
+    /// <summary>
+    /// Integrated MODERATE curvature over ±<see cref="SustainedWindowM"/> metres: the total heading change a
+    /// sustained fast arc turns through over the window. Points already tight (|κ|·180 ≥ 1 ⇒ R ≤
+    /// <see cref="CornerRadiusThresholdM"/>) are excluded, because the instantaneous absK·180 channel already
+    /// detects those — integrating only the sub-threshold curvature keeps this channel orthogonal, so it lifts
+    /// a long R-just-over-threshold arc to the active load without inflating load inside tight corners/esses
+    /// (which would otherwise merge them). Smoothed to a stable ridge. Fed the already-smoothed |κ|.
+    /// </summary>
+    private static float[] SustainedBend(float[] absK, int n)
+    {
+        float tightCap = 1f / CornerRadiusThresholdM;
+        float[] moderate = new float[n];
+        for (int i = 0; i < n; i++)
+        {
+            moderate[i] = absK[i] < tightCap ? absK[i] : 0f;
+        }
+
+        int w = Math.Min(SustainedWindowM, (n - 1) / 2);
+        float[] integral = new float[n];
+        float window = 0f;
+        for (int j = -w; j <= w; j++)
+        {
+            window += moderate[Mod(j, n)];
+        }
+
+        integral[0] = window;
+        for (int i = 1; i < n; i++)
+        {
+            window += moderate[Mod(i + w, n)] - moderate[Mod(i - 1 - w, n)];
+            integral[i] = window;
+        }
+
+        return SmoothCircular(integral, n);
     }
 
     private static (float[] X, float[] Z, float[] G) ToArrays(MedianCenterline centerline, int n)
