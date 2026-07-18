@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using SimCoach.GhostImport;
 using SimCoach.Reference;
 using SimCoach.Storage;
@@ -10,16 +11,24 @@ using SimCoach.Storage.Repositories;
 //
 //   usage:
 //     SimCoach.GhostImport decode <path-to.ghost>
+//     SimCoach.GhostImport bake-centerline --track <t> --lap-length <m> [--top <n>] [--out <dir>]
 //     SimCoach.GhostImport import --track <t> --car <c> --weather <w> --lap-length <m> [--data-root <path>]
 //
-// `decode` is a local-file smoke command (container/zlib decode + record parse + guards). `import` wires the
-// full dev-time pipeline: accreplay fetch (fastest GT3 lap, OD2) -> decode -> loop-closure split -> centerline
-// align -> per-metre resample -> seam mask -> persist an alien_line row + LINE parquet under the OWNER triple.
-// The accreplay fetch runs live and is NEVER exercised by a test; the raw .ghost is transient (never committed)
-// and only the derived alien LINE is written (locally here, vendored-embedded separately — OD1/OD10).
+// `decode` is a local-file smoke command (container/zlib decode + record parse + guards). `bake-centerline`
+// fetches the top-N GT3 ghosts, decodes+loop-splits each, keeps its complete loop, bootstraps a shared
+// cross-lap axis (B1b) and emits a ghost-median centerline.<track>.json (the align target the 12 missing
+// tracks lack). `import` wires the full dev-time pipeline: accreplay fetch (fastest GT3 lap, OD2) -> decode
+// -> loop-closure split -> centerline align -> per-metre resample -> seam mask -> persist an alien_line row
+// + LINE parquet under the OWNER triple. The accreplay fetch runs live and is NEVER exercised by a test; the
+// raw .ghost is transient (never committed) and only the derived asset is written.
 if (args.Length >= 1 && string.Equals(args[0], "decode", StringComparison.Ordinal))
 {
     return RunDecode(args);
+}
+
+if (args.Length >= 1 && string.Equals(args[0], "bake-centerline", StringComparison.Ordinal))
+{
+    return await RunBakeCenterlineAsync(args).ConfigureAwait(false);
 }
 
 if (args.Length >= 1 && string.Equals(args[0], "import", StringComparison.Ordinal))
@@ -30,6 +39,7 @@ if (args.Length >= 1 && string.Equals(args[0], "import", StringComparison.Ordina
 Console.Error.WriteLine(
     "usage:\n"
     + "  SimCoach.GhostImport decode <path-to.ghost>\n"
+    + "  SimCoach.GhostImport bake-centerline --track <t> --lap-length <m> [--top <n>] [--out <dir>]\n"
     + "  SimCoach.GhostImport import --track <t> --car <c> --weather <w> --lap-length <m> [--data-root <path>]");
 return 2;
 
@@ -76,6 +86,127 @@ static int RunDecode(string[] args)
     catch (InvalidDataException ex)
     {
         Console.Error.WriteLine($"decode failed: {ex.Message}");
+        return 1;
+    }
+}
+
+static async Task<int> RunBakeCenterlineAsync(string[] args)
+{
+    // Default fan-out: 12 usable GT3 ghosts (OD-B2). A few board entries never close a loop, so scan a few
+    // extra before giving up rather than downloading the whole leaderboard.
+    const int defaultTopN = 12;
+    const int maxScan = 40;
+
+    Dictionary<string, string> options = ParseOptions(args);
+    if (!options.TryGetValue("track", out string? track)
+        || !options.TryGetValue("lap-length", out string? lapLengthText)
+        || !float.TryParse(lapLengthText, NumberStyles.Float, CultureInfo.InvariantCulture, out float lapLengthM))
+    {
+        Console.Error.WriteLine(
+            "usage: SimCoach.GhostImport bake-centerline --track <t> --lap-length <m> [--top <n>] [--out <dir>]");
+        return 2;
+    }
+
+    // --lap-length is the track's catalog lap length (Adapters.ACC AccTrackCatalog.TryGetLapLengthM) — it
+    // sizes the shared axis' bin count. Passed explicitly to keep this ACC-decode tool free of the runtime
+    // adapter reference, mirroring `import`.
+    int topN = defaultTopN;
+    if (options.TryGetValue("top", out string? topText)
+        && int.TryParse(topText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedTop)
+        && parsedTop > 0)
+    {
+        topN = parsedTop;
+    }
+
+    options.TryGetValue("out", out string? outArg);
+    string outDir = string.IsNullOrWhiteSpace(outArg) ? Directory.GetCurrentDirectory() : outArg;
+    var importOptions = new GhostImportOptions();
+
+    try
+    {
+        int accTrackId = AccReplayClient.TrackIdFor(track);
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        IReadOnlyList<AccReplayLap> board = await AccReplayClient
+            .FetchGt3LeaderboardAsync(http, accTrackId, CancellationToken.None)
+            .ConfigureAwait(false);
+
+        var usableLaps = new List<IReadOnlyList<GhostRecord>>(topN);
+        int considered = 0;
+        foreach (AccReplayLap lap in board)
+        {
+            if (usableLaps.Count >= topN || considered >= maxScan)
+            {
+                break;
+            }
+
+            considered++;
+            try
+            {
+                byte[] ghost = await AccReplayClient
+                    .DownloadGhostAsync(http, lap.LapId, track, CancellationToken.None)
+                    .ConfigureAwait(false);
+                byte[] payload = GhostContainer.Inflate(ghost);
+                GhostPayloadHeader header = GhostPayload.ReadHeader(payload);
+                ImportGuards.CheckArithmetic(header);
+                IReadOnlyList<GhostRecord> records = GhostPayload.ReadRecords(payload, header);
+
+                IReadOnlyList<IReadOnlyList<GhostRecord>> laps = LapSplitter.Split(records, importOptions);
+                if (laps.Count == 0)
+                {
+                    Console.WriteLine($"skip lap {lap.LapId} ({lap.Car}, {lap.LapTimeMs} ms): no complete loop");
+                    continue;
+                }
+
+                usableLaps.Add(laps[0]);
+                Console.WriteLine(
+                    $"usable ghost {usableLaps.Count}/{topN}: lap {lap.LapId} "
+                    + $"({lap.Car}, {lap.LapTimeMs} ms, {laps[0].Count} records)");
+            }
+            catch (InvalidDataException ex)
+            {
+                Console.WriteLine($"skip lap {lap.LapId} ({lap.Car}): {ex.Message}");
+            }
+        }
+
+        if (usableLaps.Count < MedianCenterlineBuilder.MinLapsForTrust)
+        {
+            Console.Error.WriteLine(
+                $"only {usableLaps.Count} usable ghost lap(s) for '{track}' in the top {considered} scanned; "
+                + $"need >= {MedianCenterlineBuilder.MinLapsForTrust} — skip this track");
+            return 1;
+        }
+
+        GhostCenterlineResult result = GhostCenterlineBuilder.Build(track, lapLengthM, usableLaps, importOptions);
+        Console.WriteLine(
+            $"{track}: {result.Coherence.LapCount} ghost lap(s), median dev {result.Coherence.MedianDeviationM:0.00} m "
+            + $"(ghost ceiling {result.CoherenceCeilingM:0.00} m), max {result.Coherence.MaxDeviationM:0.0} m, "
+            + $"span {result.SpanFraction:0.00}, GO={result.Go}");
+        foreach (string reason in result.Reasons)
+        {
+            Console.WriteLine($"  - {reason}");
+        }
+
+        if (!result.Go)
+        {
+            Console.Error.WriteLine($"ghost centerline for '{track}' failed the span-coherence gate — skip this track");
+            return 1;
+        }
+
+        Directory.CreateDirectory(outDir);
+        string path = Path.Combine(outDir, $"centerline.{track}.json");
+        JsonSerializerOptions jsonOptions = new() { WriteIndented = true };
+        File.WriteAllText(
+            path, JsonSerializer.Serialize(CenterlineGeometryDocument.FromCenterline(result.Centerline), jsonOptions));
+        Console.WriteLine(
+            $"ghost centerline persisted for '{track}' "
+            + $"(LapCount={result.Centerline.LapCount}, {result.Centerline.Bins.Count} bins) -> {path}");
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        // Dev-tool top level: any failure (decode, network timeout, JSON shape drift, IO) becomes a clean
+        // non-zero exit with a one-line message instead of a raw stack trace.
+        Console.Error.WriteLine($"bake-centerline failed: {ex.Message}");
         return 1;
     }
 }

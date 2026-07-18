@@ -53,4 +53,38 @@ public static class GhostFrameAdapter
 
         return frames;
     }
+
+    /// <summary>
+    /// Like <see cref="ToFrames"/> but stamps each frame's <c>LapDistanceM</c> from an externally-supplied
+    /// COMMON-axis distance (B1b: the record's projection onto the provisional shared centerline) instead of
+    /// the record's own cumulative self-axis. World position and the null <c>GForceG</c> (→ lateral g 0) are
+    /// mapped identically. Requires <paramref name="commonAxisDistancesM"/> to have one entry per record.
+    /// </summary>
+    public static IReadOnlyList<TelemetryFrame> ToFramesWithDistances(
+        IReadOnlyList<GhostRecord> records, IReadOnlyList<float> commonAxisDistancesM)
+    {
+        ArgumentNullException.ThrowIfNull(records);
+        ArgumentNullException.ThrowIfNull(commonAxisDistancesM);
+        if (records.Count != commonAxisDistancesM.Count)
+        {
+            throw new ArgumentException(
+                $"expected one distance per record ({records.Count}), got {commonAxisDistancesM.Count}",
+                nameof(commonAxisDistancesM));
+        }
+
+        var frames = new List<TelemetryFrame>(records.Count);
+        for (int i = 0; i < records.Count; i++)
+        {
+            GhostRecord record = records[i];
+            frames.Add(new TelemetryFrame
+            {
+                Sim = "acc",
+                SpeedMps = PlaceholderSpeedMps,
+                LapDistanceM = commonAxisDistancesM[i],
+                WorldPos = new Vec3 { X = record.WorldX, Y = record.WorldY, Z = record.WorldZ },
+            });
+        }
+
+        return frames;
+    }
 }
