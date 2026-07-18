@@ -38,10 +38,24 @@ internal static class GhostCenterlineBuilder
                 + $"need >= {MedianCenterlineBuilder.MinLapsForTrust}");
         }
 
-        // Provisional shared axis: the fastest usable ghost on its OWN self-axis. It is only an alignment
-        // parameterization — the emitted positions are medians of every lap, so a slightly imperfect
-        // provisional line does not leak into the result beyond its arc-length ordering.
-        IReadOnlyList<TelemetryFrame> provisionalFrames = GhostFrameAdapter.ToFrames(usableLaps[0]);
+        // Provisional shared axis: the fastest usable ghost, its driven arc-length NORMALIZED to the catalog
+        // lap length so the axis spans the whole lap [0, lapLengthM] (mirrors the sim's NormalizedCarPosition·
+        // length). Without normalization a driven racing line longer than the catalog spline would push the
+        // tail past round(lapLengthM) bins, be silently dropped by MedianCenterlineBuilder, and read as full
+        // coverage on the projected-axis span check (B-1). It is only an alignment parameterization — the
+        // emitted positions are medians of every lap, so a slightly imperfect provisional line does not leak
+        // into the result beyond its arc-length ordering.
+        IReadOnlyList<float> drivenArcM = GhostFrameAdapter.CumulativeArcLengthM(usableLaps[0]);
+        float drivenTotalM = drivenArcM[^1];
+        float axisScale = drivenTotalM > 0f ? lapLengthM / drivenTotalM : 1f;
+        float[] provisionalDistancesM = new float[drivenArcM.Count];
+        for (int i = 0; i < drivenArcM.Count; i++)
+        {
+            provisionalDistancesM[i] = drivenArcM[i] * axisScale;
+        }
+
+        IReadOnlyList<TelemetryFrame> provisionalFrames =
+            GhostFrameAdapter.ToFramesWithDistances(usableLaps[0], provisionalDistancesM);
         MedianCenterline provisional = MedianCenterlineBuilder.Build(trackId, lapLengthM, [provisionalFrames]);
 
         var reStamped = new List<IReadOnlyList<TelemetryFrame>>(usableLaps.Count);
@@ -72,6 +86,18 @@ internal static class GhostCenterlineBuilder
         {
             reasons.Add(
                 $"sampled bins span only {spanFraction:0.00} of the lap; need >= {options.MinGhostSpanFraction:0.00}");
+        }
+
+        // Cross-driver line spread lifts the robust MEDIAN a few metres, but a localized geometric smear —
+        // records from two arc-distant passes snapping to one co-located provisional bin where the line
+        // self-approaches in XZ (a crossover, or an elevation-collapsed bridge/underpass) — spikes the worst
+        // single-bin deviation into the tens of metres while the median stays low. Gate on it so that smear is
+        // a loud NO-GO, not a silent corruption (B-3). Generous ceiling: normal spread never trips it.
+        if (coherence.MaxDeviationM > options.GhostMaxDeviationCeilingM)
+        {
+            reasons.Add(
+                $"worst-bin deviation {coherence.MaxDeviationM:0.00} m exceeds the max ceiling "
+                + $"{options.GhostMaxDeviationCeilingM:0.00} m (possible self-approach smear)");
         }
 
         return new GhostCenterlineResult

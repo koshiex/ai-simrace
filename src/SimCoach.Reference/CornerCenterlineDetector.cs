@@ -246,7 +246,12 @@ public static class CornerCenterlineDetector
             return CornerChannel.Both;
         }
 
-        return byCurvature ? CornerChannel.Curvature : CornerChannel.LateralG;
+        // A corner that cleared neither the tight-curvature nor the load threshold was activated ONLY by the
+        // sustained-bend (curvature-integral) channel — a long fast arc, a curvature phenomenon, not a load
+        // one. Labeling it LateralG with PeakLateralG≈0 is self-contradictory and, via CornerEventBuilder's
+        // `Trigger != "LateralG"` gate, would suppress line-deviation coaching on exactly those fast corners.
+        // So only a genuine load-reaching corner is LateralG; a curvature/sustained corner is Curvature.
+        return byLoad ? CornerChannel.LateralG : CornerChannel.Curvature;
     }
 
     /// <summary>Prominent local maxima of fused within [start,end]; always at least the run's global max.</summary>

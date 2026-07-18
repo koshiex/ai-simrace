@@ -40,6 +40,14 @@ public sealed class SustainedBendCalibrationTests
     public void Zeroed_g_plus_channel_recovers_the_fast_corners_on_spa() =>
         AssertRecoversFastCornersAtZeroedG("spa", SpaLapLengthM);
 
+    [Fact]
+    public void Zeroed_g_corners_never_classify_lateral_g_on_monza() =>
+        AssertNoLateralGAtZeroedG("monza", MonzaLapLengthM);
+
+    [Fact]
+    public void Zeroed_g_corners_never_classify_lateral_g_on_spa() =>
+        AssertNoLateralGAtZeroedG("spa", SpaLapLengthM);
+
     private static void AssertNoRegressionWithLateralG(string trackId, float lapLengthM)
     {
         MedianCenterline centerline = LoadOwnerCenterline(trackId, lapLengthM);
@@ -83,6 +91,23 @@ public sealed class SustainedBendCalibrationTests
                 "the sustained channel must recover fast corner {0} (apex {1:F3}, R {2:F0} m) at zeroed g",
                 fast.Id, fast.ApexPosition, fast.ApexRadiusM);
         }
+    }
+
+    private static void AssertNoLateralGAtZeroedG(string trackId, float lapLengthM)
+    {
+        MedianCenterline zeroed = ZeroLateralG(LoadOwnerCenterline(trackId, lapLengthM));
+
+        IReadOnlyList<DetectedCorner> corners = DetectWithChannel(zeroed);
+
+        corners.Should().NotBeEmpty();
+        // F1 guard: with lateral g zeroed (the ghost-centerline case) no corner can be a genuine load corner.
+        // A fast arc recovered by the sustained channel has PeakLateralG=0 and sub-threshold apex curvature, so
+        // it must classify as Curvature — never the self-contradictory LateralG that CornerEventBuilder's
+        // `Trigger != "LateralG"` gate would read as "line shape moot", silently killing line-deviation coaching
+        // on exactly the fast corners the ghost alien LINE exists to coach.
+        corners.Should().OnlyContain(
+            c => c.Trigger == CornerChannel.Curvature && c.PeakLateralG == 0f,
+            "every corner on a zeroed-g centerline is a curvature corner with PeakLateralG=0");
     }
 
     private static bool Covers(DetectedCorner corner, float apexPosition) =>

@@ -25,33 +25,33 @@ public static class GhostFrameAdapter
     /// record's OWN cumulative XZ arc-length (running sum of consecutive-segment distances, first frame
     /// = 0) — a provisional self-axis that B1b re-stamps onto a common cross-lap axis before binning.
     /// </summary>
-    public static IReadOnlyList<TelemetryFrame> ToFrames(IReadOnlyList<GhostRecord> records)
+    public static IReadOnlyList<TelemetryFrame> ToFrames(IReadOnlyList<GhostRecord> records) =>
+        ToFramesWithDistances(records, CumulativeArcLengthM(records));
+
+    /// <summary>
+    /// The record's own cumulative XZ arc-length at each index — a running sum of consecutive-segment chord
+    /// distances, first = 0. This is the provisional self-axis; B1b normalizes it to the catalog lap length
+    /// (so the whole lap spans <c>[0, lapLength]</c>, mirroring the sim spline) before it seeds the shared axis.
+    /// </summary>
+    public static IReadOnlyList<float> CumulativeArcLengthM(IReadOnlyList<GhostRecord> records)
     {
         ArgumentNullException.ThrowIfNull(records);
 
-        var frames = new List<TelemetryFrame>(records.Count);
-        float cumulativeDistanceM = 0f;
+        float[] distances = new float[records.Count];
+        float cumulative = 0f;
         for (int i = 0; i < records.Count; i++)
         {
-            GhostRecord record = records[i];
             if (i > 0)
             {
-                GhostRecord previous = records[i - 1];
-                float dx = record.WorldX - previous.WorldX;
-                float dz = record.WorldZ - previous.WorldZ;
-                cumulativeDistanceM += MathF.Sqrt((dx * dx) + (dz * dz));
+                float dx = records[i].WorldX - records[i - 1].WorldX;
+                float dz = records[i].WorldZ - records[i - 1].WorldZ;
+                cumulative += MathF.Sqrt((dx * dx) + (dz * dz));
             }
 
-            frames.Add(new TelemetryFrame
-            {
-                Sim = "acc",
-                SpeedMps = PlaceholderSpeedMps,
-                LapDistanceM = cumulativeDistanceM,
-                WorldPos = new Vec3 { X = record.WorldX, Y = record.WorldY, Z = record.WorldZ },
-            });
+            distances[i] = cumulative;
         }
 
-        return frames;
+        return distances;
     }
 
     /// <summary>

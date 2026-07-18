@@ -30,6 +30,16 @@ internal sealed record GhostImportOptions
     public float GhostCoherenceCeilingM { get; init; } = 4f;
 
     /// <summary>
+    /// Worst-single-bin deviation ceiling (metres) for a ghost bake (B-3). The median admits legitimate
+    /// cross-driver line spread, but a genuine geometric smear — records from two arc-distant passes snapping
+    /// to one co-located provisional bin where the racing line self-approaches in XZ (a crossover, or an
+    /// elevation-collapsed bridge/underpass) — spikes the MAX deviation into the tens of metres while the
+    /// median stays low. Gating on <c>CoherenceReport.MaxDeviationM</c> turns that localized smear from a
+    /// silent corruption into a loud NO-GO. Deliberately generous (25 m) so normal spread never trips it.
+    /// </summary>
+    public float GhostMaxDeviationCeilingM { get; init; } = 25f;
+
+    /// <summary>
     /// Minimum fraction of the lap length the ghost centerline's real (sampled) bins must SPAN for the bake
     /// to be trusted (B1b full-lap span check). Guards against a decode/loop-split that only covered part of
     /// the lap being medianed into a "centerline" that silently omits whole corners. 0.90 leaves headroom
