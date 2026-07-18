@@ -1,0 +1,56 @@
+using SimCoach.Contracts.V1;
+
+namespace SimCoach.GhostImport;
+
+/// <summary>
+/// Adapts a decoded ghost lap (<see cref="GhostRecord"/>s) into <see cref="TelemetryFrame"/>s that
+/// <c>MedianCenterlineBuilder</c> can bin. A ghost carries only world XYZ + yaw + pedals — no speed,
+/// no world-pos message, no lap-distance — so a naive frame (SpeedMps=0) would be skipped by the
+/// builder's teleport/stationary guard, yielding an empty (silently inert) centerline.
+/// </summary>
+public static class GhostFrameAdapter
+{
+    /// <summary>
+    /// Placeholder speed stamped on every ghost frame. Ghosts have no trustworthy speed channel (the
+    /// +126 clock is logarithmically encoded, ADR-per <c>acc-ghost-format-re.md</c>), so a positive
+    /// constant is used purely to keep frames past the builder's <c>SpeedMps &lt;= 0f</c> guard. The
+    /// teleport/stationary guard is thereby INERT for ghost frames — position quality is instead
+    /// established out-of-band by the import-time bbox/arithmetic guards and per-lap coherence checks.
+    /// </summary>
+    private const float PlaceholderSpeedMps = 1f;
+
+    /// <summary>
+    /// Projects ghost records to frames one-to-one (frame count == record count). <c>WorldPos</c> maps
+    /// XYZ; <c>GForceG</c> is left null so the builder reads lateral g as 0. <c>LapDistanceM</c> is the
+    /// record's OWN cumulative XZ arc-length (running sum of consecutive-segment distances, first frame
+    /// = 0) — a provisional self-axis that B1b re-stamps onto a common cross-lap axis before binning.
+    /// </summary>
+    public static IReadOnlyList<TelemetryFrame> ToFrames(IReadOnlyList<GhostRecord> records)
+    {
+        ArgumentNullException.ThrowIfNull(records);
+
+        var frames = new List<TelemetryFrame>(records.Count);
+        float cumulativeDistanceM = 0f;
+        for (int i = 0; i < records.Count; i++)
+        {
+            GhostRecord record = records[i];
+            if (i > 0)
+            {
+                GhostRecord previous = records[i - 1];
+                float dx = record.WorldX - previous.WorldX;
+                float dz = record.WorldZ - previous.WorldZ;
+                cumulativeDistanceM += MathF.Sqrt((dx * dx) + (dz * dz));
+            }
+
+            frames.Add(new TelemetryFrame
+            {
+                Sim = "acc",
+                SpeedMps = PlaceholderSpeedMps,
+                LapDistanceM = cumulativeDistanceM,
+                WorldPos = new Vec3 { X = record.WorldX, Y = record.WorldY, Z = record.WorldZ },
+            });
+        }
+
+        return frames;
+    }
+}
