@@ -12,12 +12,15 @@ using SimCoach.Storage.Repositories;
 //   usage:
 //     SimCoach.GhostImport decode <path-to.ghost>
 //     SimCoach.GhostImport bake-centerline --track <t> --lap-length <m> [--top <n>] [--out <dir>]
+//     SimCoach.GhostImport bake-corners --track <t> --lap-length <m> [--path <centerline.json>] [--out <dir>]
 //     SimCoach.GhostImport import --track <t> --car <c> --weather <w> --lap-length <m> [--data-root <path>]
 //
 // `decode` is a local-file smoke command (container/zlib decode + record parse + guards). `bake-centerline`
 // fetches the top-N GT3 ghosts, decodes+loop-splits each, keeps its complete loop, bootstraps a shared
 // cross-lap axis (B1b) and emits a ghost-median centerline.<track>.json (the align target the 12 missing
-// tracks lack). `import` wires the full dev-time pipeline: accreplay fetch (fastest GT3 lap, OD2) -> decode
+// tracks lack). `bake-corners` runs the corner detector (curvature+sustained, G=0) over that ghost centerline
+// (embedded or --path) and emits cornerGeometry.<track>.json (B3 / ADR-0022) — no network. `import` wires the
+// full dev-time pipeline: accreplay fetch (fastest GT3 lap, OD2) -> decode
 // -> loop-closure split -> centerline align -> per-metre resample -> seam mask -> persist an alien_line row
 // + LINE parquet under the OWNER triple. The accreplay fetch runs live and is NEVER exercised by a test; the
 // raw .ghost is transient (never committed) and only the derived asset is written.
@@ -31,6 +34,11 @@ if (args.Length >= 1 && string.Equals(args[0], "bake-centerline", StringComparis
     return await RunBakeCenterlineAsync(args).ConfigureAwait(false);
 }
 
+if (args.Length >= 1 && string.Equals(args[0], "bake-corners", StringComparison.Ordinal))
+{
+    return RunBakeCorners(args);
+}
+
 if (args.Length >= 1 && string.Equals(args[0], "import", StringComparison.Ordinal))
 {
     return await RunImportAsync(args).ConfigureAwait(false);
@@ -40,6 +48,7 @@ Console.Error.WriteLine(
     "usage:\n"
     + "  SimCoach.GhostImport decode <path-to.ghost>\n"
     + "  SimCoach.GhostImport bake-centerline --track <t> --lap-length <m> [--top <n>] [--out <dir>]\n"
+    + "  SimCoach.GhostImport bake-corners --track <t> --lap-length <m> [--path <centerline.json>] [--out <dir>]\n"
     + "  SimCoach.GhostImport import --track <t> --car <c> --weather <w> --lap-length <m> [--data-root <path>]");
 return 2;
 
@@ -209,6 +218,109 @@ static async Task<int> RunBakeCenterlineAsync(string[] args)
         Console.Error.WriteLine($"bake-centerline failed: {ex.Message}");
         return 1;
     }
+}
+
+static int RunBakeCorners(string[] args)
+{
+    Dictionary<string, string> options = ParseOptions(args);
+    if (!options.TryGetValue("track", out string? track)
+        || !options.TryGetValue("lap-length", out string? lapLengthText)
+        || !float.TryParse(lapLengthText, NumberStyles.Float, CultureInfo.InvariantCulture, out float lapLengthM))
+    {
+        Console.Error.WriteLine(
+            "usage: SimCoach.GhostImport bake-corners --track <t> --lap-length <m> [--path <centerline.json>] "
+            + "[--out <dir>]");
+        return 2;
+    }
+
+    options.TryGetValue("out", out string? outArg);
+    string outDir = string.IsNullOrWhiteSpace(outArg) ? Directory.GetCurrentDirectory() : outArg;
+
+    // Two centerline sources, both the same ghost-median line bake-centerline emits: an explicit --path to a
+    // freshly-baked centerline.<track>.json (before it is vendored into Reference/Data), or the embedded
+    // CenterlineGeometryDataset once it has been copied there (the dev-flow's ordering — see the blueprint).
+    MedianCenterline? centerline;
+    if (options.TryGetValue("path", out string? centerlinePath))
+    {
+        if (!TryLoadCenterlineFile(centerlinePath, lapLengthM, out centerline) || centerline is null)
+        {
+            return 1;
+        }
+    }
+    else if (!CenterlineGeometryDataset.Load().TryGetCenterline(track, lapLengthM, out centerline)
+        || centerline is null)
+    {
+        Console.Error.WriteLine(
+            $"no vendored centerline for '{track}' at {lapLengthM:0.0} m — run bake-centerline and copy it into "
+            + "Reference/Data first, or pass --path <centerline.json>");
+        return 1;
+    }
+
+    CornerGeometryDocument document = CornerGeometryBaker.Bake(centerline);
+    if (document.Corners.Count == 0)
+    {
+        Console.Error.WriteLine($"corner detection found no corners on the '{track}' centerline — skip this track");
+        return 1;
+    }
+
+    Directory.CreateDirectory(outDir);
+    string path = Path.Combine(outDir, $"cornerGeometry.{document.TrackId}.json");
+    JsonSerializerOptions jsonOptions = new() { WriteIndented = true };
+    File.WriteAllText(path, JsonSerializer.Serialize(document, jsonOptions));
+    Console.WriteLine(
+        $"baked {document.Corners.Count} corner(s) for '{document.TrackId}' "
+        + $"(LapCount={document.LapCount}, G=0, curvature+sustained) -> {path}");
+    return 0;
+}
+
+static bool TryLoadCenterlineFile(string path, float lapLengthM, out MedianCenterline? centerline)
+{
+    centerline = null;
+    if (!File.Exists(path))
+    {
+        Console.Error.WriteLine($"centerline file not found: {path}");
+        return false;
+    }
+
+    CenterlineGeometryDocument? document;
+    try
+    {
+        using FileStream stream = File.OpenRead(path);
+        document = JsonSerializer.Deserialize<CenterlineGeometryDocument>(stream);
+    }
+    catch (JsonException ex)
+    {
+        Console.Error.WriteLine($"centerline file is not valid JSON: {ex.Message}");
+        return false;
+    }
+
+    if (document is null)
+    {
+        Console.Error.WriteLine($"centerline file deserialized to null: {path}");
+        return false;
+    }
+
+    if (document.SchemaVersion != CenterlineGeometryDocument.CurrentSchemaVersion)
+    {
+        Console.Error.WriteLine(
+            $"centerline schema {document.SchemaVersion} != expected {CenterlineGeometryDocument.CurrentSchemaVersion}");
+        return false;
+    }
+
+    if (MathF.Abs(document.LapLengthM - lapLengthM) > CenterlineGeometryDataset.LapLengthToleranceM)
+    {
+        Console.Error.WriteLine($"centerline lap length {document.LapLengthM:0.0} m != requested {lapLengthM:0.0} m");
+        return false;
+    }
+
+    if (document.Bins.Count == 0)
+    {
+        Console.Error.WriteLine("centerline has no bins");
+        return false;
+    }
+
+    centerline = document.ToCenterline();
+    return true;
 }
 
 static async Task<int> RunImportAsync(string[] args)
