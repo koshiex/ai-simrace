@@ -23,9 +23,9 @@ public sealed class TrackModelStoreTests
     [Fact]
     public void Returns_none_for_an_uncovered_track()
     {
-        TrackModelStore store = NewStore(("silverstone", 5891f));
+        TrackModelStore store = NewStore(("test_oval", 2000f));
 
-        TrackModel model = store.Get("silverstone");
+        TrackModel model = store.Get("test_oval");
 
         model.Source.Should().Be(TrackModelSource.None);
         model.Corners.Should().BeEmpty();

@@ -1,0 +1,135 @@
+{
+  "SchemaVersion": 1,
+  "TrackId": "laguna_seca",
+  "LapLengthM": 3602,
+  "LapCount": 12,
+  "SourceRecording": null,
+  "Corners": [
+    {
+      "Id": "laguna_seca_t01",
+      "StartPosition": 0.048306495,
+      "ApexPosition": 0.07940033,
+      "EndPosition": 0.11077179,
+      "ApexRadiusM": 221.8322,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "laguna_seca_t02",
+      "StartPosition": 0.11104941,
+      "ApexPosition": 0.13575791,
+      "EndPosition": 0.1604664,
+      "ApexRadiusM": 29.85552,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "laguna_seca_t03",
+      "StartPosition": 0.19044974,
+      "ApexPosition": 0.21432537,
+      "EndPosition": 0.23820099,
+      "ApexRadiusM": 66.06147,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "laguna_seca_t04",
+      "StartPosition": 0.27401444,
+      "ApexPosition": 0.29289284,
+      "EndPosition": 0.31204885,
+      "ApexRadiusM": 95.18313,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "laguna_seca_t05",
+      "StartPosition": 0.32648528,
+      "ApexPosition": 0.3373126,
+      "EndPosition": 0.3481399,
+      "ApexRadiusM": 371.72366,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "laguna_seca_t06",
+      "StartPosition": 0.41088283,
+      "ApexPosition": 0.43337035,
+      "EndPosition": 0.45585784,
+      "ApexRadiusM": 63.52149,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "laguna_seca_t07",
+      "StartPosition": 0.5305386,
+      "ApexPosition": 0.5646863,
+      "EndPosition": 0.5991116,
+      "ApexRadiusM": 84.15209,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "laguna_seca_t08",
+      "StartPosition": 0.6768462,
+      "ApexPosition": 0.6854525,
+      "EndPosition": 0.69405884,
+      "ApexRadiusM": 31.091053,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "laguna_seca_t09",
+      "StartPosition": 0.6943365,
+      "ApexPosition": 0.7093282,
+      "EndPosition": 0.7243198,
+      "ApexRadiusM": 46.603893,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "laguna_seca_t10",
+      "StartPosition": 0.72459745,
+      "ApexPosition": 0.75069404,
+      "EndPosition": 0.7767907,
+      "ApexRadiusM": 73.50916,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "laguna_seca_t11",
+      "StartPosition": 0.7770683,
+      "ApexPosition": 0.79650193,
+      "EndPosition": 0.8159356,
+      "ApexRadiusM": 122.145935,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "laguna_seca_t12",
+      "StartPosition": 0.8162132,
+      "ApexPosition": 0.83425874,
+      "EndPosition": 0.8523043,
+      "ApexRadiusM": 68.21479,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "laguna_seca_t13",
+      "StartPosition": 0.8711827,
+      "ApexPosition": 0.87729037,
+      "EndPosition": 0.88367575,
+      "ApexRadiusM": 324.7428,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "laguna_seca_t14",
+      "StartPosition": 0.90255415,
+      "ApexPosition": 0.9153248,
+      "EndPosition": 0.9283731,
+      "ApexRadiusM": 27.740404,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    }
+  ]
+}

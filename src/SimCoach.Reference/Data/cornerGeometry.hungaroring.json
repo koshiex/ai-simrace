@@ -1,0 +1,162 @@
+{
+  "SchemaVersion": 1,
+  "TrackId": "hungaroring",
+  "LapLengthM": 4381,
+  "LapCount": 12,
+  "SourceRecording": null,
+  "Corners": [
+    {
+      "Id": "hungaroring_t01",
+      "StartPosition": 0.1349007,
+      "ApexPosition": 0.15179183,
+      "EndPosition": 0.16868295,
+      "ApexRadiusM": 30.86747,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "hungaroring_t02",
+      "StartPosition": 0.1689112,
+      "ApexPosition": 0.18762839,
+      "EndPosition": 0.20634559,
+      "ApexRadiusM": 193.41391,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "hungaroring_t03",
+      "StartPosition": 0.24766035,
+      "ApexPosition": 0.26888838,
+      "EndPosition": 0.29034466,
+      "ApexRadiusM": 40.02507,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "hungaroring_t04",
+      "StartPosition": 0.29057294,
+      "ApexPosition": 0.3060945,
+      "EndPosition": 0.32184434,
+      "ApexRadiusM": 107.67029,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "hungaroring_t05",
+      "StartPosition": 0.40744123,
+      "ApexPosition": 0.4245606,
+      "EndPosition": 0.44190824,
+      "ApexRadiusM": 122.75049,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "hungaroring_t06",
+      "StartPosition": 0.4421365,
+      "ApexPosition": 0.44556037,
+      "EndPosition": 0.44898424,
+      "ApexRadiusM": 165.79219,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "hungaroring_t07",
+      "StartPosition": 0.44921252,
+      "ApexPosition": 0.49349463,
+      "EndPosition": 0.538005,
+      "ApexRadiusM": 53.46058,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "hungaroring_t08",
+      "StartPosition": 0.5382333,
+      "ApexPosition": 0.54713535,
+      "EndPosition": 0.5560374,
+      "ApexRadiusM": 51.979145,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "hungaroring_t09",
+      "StartPosition": 0.5562657,
+      "ApexPosition": 0.56311345,
+      "EndPosition": 0.5701895,
+      "ApexRadiusM": 91.33509,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "hungaroring_t10",
+      "StartPosition": 0.5861675,
+      "ApexPosition": 0.59895,
+      "EndPosition": 0.61196077,
+      "ApexRadiusM": 70.505394,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "hungaroring_t11",
+      "StartPosition": 0.612189,
+      "ApexPosition": 0.6297649,
+      "EndPosition": 0.64756906,
+      "ApexRadiusM": 62.69411,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "hungaroring_t12",
+      "StartPosition": 0.6603515,
+      "ApexPosition": 0.67655784,
+      "EndPosition": 0.6927642,
+      "ApexRadiusM": 122.62769,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "hungaroring_t13",
+      "StartPosition": 0.69299245,
+      "ApexPosition": 0.7130792,
+      "EndPosition": 0.7331659,
+      "ApexRadiusM": 98.17874,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "hungaroring_t14",
+      "StartPosition": 0.8018717,
+      "ApexPosition": 0.8151107,
+      "EndPosition": 0.8283497,
+      "ApexRadiusM": 47.762413,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "hungaroring_t15",
+      "StartPosition": 0.84387124,
+      "ApexPosition": 0.8742296,
+      "EndPosition": 0.90481627,
+      "ApexRadiusM": 35.219948,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "hungaroring_t16",
+      "StartPosition": 0.9050445,
+      "ApexPosition": 0.9112075,
+      "EndPosition": 0.91737044,
+      "ApexRadiusM": 105.76875,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "hungaroring_t17",
+      "StartPosition": 0.9175987,
+      "ApexPosition": 0.9427071,
+      "EndPosition": 0.9680438,
+      "ApexRadiusM": 51.36377,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    }
+  ]
+}

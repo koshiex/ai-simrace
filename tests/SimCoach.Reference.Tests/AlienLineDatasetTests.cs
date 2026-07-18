@@ -48,7 +48,7 @@ public sealed class AlienLineDatasetTests
     [Fact]
     public void Load_falls_back_for_a_track_with_no_vendored_alien_line()
     {
-        AlienLineDataset.Load().TryGetAlienLine("kyalami", out ResampledLap? unknown).Should().BeFalse();
+        AlienLineDataset.Load().TryGetAlienLine("test_oval", out ResampledLap? unknown).Should().BeFalse();
         unknown.Should().BeNull();
     }
 

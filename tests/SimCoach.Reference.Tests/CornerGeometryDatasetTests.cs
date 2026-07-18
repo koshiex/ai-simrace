@@ -24,7 +24,7 @@ public sealed class CornerGeometryDatasetTests
     {
         var dataset = CornerGeometryDataset.Load();
 
-        dataset.TryGetCorners("silverstone", 5891f, out IReadOnlyList<Corner> corners).Should().BeFalse();
+        dataset.TryGetCorners("test_oval", 5891f, out IReadOnlyList<Corner> corners).Should().BeFalse();
         corners.Should().BeEmpty();
     }
 

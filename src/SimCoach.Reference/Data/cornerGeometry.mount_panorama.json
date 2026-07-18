@@ -1,0 +1,207 @@
+{
+  "SchemaVersion": 1,
+  "TrackId": "mount_panorama",
+  "LapLengthM": 6213,
+  "LapCount": 12,
+  "SourceRecording": null,
+  "Corners": [
+    {
+      "Id": "mount_panorama_t01",
+      "StartPosition": 0.053436343,
+      "ApexPosition": 0.06228875,
+      "EndPosition": 0.07130211,
+      "ApexRadiusM": 47.299747,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t02",
+      "StartPosition": 0.109447934,
+      "ApexPosition": 0.12602608,
+      "EndPosition": 0.14276516,
+      "ApexRadiusM": 258.19073,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t03",
+      "StartPosition": 0.23531306,
+      "ApexPosition": 0.24947691,
+      "EndPosition": 0.26364076,
+      "ApexRadiusM": 75.65547,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t04",
+      "StartPosition": 0.28086272,
+      "ApexPosition": 0.3088685,
+      "EndPosition": 0.3368743,
+      "ApexRadiusM": 35.06428,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t05",
+      "StartPosition": 0.33703524,
+      "ApexPosition": 0.34733623,
+      "EndPosition": 0.35779816,
+      "ApexRadiusM": 103.97181,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t06",
+      "StartPosition": 0.35795912,
+      "ApexPosition": 0.37260583,
+      "EndPosition": 0.3874135,
+      "ApexRadiusM": 106.23741,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t07",
+      "StartPosition": 0.38757443,
+      "ApexPosition": 0.40077257,
+      "EndPosition": 0.41413167,
+      "ApexRadiusM": 220.78407,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t08",
+      "StartPosition": 0.4142926,
+      "ApexPosition": 0.44149363,
+      "EndPosition": 0.4686947,
+      "ApexRadiusM": 131.52325,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t09",
+      "StartPosition": 0.46885562,
+      "ApexPosition": 0.50700146,
+      "EndPosition": 0.5451473,
+      "ApexRadiusM": 126.116615,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t10",
+      "StartPosition": 0.54530823,
+      "ApexPosition": 0.549493,
+      "EndPosition": 0.55383873,
+      "ApexRadiusM": 114.519455,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t11",
+      "StartPosition": 0.55399966,
+      "ApexPosition": 0.55931115,
+      "EndPosition": 0.5647835,
+      "ApexRadiusM": 53.739067,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t12",
+      "StartPosition": 0.56494445,
+      "ApexPosition": 0.5696121,
+      "EndPosition": 0.5742797,
+      "ApexRadiusM": 44.094997,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t13",
+      "StartPosition": 0.5744407,
+      "ApexPosition": 0.5792693,
+      "EndPosition": 0.5842588,
+      "ApexRadiusM": 85.57742,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t14",
+      "StartPosition": 0.59198457,
+      "ApexPosition": 0.5947207,
+      "EndPosition": 0.5976179,
+      "ApexRadiusM": 120.20642,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t15",
+      "StartPosition": 0.59777886,
+      "ApexPosition": 0.6050217,
+      "EndPosition": 0.61226463,
+      "ApexRadiusM": 107.85577,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t16",
+      "StartPosition": 0.621117,
+      "ApexPosition": 0.6293256,
+      "EndPosition": 0.63769513,
+      "ApexRadiusM": 33.863663,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t17",
+      "StartPosition": 0.64928377,
+      "ApexPosition": 0.6597457,
+      "EndPosition": 0.67036855,
+      "ApexRadiusM": 271.1506,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t18",
+      "StartPosition": 0.7157573,
+      "ApexPosition": 0.7225173,
+      "EndPosition": 0.72943825,
+      "ApexRadiusM": 307.3069,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t19",
+      "StartPosition": 0.883953,
+      "ApexPosition": 0.89151776,
+      "EndPosition": 0.89908254,
+      "ApexRadiusM": 58.95,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t20",
+      "StartPosition": 0.89924353,
+      "ApexPosition": 0.9076131,
+      "EndPosition": 0.9159826,
+      "ApexRadiusM": 95.897285,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t21",
+      "StartPosition": 0.9322389,
+      "ApexPosition": 0.9364236,
+      "EndPosition": 0.9407694,
+      "ApexRadiusM": 458.69333,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "mount_panorama_t22",
+      "StartPosition": 0.9752133,
+      "ApexPosition": 0.98342186,
+      "EndPosition": 0.99163043,
+      "ApexRadiusM": 45.079945,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    }
+  ]
+}

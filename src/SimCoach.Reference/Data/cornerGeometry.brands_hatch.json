@@ -1,0 +1,126 @@
+{
+  "SchemaVersion": 1,
+  "TrackId": "brands_hatch",
+  "LapLengthM": 3908,
+  "LapCount": 12,
+  "SourceRecording": null,
+  "Corners": [
+    {
+      "Id": "brands_hatch_t01",
+      "StartPosition": 0,
+      "ApexPosition": 0.015864892,
+      "EndPosition": 0.031729784,
+      "ApexRadiusM": 124.80716,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "brands_hatch_t02",
+      "StartPosition": 0.04631525,
+      "ApexPosition": 0.0629478,
+      "EndPosition": 0.079836234,
+      "ApexRadiusM": 87.2204,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "brands_hatch_t03",
+      "StartPosition": 0.08009212,
+      "ApexPosition": 0.087001026,
+      "EndPosition": 0.09390993,
+      "ApexRadiusM": 88.54814,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "brands_hatch_t04",
+      "StartPosition": 0.13920164,
+      "ApexPosition": 0.15813716,
+      "EndPosition": 0.17732856,
+      "ApexRadiusM": 27.687801,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "brands_hatch_t05",
+      "StartPosition": 0.19344933,
+      "ApexPosition": 0.21519959,
+      "EndPosition": 0.23694985,
+      "ApexRadiusM": 61.17584,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "brands_hatch_t06",
+      "StartPosition": 0.29657114,
+      "ApexPosition": 0.32088023,
+      "EndPosition": 0.34544525,
+      "ApexRadiusM": 52.202183,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "brands_hatch_t07",
+      "StartPosition": 0.50230294,
+      "ApexPosition": 0.52507675,
+      "EndPosition": 0.54810643,
+      "ApexRadiusM": 105.88624,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "brands_hatch_t08",
+      "StartPosition": 0.5910952,
+      "ApexPosition": 0.6087513,
+      "EndPosition": 0.62666327,
+      "ApexRadiusM": 96.26232,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "brands_hatch_t09",
+      "StartPosition": 0.62691915,
+      "ApexPosition": 0.6609519,
+      "EndPosition": 0.6949847,
+      "ApexRadiusM": 137.58736,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "brands_hatch_t10",
+      "StartPosition": 0.69524056,
+      "ApexPosition": 0.7108495,
+      "EndPosition": 0.72671443,
+      "ApexRadiusM": 116.76908,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "brands_hatch_t11",
+      "StartPosition": 0.7563971,
+      "ApexPosition": 0.7714944,
+      "EndPosition": 0.7868475,
+      "ApexRadiusM": 60.825222,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "brands_hatch_t12",
+      "StartPosition": 0.870522,
+      "ApexPosition": 0.8925282,
+      "EndPosition": 0.9145343,
+      "ApexRadiusM": 92.06473,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "brands_hatch_t13",
+      "StartPosition": 0.91479015,
+      "ApexPosition": 0.9501023,
+      "EndPosition": 0.9854145,
+      "ApexRadiusM": 130.04094,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    }
+  ]
+}

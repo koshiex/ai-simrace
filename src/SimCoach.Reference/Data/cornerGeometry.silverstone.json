@@ -1,0 +1,162 @@
+{
+  "SchemaVersion": 1,
+  "TrackId": "silverstone",
+  "LapLengthM": 5891,
+  "LapCount": 12,
+  "SourceRecording": null,
+  "Corners": [
+    {
+      "Id": "silverstone_t01",
+      "StartPosition": 0.02936683,
+      "ApexPosition": 0.039042607,
+      "EndPosition": 0.048888136,
+      "ApexRadiusM": 126.91325,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "silverstone_t02",
+      "StartPosition": 0.049057886,
+      "ApexPosition": 0.06399593,
+      "EndPosition": 0.07893397,
+      "ApexRadiusM": 124.69414,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "silverstone_t03",
+      "StartPosition": 0.11984383,
+      "ApexPosition": 0.14394839,
+      "EndPosition": 0.16822271,
+      "ApexRadiusM": 166.22122,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "silverstone_t04",
+      "StartPosition": 0.16839246,
+      "ApexPosition": 0.1778985,
+      "EndPosition": 0.18757427,
+      "ApexRadiusM": 107.08406,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "silverstone_t05",
+      "StartPosition": 0.18774402,
+      "ApexPosition": 0.2014938,
+      "EndPosition": 0.2152436,
+      "ApexRadiusM": 88.176506,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "silverstone_t06",
+      "StartPosition": 0.21541335,
+      "ApexPosition": 0.23136988,
+      "EndPosition": 0.24732643,
+      "ApexRadiusM": 154.23203,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "silverstone_t07",
+      "StartPosition": 0.36173823,
+      "ApexPosition": 0.37990156,
+      "EndPosition": 0.3982346,
+      "ApexRadiusM": 89.40231,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "silverstone_t08",
+      "StartPosition": 0.4060431,
+      "ApexPosition": 0.4180954,
+      "EndPosition": 0.43014768,
+      "ApexRadiusM": 184.43277,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "silverstone_t09",
+      "StartPosition": 0.4479715,
+      "ApexPosition": 0.45493126,
+      "EndPosition": 0.46206078,
+      "ApexRadiusM": 37.72888,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "silverstone_t10",
+      "StartPosition": 0.46223053,
+      "ApexPosition": 0.48429808,
+      "EndPosition": 0.5065354,
+      "ApexRadiusM": 51.4519,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "silverstone_t11",
+      "StartPosition": 0.56289256,
+      "ApexPosition": 0.6122899,
+      "EndPosition": 0.6616873,
+      "ApexRadiusM": 141.40025,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "silverstone_t12",
+      "StartPosition": 0.66185707,
+      "ApexPosition": 0.67390937,
+      "EndPosition": 0.68613136,
+      "ApexRadiusM": 40.879543,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "silverstone_t13",
+      "StartPosition": 0.6863011,
+      "ApexPosition": 0.69852316,
+      "EndPosition": 0.71091497,
+      "ApexRadiusM": 26.870445,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "silverstone_t14",
+      "StartPosition": 0.72194874,
+      "ApexPosition": 0.733322,
+      "EndPosition": 0.7446953,
+      "ApexRadiusM": 140.3208,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "silverstone_t15",
+      "StartPosition": 0.84196234,
+      "ApexPosition": 0.85723984,
+      "EndPosition": 0.8725174,
+      "ApexRadiusM": 60.123955,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "silverstone_t16",
+      "StartPosition": 0.87268716,
+      "ApexPosition": 0.8930572,
+      "EndPosition": 0.913597,
+      "ApexRadiusM": 39.450905,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "silverstone_t17",
+      "StartPosition": 0.91376674,
+      "ApexPosition": 0.9441521,
+      "EndPosition": 0.97453743,
+      "ApexRadiusM": 189.40372,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    }
+  ]
+}

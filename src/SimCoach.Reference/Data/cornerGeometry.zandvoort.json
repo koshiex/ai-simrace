@@ -1,0 +1,117 @@
+{
+  "SchemaVersion": 1,
+  "TrackId": "zandvoort",
+  "LapLengthM": 4252,
+  "LapCount": 12,
+  "SourceRecording": null,
+  "Corners": [
+    {
+      "Id": "zandvoort_t01",
+      "StartPosition": 0.074082784,
+      "ApexPosition": 0.09336783,
+      "EndPosition": 0.11288805,
+      "ApexRadiusM": 34.501812,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zandvoort_t02",
+      "StartPosition": 0.11312324,
+      "ApexPosition": 0.14887112,
+      "EndPosition": 0.18461901,
+      "ApexRadiusM": 70.099205,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zandvoort_t03",
+      "StartPosition": 0.18485418,
+      "ApexPosition": 0.20578551,
+      "EndPosition": 0.22671685,
+      "ApexRadiusM": 29.735476,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zandvoort_t04",
+      "StartPosition": 0.22695202,
+      "ApexPosition": 0.30550328,
+      "EndPosition": 0.38428974,
+      "ApexRadiusM": 159.48836,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zandvoort_t05",
+      "StartPosition": 0.38452494,
+      "ApexPosition": 0.4275635,
+      "EndPosition": 0.47060207,
+      "ApexRadiusM": 90.159164,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zandvoort_t06",
+      "StartPosition": 0.47083727,
+      "ApexPosition": 0.49247414,
+      "EndPosition": 0.5143462,
+      "ApexRadiusM": 81.45545,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zandvoort_t07",
+      "StartPosition": 0.5145814,
+      "ApexPosition": 0.54139227,
+      "EndPosition": 0.5684384,
+      "ApexRadiusM": 42.022808,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zandvoort_t08",
+      "StartPosition": 0.56867355,
+      "ApexPosition": 0.5966604,
+      "EndPosition": 0.6246472,
+      "ApexRadiusM": 44.758083,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zandvoort_t09",
+      "StartPosition": 0.7271872,
+      "ApexPosition": 0.7354186,
+      "EndPosition": 0.7438852,
+      "ApexRadiusM": 44.319702,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zandvoort_t10",
+      "StartPosition": 0.7441204,
+      "ApexPosition": 0.75799626,
+      "EndPosition": 0.77210724,
+      "ApexRadiusM": 28.11292,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zandvoort_t11",
+      "StartPosition": 0.81655693,
+      "ApexPosition": 0.8339605,
+      "EndPosition": 0.8515993,
+      "ApexRadiusM": 64.12888,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zandvoort_t12",
+      "StartPosition": 0.8635936,
+      "ApexPosition": 0.89275634,
+      "EndPosition": 0.9221543,
+      "ApexRadiusM": 117.41004,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    }
+  ]
+}
