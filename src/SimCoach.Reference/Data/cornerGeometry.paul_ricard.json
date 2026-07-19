@@ -1,0 +1,144 @@
+{
+  "SchemaVersion": 1,
+  "TrackId": "paul_ricard",
+  "LapLengthM": 5770,
+  "LapCount": 12,
+  "SourceRecording": null,
+  "Corners": [
+    {
+      "Id": "paul_ricard_t01",
+      "StartPosition": 0.1017331,
+      "ApexPosition": 0.110918544,
+      "EndPosition": 0.12027729,
+      "ApexRadiusM": 72.89399,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "paul_ricard_t02",
+      "StartPosition": 0.12045061,
+      "ApexPosition": 0.13171577,
+      "EndPosition": 0.14315425,
+      "ApexRadiusM": 99.60846,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "paul_ricard_t03",
+      "StartPosition": 0.15493934,
+      "ApexPosition": 0.16135181,
+      "EndPosition": 0.1679376,
+      "ApexRadiusM": 435.0543,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "paul_ricard_t04",
+      "StartPosition": 0.18856153,
+      "ApexPosition": 0.19965337,
+      "EndPosition": 0.21074523,
+      "ApexRadiusM": 312.15543,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "paul_ricard_t05",
+      "StartPosition": 0.22010398,
+      "ApexPosition": 0.22772963,
+      "EndPosition": 0.2355286,
+      "ApexRadiusM": 79.797455,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "paul_ricard_t06",
+      "StartPosition": 0.2357019,
+      "ApexPosition": 0.24523397,
+      "EndPosition": 0.25476602,
+      "ApexRadiusM": 49.70583,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "paul_ricard_t07",
+      "StartPosition": 0.25493935,
+      "ApexPosition": 0.28214905,
+      "EndPosition": 0.30953208,
+      "ApexRadiusM": 30.625217,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "paul_ricard_t08",
+      "StartPosition": 0.30970538,
+      "ApexPosition": 0.3287695,
+      "EndPosition": 0.34800693,
+      "ApexRadiusM": 134.5061,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "paul_ricard_t09",
+      "StartPosition": 0.64263433,
+      "ApexPosition": 0.68804157,
+      "EndPosition": 0.73344886,
+      "ApexRadiusM": 154.24626,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "paul_ricard_t10",
+      "StartPosition": 0.7336222,
+      "ApexPosition": 0.7629116,
+      "EndPosition": 0.7923744,
+      "ApexRadiusM": 68.241135,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "paul_ricard_t11",
+      "StartPosition": 0.79254764,
+      "ApexPosition": 0.8034662,
+      "EndPosition": 0.814558,
+      "ApexRadiusM": 136.30469,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "paul_ricard_t12",
+      "StartPosition": 0.81473136,
+      "ApexPosition": 0.82980937,
+      "EndPosition": 0.8448874,
+      "ApexRadiusM": 45.920795,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "paul_ricard_t13",
+      "StartPosition": 0.84506065,
+      "ApexPosition": 0.87504333,
+      "EndPosition": 0.9051993,
+      "ApexRadiusM": 177.06297,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "paul_ricard_t14",
+      "StartPosition": 0.9053726,
+      "ApexPosition": 0.92114383,
+      "EndPosition": 0.9370884,
+      "ApexRadiusM": 59.124077,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "paul_ricard_t15",
+      "StartPosition": 0.9372617,
+      "ApexPosition": 0.9459272,
+      "EndPosition": 0.9545927,
+      "ApexRadiusM": 24.791868,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    }
+  ]
+}

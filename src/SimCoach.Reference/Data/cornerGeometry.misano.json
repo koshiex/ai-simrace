@@ -1,0 +1,144 @@
+{
+  "SchemaVersion": 1,
+  "TrackId": "misano",
+  "LapLengthM": 4226,
+  "LapCount": 12,
+  "SourceRecording": null,
+  "Corners": [
+    {
+      "Id": "misano_t01",
+      "StartPosition": 0.050165642,
+      "ApexPosition": 0.064126834,
+      "EndPosition": 0.07808803,
+      "ApexRadiusM": 80.8012,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "misano_t02",
+      "StartPosition": 0.07832465,
+      "ApexPosition": 0.09133933,
+      "EndPosition": 0.104354,
+      "ApexRadiusM": 50.340557,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "misano_t03",
+      "StartPosition": 0.10459063,
+      "ApexPosition": 0.121628016,
+      "EndPosition": 0.13890204,
+      "ApexRadiusM": 94.31455,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "misano_t04",
+      "StartPosition": 0.13913867,
+      "ApexPosition": 0.14387128,
+      "EndPosition": 0.14860389,
+      "ApexRadiusM": 114.35234,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "misano_t05",
+      "StartPosition": 0.18267865,
+      "ApexPosition": 0.20279224,
+      "EndPosition": 0.22290581,
+      "ApexRadiusM": 29.077896,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "misano_t06",
+      "StartPosition": 0.22314245,
+      "ApexPosition": 0.23781353,
+      "EndPosition": 0.25248462,
+      "ApexRadiusM": 93.79071,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "misano_t07",
+      "StartPosition": 0.27756745,
+      "ApexPosition": 0.32513013,
+      "EndPosition": 0.37292948,
+      "ApexRadiusM": 129.0413,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "misano_t08",
+      "StartPosition": 0.38570753,
+      "ApexPosition": 0.40558448,
+      "EndPosition": 0.42546144,
+      "ApexRadiusM": 39.301613,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "misano_t09",
+      "StartPosition": 0.43729296,
+      "ApexPosition": 0.48935163,
+      "EndPosition": 0.5414103,
+      "ApexRadiusM": 34.407433,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "misano_t10",
+      "StartPosition": 0.6412683,
+      "ApexPosition": 0.67274016,
+      "EndPosition": 0.70444864,
+      "ApexRadiusM": 221.60992,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "misano_t11",
+      "StartPosition": 0.7046853,
+      "ApexPosition": 0.7361571,
+      "EndPosition": 0.7678656,
+      "ApexRadiusM": 132.7849,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "misano_t12",
+      "StartPosition": 0.7681022,
+      "ApexPosition": 0.78064364,
+      "EndPosition": 0.7934217,
+      "ApexRadiusM": 108.62588,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "misano_t13",
+      "StartPosition": 0.8043067,
+      "ApexPosition": 0.82205397,
+      "EndPosition": 0.8400379,
+      "ApexRadiusM": 25.288448,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "misano_t14",
+      "StartPosition": 0.8402745,
+      "ApexPosition": 0.86228114,
+      "EndPosition": 0.88452435,
+      "ApexRadiusM": 107.17018,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "misano_t15",
+      "StartPosition": 0.9145764,
+      "ApexPosition": 0.930194,
+      "EndPosition": 0.94604826,
+      "ApexRadiusM": 69.694305,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    }
+  ]
+}

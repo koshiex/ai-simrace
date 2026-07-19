@@ -22,14 +22,25 @@ internal static class AccReplayClient
         + "Chrome/124.0 Safari/537.36";
 
     // In-tool string -> accreplay numeric trackId map (no such map exists elsewhere in the repo). The full
-    // 14-track table was read off the download-ghost ZIP paths and is recorded in
-    // docs/05-implementation/acc-ghost-format-re.md; only tracks with a vendored centerline can actually be
-    // aligned + imported, so this map carries the importable set (monza=3, spa=2). Add a track's id here once
-    // its centerline is vendored.
+    // 14-track table was read off the download-ghost ZIP paths (GhostCars/Offline/<track>/) and is recorded in
+    // docs/05-implementation/acc-ghost-format-re.md. Fetch is enabled for every track; whether a track can be
+    // baked/imported is gated separately by having a (vendored or ghost-derived) centerline align target.
     private static readonly Dictionary<string, int> _trackIds = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["monza"] = 3,
+        ["brands_hatch"] = 1,
         ["spa"] = 2,
+        ["monza"] = 3,
+        ["misano"] = 4,
+        ["paul_ricard"] = 5,
+        ["silverstone"] = 6,
+        ["hungaroring"] = 7,
+        ["nurburgring"] = 8,
+        ["barcelona"] = 9,
+        ["zolder"] = 10,
+        ["zandvoort"] = 11,
+        ["kyalami"] = 12,
+        ["mount_panorama"] = 13,
+        ["laguna_seca"] = 14,
     };
 
     internal static int TrackIdFor(string track)

@@ -1,0 +1,153 @@
+{
+  "SchemaVersion": 1,
+  "TrackId": "zolder",
+  "LapLengthM": 4011,
+  "LapCount": 12,
+  "SourceRecording": null,
+  "Corners": [
+    {
+      "Id": "zolder_t01",
+      "StartPosition": 0.059586138,
+      "ApexPosition": 0.0797806,
+      "EndPosition": 0.09997507,
+      "ApexRadiusM": 89.73152,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zolder_t02",
+      "StartPosition": 0.10022438,
+      "ApexPosition": 0.14884068,
+      "EndPosition": 0.19770631,
+      "ApexRadiusM": 71.080666,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zolder_t03",
+      "StartPosition": 0.19795562,
+      "ApexPosition": 0.22488157,
+      "EndPosition": 0.25205684,
+      "ApexRadiusM": 137.08768,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zolder_t04",
+      "StartPosition": 0.2670157,
+      "ApexPosition": 0.28895536,
+      "EndPosition": 0.31089503,
+      "ApexRadiusM": 108.48014,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zolder_t05",
+      "StartPosition": 0.43555224,
+      "ApexPosition": 0.44278234,
+      "EndPosition": 0.45026177,
+      "ApexRadiusM": 59.989223,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zolder_t06",
+      "StartPosition": 0.4505111,
+      "ApexPosition": 0.5123411,
+      "EndPosition": 0.57442033,
+      "ApexRadiusM": 138.12093,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zolder_t07",
+      "StartPosition": 0.57466966,
+      "ApexPosition": 0.58115184,
+      "EndPosition": 0.5878833,
+      "ApexRadiusM": 48.227398,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zolder_t08",
+      "StartPosition": 0.5881326,
+      "ApexPosition": 0.59336823,
+      "EndPosition": 0.5988532,
+      "ApexRadiusM": 45.19855,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zolder_t09",
+      "StartPosition": 0.5991025,
+      "ApexPosition": 0.6128148,
+      "EndPosition": 0.6265271,
+      "ApexRadiusM": 60.226604,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zolder_t10",
+      "StartPosition": 0.62677634,
+      "ApexPosition": 0.64372975,
+      "EndPosition": 0.6606831,
+      "ApexRadiusM": 102.35427,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zolder_t11",
+      "StartPosition": 0.6609324,
+      "ApexPosition": 0.6913488,
+      "EndPosition": 0.72176516,
+      "ApexRadiusM": 166.7625,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zolder_t12",
+      "StartPosition": 0.754176,
+      "ApexPosition": 0.7656445,
+      "EndPosition": 0.7773622,
+      "ApexRadiusM": 26.148798,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zolder_t13",
+      "StartPosition": 0.77761155,
+      "ApexPosition": 0.8035403,
+      "EndPosition": 0.82946897,
+      "ApexRadiusM": 208.02905,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zolder_t14",
+      "StartPosition": 0.8997756,
+      "ApexPosition": 0.9075044,
+      "EndPosition": 0.9154824,
+      "ApexRadiusM": 34.81037,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zolder_t15",
+      "StartPosition": 0.9157317,
+      "ApexPosition": 0.9272002,
+      "EndPosition": 0.938918,
+      "ApexRadiusM": 52.534573,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "zolder_t16",
+      "StartPosition": 0.9613563,
+      "ApexPosition": 0.97506857,
+      "EndPosition": 0.98878086,
+      "ApexRadiusM": 324.99228,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    }
+  ]
+}

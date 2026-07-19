@@ -1,0 +1,162 @@
+{
+  "SchemaVersion": 1,
+  "TrackId": "nurburgring",
+  "LapLengthM": 5137,
+  "LapCount": 12,
+  "SourceRecording": null,
+  "Corners": [
+    {
+      "Id": "nurburgring_t01",
+      "StartPosition": 0.11563169,
+      "ApexPosition": 0.128869,
+      "EndPosition": 0.14230095,
+      "ApexRadiusM": 23.547808,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "nurburgring_t02",
+      "StartPosition": 0.14249562,
+      "ApexPosition": 0.16410357,
+      "EndPosition": 0.18590617,
+      "ApexRadiusM": 60.55714,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "nurburgring_t03",
+      "StartPosition": 0.18610084,
+      "ApexPosition": 0.20362079,
+      "EndPosition": 0.22133541,
+      "ApexRadiusM": 30.58084,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "nurburgring_t04",
+      "StartPosition": 0.22153008,
+      "ApexPosition": 0.23282072,
+      "EndPosition": 0.24430601,
+      "ApexRadiusM": 54.433258,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "nurburgring_t05",
+      "StartPosition": 0.3145805,
+      "ApexPosition": 0.32995912,
+      "EndPosition": 0.34533775,
+      "ApexRadiusM": 79.03082,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "nurburgring_t06",
+      "StartPosition": 0.34553242,
+      "ApexPosition": 0.36032704,
+      "EndPosition": 0.37512165,
+      "ApexRadiusM": 38.656315,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "nurburgring_t07",
+      "StartPosition": 0.3932256,
+      "ApexPosition": 0.40996692,
+      "EndPosition": 0.4267082,
+      "ApexRadiusM": 257.32742,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "nurburgring_t08",
+      "StartPosition": 0.46388942,
+      "ApexPosition": 0.48043606,
+      "EndPosition": 0.49698266,
+      "ApexRadiusM": 32.698135,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "nurburgring_t09",
+      "StartPosition": 0.54156125,
+      "ApexPosition": 0.5487639,
+      "EndPosition": 0.5559665,
+      "ApexRadiusM": 121.64634,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "nurburgring_t10",
+      "StartPosition": 0.55616117,
+      "ApexPosition": 0.58321977,
+      "EndPosition": 0.61047304,
+      "ApexRadiusM": 135.62395,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "nurburgring_t11",
+      "StartPosition": 0.65466225,
+      "ApexPosition": 0.6700409,
+      "EndPosition": 0.68561417,
+      "ApexRadiusM": 67.793304,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "nurburgring_t12",
+      "StartPosition": 0.68580884,
+      "ApexPosition": 0.7037181,
+      "EndPosition": 0.7218221,
+      "ApexRadiusM": 70.64214,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "nurburgring_t13",
+      "StartPosition": 0.76854193,
+      "ApexPosition": 0.8004672,
+      "EndPosition": 0.83239245,
+      "ApexRadiusM": 195.45573,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "nurburgring_t14",
+      "StartPosition": 0.8802803,
+      "ApexPosition": 0.886899,
+      "EndPosition": 0.8935176,
+      "ApexRadiusM": 94.04136,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "nurburgring_t15",
+      "StartPosition": 0.8937123,
+      "ApexPosition": 0.89857894,
+      "EndPosition": 0.9034456,
+      "ApexRadiusM": 109.78935,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "nurburgring_t16",
+      "StartPosition": 0.9036403,
+      "ApexPosition": 0.90772825,
+      "EndPosition": 0.9120109,
+      "ApexRadiusM": 110.0821,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "nurburgring_t17",
+      "StartPosition": 0.93167216,
+      "ApexPosition": 0.9478295,
+      "EndPosition": 0.96398675,
+      "ApexRadiusM": 44.78462,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    }
+  ]
+}

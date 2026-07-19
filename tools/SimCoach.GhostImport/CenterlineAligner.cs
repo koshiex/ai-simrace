@@ -47,6 +47,35 @@ internal static class CenterlineAligner
         return aligned;
     }
 
+    /// <summary>
+    /// Projects each ghost record onto <paramref name="centerline"/> and returns its COMMON-axis arc-length
+    /// (the nearest bin's <see cref="CenterlineBin.DistanceM"/>). This is the bootstrap-axis primitive
+    /// (B1b): a provisional centerline re-parameterizes every ghost onto one shared 0..N axis so the median
+    /// binner does not smear physically-offset points. Unlike <see cref="Align"/> it carries NO deviation
+    /// ceiling — on ghost-derived tracks the 2 m guard is informational only (OD-B3 / ADR-0022): different
+    /// alien drivers legitimately run different lines, and the real backstop is the downstream
+    /// span-coherence + corner-layout calibration, not a per-frame owner-tuned envelope.
+    /// </summary>
+    internal static IReadOnlyList<float> ProjectDistancesM(
+        IReadOnlyList<GhostRecord> lap, MedianCenterline centerline)
+    {
+        ArgumentNullException.ThrowIfNull(lap);
+        ArgumentNullException.ThrowIfNull(centerline);
+        if (centerline.Bins.Count == 0)
+        {
+            throw new InvalidDataException("centerline has no bins to project onto");
+        }
+
+        float[] distances = new float[lap.Count];
+        for (int i = 0; i < lap.Count; i++)
+        {
+            CenterlineBin nearest = NearestBin(centerline.Bins, lap[i].WorldX, lap[i].WorldZ, out _);
+            distances[i] = nearest.DistanceM;
+        }
+
+        return distances;
+    }
+
     /// <summary>Median nearest-point deviation (metres) of the lap against the centerline — diagnostic.</summary>
     internal static float MedianDeviationM(IReadOnlyList<GhostRecord> lap, MedianCenterline centerline)
     {

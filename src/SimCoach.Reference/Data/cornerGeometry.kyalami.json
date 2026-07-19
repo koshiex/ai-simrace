@@ -1,0 +1,144 @@
+{
+  "SchemaVersion": 1,
+  "TrackId": "kyalami",
+  "LapLengthM": 4522,
+  "LapCount": 12,
+  "SourceRecording": null,
+  "Corners": [
+    {
+      "Id": "kyalami_t01",
+      "StartPosition": 0,
+      "ApexPosition": 0.039584253,
+      "EndPosition": 0.079389654,
+      "ApexRadiusM": 217.19803,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "kyalami_t02",
+      "StartPosition": 0.13710748,
+      "ApexPosition": 0.15369305,
+      "EndPosition": 0.17049977,
+      "ApexRadiusM": 37.03526,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "kyalami_t03",
+      "StartPosition": 0.17072092,
+      "ApexPosition": 0.18443167,
+      "EndPosition": 0.19836356,
+      "ApexRadiusM": 86.35925,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "kyalami_t04",
+      "StartPosition": 0.19858469,
+      "ApexPosition": 0.22136223,
+      "EndPosition": 0.24413976,
+      "ApexRadiusM": 62.7421,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "kyalami_t05",
+      "StartPosition": 0.33547103,
+      "ApexPosition": 0.36267138,
+      "EndPosition": 0.38987175,
+      "ApexRadiusM": 122.60062,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "kyalami_t06",
+      "StartPosition": 0.39009288,
+      "ApexPosition": 0.42127377,
+      "EndPosition": 0.45267582,
+      "ApexRadiusM": 56.92181,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "kyalami_t07",
+      "StartPosition": 0.48717383,
+      "ApexPosition": 0.50044227,
+      "EndPosition": 0.51371074,
+      "ApexRadiusM": 104.127556,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "kyalami_t08",
+      "StartPosition": 0.5139319,
+      "ApexPosition": 0.5356037,
+      "EndPosition": 0.55727553,
+      "ApexRadiusM": 107.533905,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "kyalami_t09",
+      "StartPosition": 0.575188,
+      "ApexPosition": 0.59133124,
+      "EndPosition": 0.60747457,
+      "ApexRadiusM": 316.1331,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "kyalami_t10",
+      "StartPosition": 0.6242813,
+      "ApexPosition": 0.6475011,
+      "EndPosition": 0.67072093,
+      "ApexRadiusM": 32.919666,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "kyalami_t11",
+      "StartPosition": 0.7129589,
+      "ApexPosition": 0.7598408,
+      "EndPosition": 0.8067227,
+      "ApexRadiusM": 144.6471,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "kyalami_t12",
+      "StartPosition": 0.80694383,
+      "ApexPosition": 0.8235294,
+      "EndPosition": 0.840115,
+      "ApexRadiusM": 42.74877,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "kyalami_t13",
+      "StartPosition": 0.84033614,
+      "ApexPosition": 0.8852278,
+      "EndPosition": 0.9301194,
+      "ApexRadiusM": 115.2109,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "kyalami_t14",
+      "StartPosition": 0.9303405,
+      "ApexPosition": 0.9444936,
+      "EndPosition": 0.9588677,
+      "ApexRadiusM": 33.637302,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    },
+    {
+      "Id": "kyalami_t15",
+      "StartPosition": 0.9834144,
+      "ApexPosition": 0.99159664,
+      "EndPosition": 0.99977887,
+      "ApexRadiusM": 318.8645,
+      "PeakLateralG": 0,
+      "Trigger": "Curvature"
+    }
+  ]
+}
