@@ -14,7 +14,7 @@
 
 ## patterns/
 
-- [coach-action-registry.md](patterns/coach-action-registry.md) — the multi-file sync surface for adding a corner action (globally-unique `(phase,rank)`, hardcoded action-count test) or a Gold scalar (`GoldFieldNames` + `CornerGoldView` + `BuildCorner` + the `CoachStartupValidator.SampleView` fixture must set the new field non-null, else ~70 tests fail).
+- [coach-action-registry.md](patterns/coach-action-registry.md) — the multi-file sync surface for adding a corner action (globally-unique `(phase,rank)`, hardcoded action-count test) or a Gold scalar (`GoldFieldNames` + `CornerGoldView` + `BuildCorner` + the `CoachStartupValidator.SampleView` fixture must set the new field non-null, else ~70 tests fail); plus two truthfulness traps — a `when`-gate must clear the kernel's *attainable* ceiling (ABS-capped `brake_lockup_score`), and a lap-scoped state claim ("перегреты") must come from SUSTAINED exposure, not an instantaneous max (a 67 ms 701 °C spike announced overheating while the HUD read cold).
 
 ## tools/
 
