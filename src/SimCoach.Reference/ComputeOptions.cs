@@ -66,6 +66,26 @@ public sealed record ComputeOptions
     /// <summary>How many corners to report in a lap/sector <c>top_losses</c> list.</summary>
     public int TopLossesCount { get; init; } = 3;
 
+    /// <summary>
+    /// Tier-2 (internal): tyre core temperature (deg C) above which a frame counts as thermal abuse.
+    /// </summary>
+    public float TyreOverheatC { get; init; } = 110f;
+
+    /// <summary>
+    /// Tier-2 (internal): brake temperature (deg C) above which a frame counts as thermal abuse. 800, not
+    /// 700: on a real Monza lap the brakes ran a 414 °C median with a 637 °C p95 and touched 701 °C at the
+    /// heaviest stop — 700 sits INSIDE the normal GT3 carbon operating window, so it flagged healthy brakes.
+    /// </summary>
+    public float BrakeOverheatC { get; init; } = 800f;
+
+    /// <summary>
+    /// Tier-2 (internal): the fraction of a lap's temperature-carrying frames that must exceed a thermal band
+    /// before the overheat flag is raised. Overheating is a sustained condition — a single hard stop spikes a
+    /// disc for tens of milliseconds (measured: 67 ms = 0.015% of a lap) and must NOT be announced as
+    /// "brakes overheated" while the in-game HUD still reads cold.
+    /// </summary>
+    public float MinOverheatFractionOfLap { get; init; } = 0.02f;
+
     /// <summary>Top-N bound on the session-level <c>aggregated_losses</c> (mirrors the debrief schema cap).</summary>
     public int AggregatedLossesCap { get; init; } = 5;
 
