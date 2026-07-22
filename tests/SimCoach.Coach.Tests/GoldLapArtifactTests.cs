@@ -28,7 +28,8 @@ public sealed class GoldLapArtifactTests
 
         e.TopLosses.Should().ContainSingle();
         e.TopLosses[0].Corner.Should().Be("Rivage");
-        // spa_t08 → GetShort short RU form; guards against a regression to the empty default or raw ResolveName.
+        // spa_t08 → GetRu spoken RU form (== the short form for this corner, no ordinal); still guards against a
+        // regression to the empty default or raw Latin ResolveName ("Rivage").
         e.TopLosses[0].CornerNameRu.Should().Be("Риваж");
     }
 

@@ -232,7 +232,7 @@ public sealed class CoachService : BackgroundService
         }
 
         CoachAction top = subset[0];
-        RenderedAction topRendered = PhraseRenderer.Render(top, view);
+        RenderedAction topRendered = PhraseRenderer.Render(top, view, _coachOptions);
         bool noPb = !gold.Session.HasReference;
 
         // TemplateOnly means the budget cap was hit (the only TemplateOnly outcome) — no LLM call, and the row
@@ -366,7 +366,7 @@ public sealed class CoachService : BackgroundService
         string actionId, string phraseRu, string? providerModelId, bool noPb, CoachSeverity severity, string sessionId)
     {
         CoachAction chosen = subset.First(a => a.Id == actionId);
-        RenderedAction rendered = PhraseRenderer.Render(chosen, view);
+        RenderedAction rendered = PhraseRenderer.Render(chosen, view, _coachOptions);
         return ComposeRealtimeTip(cadence, gold, chosen, rendered, phraseRu, TipSource.Llm, providerModelId, noPb, severity, sessionId);
     }
 
@@ -407,9 +407,10 @@ public sealed class CoachService : BackgroundService
         return gold.Event switch
         {
             GoldCornerEvent c when !string.IsNullOrWhiteSpace(c.CornerId) =>
-                // M5: name the corner with the authored RU short form (corner_name_ru contract) so the
-                // deterministic template tip speaks Russian instead of the raw Italian ResolveName.
-                (c.CornerId, _names.GetShort(trackId, c.CornerId), _names.GetShort(trackId, c.CornerId), _names.GetSpokenRu(trackId, c.CornerId)),
+                // M5: name the corner with the authored spoken RU form (corner_name_ru contract, "первый Пухон")
+                // so the tip speaks Russian instead of the raw Italian ResolveName; the slim short form stays for
+                // the overlay chip.
+                (c.CornerId, _names.GetRu(trackId, c.CornerId), _names.GetShort(trackId, c.CornerId), _names.GetRu(trackId, c.CornerId)),
             GoldCornerEvent c => (c.CornerId, c.CornerName, null, null),
             GoldSectorEvent s => (null, s.TopCorner, null, null),
             GoldLapEvent l => (null, l.TopCorner, null, null),

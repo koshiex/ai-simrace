@@ -6,7 +6,7 @@
   "weatherBucket": "dry",
   "hasReference": true,
   "knownBad": true,
-  "referencePhraseRu": "В Ла-Сурс тормози позже — примерно на восемь метров.",
+  "referencePhraseRu": "В Ла-Сурс тормози позже — почти на два корпуса.",
   "candidatePhraseRu": "В La Source tormozi pozzhe primerno na vosem metrov.",
   "event": {
     "cornerId": "spa_t01",

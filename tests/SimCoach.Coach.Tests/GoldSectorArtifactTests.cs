@@ -27,8 +27,8 @@ public sealed class GoldSectorArtifactTests
         e.TopLosses[0].Corner.Should().Be("Les Combes (1)");
         e.TopLosses[0].Ms.Should().Be(120);
         e.TopLosses[0].Why.Should().Be("late_throttle");
-        // spa_t05 → GetShort short RU form; guards against a regression to the empty default or raw ResolveName.
-        e.TopLosses[0].CornerNameRu.Should().Be("Комб1");
+        // spa_t05 → GetRu spoken RU form; guards against a regression to the empty default or raw ResolveName.
+        e.TopLosses[0].CornerNameRu.Should().Be("первый Ле-Комб");
         e.TopLosses[1].Corner.Should().Be("Eau Rouge");
     }
 }

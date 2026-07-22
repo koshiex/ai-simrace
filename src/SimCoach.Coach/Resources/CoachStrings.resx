@@ -80,6 +80,18 @@
   <data name="Ordinal_6" xml:space="preserve">
     <value>шестой</value>
   </data>
+  <data name="CarLength_One" xml:space="preserve">
+    <value>корпус</value>
+    <comment>Car-length distance noun, nominative singular (1, 21, 31…): "на 1 корпус позже".</comment>
+  </data>
+  <data name="CarLength_Few" xml:space="preserve">
+    <value>корпуса</value>
+    <comment>Car-length distance noun, few form (2–4, 22–24…): "на 2 корпуса позже".</comment>
+  </data>
+  <data name="CarLength_Many" xml:space="preserve">
+    <value>корпусов</value>
+    <comment>Car-length distance noun, many form (0, 5–20…): "на 5 корпусов позже".</comment>
+  </data>
   <data name="Reason_off_track" xml:space="preserve">
     <value>вылет с трассы</value>
     <comment>Debrief loss reason (closed set from compute).</comment>

@@ -11,14 +11,15 @@ namespace SimCoach.Coach.Actions;
 /// </summary>
 public static class PhraseRenderer
 {
-    public static RenderedAction Render(CoachAction action, IGoldView gold)
+    public static RenderedAction Render(CoachAction action, IGoldView gold, CoachOptions options)
     {
+        ArgumentNullException.ThrowIfNull(options);
         string phrase = action.PhraseTemplateRu;
         string renderedParam = string.Empty;
 
         foreach (ParamBinding param in action.Params)
         {
-            string value = RenderValue(param, gold);
+            string value = RenderValue(param, gold, options);
             phrase = phrase.Replace("{" + param.Name + "}", value, StringComparison.Ordinal);
 
             if (renderedParam.Length == 0 && IsQuantitative(param.Transform))
@@ -31,9 +32,9 @@ public static class PhraseRenderer
     }
 
     private static bool IsQuantitative(ParamTransform transform) =>
-        transform is ParamTransform.AbsRound0 or ParamTransform.SignedRound0;
+        transform is ParamTransform.AbsRound0 or ParamTransform.SignedRound0 or ParamTransform.CarLengths;
 
-    private static string RenderValue(ParamBinding param, IGoldView gold)
+    private static string RenderValue(ParamBinding param, IGoldView gold, CoachOptions options)
     {
         if (param.Transform == ParamTransform.None)
         {
@@ -67,6 +68,7 @@ public static class PhraseRenderer
             ParamTransform.SignedRound0 =>
                 ((long)Math.Round(value, MidpointRounding.AwayFromZero))
                     .ToString("+0;-0;0", CultureInfo.InvariantCulture),
+            ParamTransform.CarLengths => CarLengthGloss.ToRu(value, options.CarLengthMeters),
             _ => value.ToString(CultureInfo.InvariantCulture),
         };
 
