@@ -209,27 +209,51 @@ public sealed class Phase3KernelsTests
         SteeringJitterKernels.SteeringJitter([FrameAt(ms: 0, steer: 0.2f)]).Should().Be(0f);
     }
 
+    // Thermal bands/exposure mirror the ComputeOptions defaults (the kernel itself holds no constants).
+    private const float TyreBandC = 110f;
+    private const float BrakeBandC = 800f;
+    private const float MinOverheatFraction = 0.02f;
+
+    private static ThermalResult AnalyzeThermal(params TelemetryFrame[] frames) =>
+        ThermalKernels.Analyze(frames, TyreBandC, BrakeBandC, MinOverheatFraction);
+
     [Fact]
-    public void Thermal_reports_peaks_and_overheat_flags()
+    public void Thermal_reports_peaks_and_flags_sustained_overheat()
     {
+        // Half the lap above both bands — genuinely sustained abuse, well past the 2% exposure floor.
         TelemetryFrame[] hot =
         [
             FrameWithTemps(tyre: 95f, brake: 400f),
-            FrameWithTemps(tyre: 120f, brake: 750f),  // both over the abuse bands
+            FrameWithTemps(tyre: 120f, brake: 850f),
         ];
 
-        ThermalResult thermal = ThermalKernels.Analyze(hot);
+        ThermalResult thermal = AnalyzeThermal(hot);
 
         thermal.MaxTyreTempC.Should().BeApproximately(120f, 1e-4f);
-        thermal.MaxBrakeTempC.Should().BeApproximately(750f, 1e-4f);
+        thermal.MaxBrakeTempC.Should().BeApproximately(850f, 1e-4f);
         thermal.TyreOverheat.Should().BeTrue();
         thermal.BrakeOverheat.Should().BeTrue();
     }
 
     [Fact]
+    public void Thermal_transient_spike_reports_the_peak_but_does_not_flag_overheat()
+    {
+        // Regression: one hard stop legitimately spikes a GT3 disc for a few frames. Measured in the wild —
+        // 701 °C for 67 ms (0.015% of the lap, median 414 °C) — and the old peak-crossed-once rule announced
+        // "brakes overheated" while the HUD read cold. One frame in 200 (0.5%) is under the 2% floor.
+        TelemetryFrame[] lap = [.. Enumerable.Repeat(FrameWithTemps(tyre: 90f, brake: 420f), 199)];
+        TelemetryFrame[] withSpike = [.. lap, FrameWithTemps(tyre: 90f, brake: 900f)];
+
+        ThermalResult thermal = AnalyzeThermal(withSpike);
+
+        thermal.MaxBrakeTempC.Should().BeApproximately(900f, 1e-4f, "the peak is still reported as a metric");
+        thermal.BrakeOverheat.Should().BeFalse("a single-frame spike is not sustained overheating");
+    }
+
+    [Fact]
     public void Thermal_within_band_does_not_flag_overheat()
     {
-        ThermalResult thermal = ThermalKernels.Analyze([FrameWithTemps(tyre: 90f, brake: 300f)]);
+        ThermalResult thermal = AnalyzeThermal(FrameWithTemps(tyre: 90f, brake: 300f));
 
         thermal.MaxTyreTempC.Should().BeApproximately(90f, 1e-4f);
         thermal.TyreOverheat.Should().BeFalse();
@@ -239,9 +263,7 @@ public sealed class Phase3KernelsTests
     [Fact]
     public void Thermal_empty_temp_arrays_return_zero_without_throwing()
     {
-        TelemetryFrame[] noTemps = [new() { ThrottlePct = 1f }];
-
-        ThermalResult thermal = ThermalKernels.Analyze(noTemps);
+        ThermalResult thermal = AnalyzeThermal(new TelemetryFrame { ThrottlePct = 1f });
 
         thermal.Should().Be(new ThermalResult
         {

@@ -539,7 +539,8 @@ internal sealed class ComputeSession
             }
         }
 
-        ThermalResult thermal = ThermalKernels.Analyze(completed.Frames);
+        ThermalResult thermal = ThermalKernels.Analyze(
+            completed.Frames, _options.TyreOverheatC, _options.BrakeOverheatC, _options.MinOverheatFractionOfLap);
         var lapEvent = new LapEvent
         {
             T = frame.T,

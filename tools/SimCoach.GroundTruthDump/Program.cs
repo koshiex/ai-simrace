@@ -28,11 +28,26 @@ const float MetresPerSecondToKmh = 3.6f;
 
 static string F(float v) => v.ToString("R", CultureInfo.InvariantCulture);
 
+// Peak across a per-wheel [FL, FR, RL, RR] array; empty (ACC often reports none live) yields 0.
+static float PeakOf(IReadOnlyList<float> values)
+{
+    float peak = 0f;
+    foreach (float value in values)
+    {
+        if (value > peak)
+        {
+            peak = value;
+        }
+    }
+
+    return peak;
+}
+
 using var writer = new StreamWriter(outputPath, append: false, Encoding.ASCII);
 writer.Write(
     "t_ms,normalized_car_position,speed_kmh,brake,throttle,gear,steer_angle,"
     + "is_in_pit_lane,is_valid_lap,tyres_out,current_sector_index,lap_number,"
-    + "g_lat,g_long,world_x,world_z\n");
+    + "g_lat,g_long,world_x,world_z,max_brake_temp_c,max_tyre_temp_c\n");
 
 long count = 0;
 long pitFrames = 0;
@@ -80,6 +95,12 @@ foreach (TelemetryFrame frame in McapSegmentEnumerator.Read(sessionDir))
     writer.Write(F(frame.WorldPos?.X ?? 0f));
     writer.Write(',');
     writer.Write(F(frame.WorldPos?.Z ?? 0f));
+    // Per-frame peak across the [FL, FR, RL, RR] arrays — the same statistic ThermalKernels maxes over the
+    // lap, so a thermal claim in the debrief can be checked against the frame-level distribution.
+    writer.Write(',');
+    writer.Write(F(PeakOf(frame.BrakeTempC)));
+    writer.Write(',');
+    writer.Write(F(PeakOf(frame.TyreTempC)));
     writer.Write('\n');
     count++;
 }
