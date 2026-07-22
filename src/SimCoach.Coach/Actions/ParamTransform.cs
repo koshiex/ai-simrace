@@ -21,4 +21,11 @@ public enum ParamTransform
     /// <see cref="RenderedAction.RenderedParam"/> chip (which stays number-or-nothing).
     /// </summary>
     ReasonRu,
+
+    /// <summary>
+    /// Converts a metre distance to the intuitive car-length count with the Russian plural noun ("1 корпус",
+    /// "2 корпуса") via <see cref="CarLengthGloss"/> — the voice-speakable braking unit that replaces raw metres.
+    /// Quantitative: it populates the overlay chip. The car length comes from <see cref="CoachOptions.CarLengthMeters"/>.
+    /// </summary>
+    CarLengths,
 }

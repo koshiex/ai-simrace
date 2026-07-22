@@ -45,7 +45,7 @@ public sealed class GoldArtifactBuilder
             OffTrack: e.OffTrack,
             Reason: string.IsNullOrEmpty(e.Reason) ? null : e.Reason)
         {
-            CornerNameRu = _names.GetShort(ctx.TrackId, e.CornerId),
+            CornerNameRu = _names.GetRu(ctx.TrackId, e.CornerId),
             EntryLineDeviationM = hasRef ? Rounding.Meters(e.EntryLineDeviationM) : null,
             ApexLineDeviationM = hasRef ? Rounding.Meters(e.ApexLineDeviationM) : null,
             ExitLineDeviationM = hasRef ? Rounding.Meters(e.ExitLineDeviationM) : null,
@@ -142,7 +142,7 @@ public sealed class GoldArtifactBuilder
     [
         .. losses.Select(l => new GoldCornerLoss(_names.ResolveName(trackId, l.CornerId), l.DeltaMs, l.Reason)
         {
-            CornerNameRu = _names.GetShort(trackId, l.CornerId),
+            CornerNameRu = _names.GetRu(trackId, l.CornerId),
         }),
     ];
 
@@ -155,7 +155,7 @@ public sealed class GoldArtifactBuilder
             .Select(l => new GoldAggregatedLoss(
                 _names.ResolveName(trackId, l.CornerId), l.TotalLossMs, l.AvgLossMs, l.SampleCount, l.DominantReason)
             {
-                CornerNameRu = _names.GetShort(trackId, l.CornerId),
+                CornerNameRu = _names.GetRu(trackId, l.CornerId),
                 DominantChannel = l.DominantChannel,
                 DominantChannelValue = l.DominantChannelValue,
                 LossTrend = TrendPoints(l.LossTrend),

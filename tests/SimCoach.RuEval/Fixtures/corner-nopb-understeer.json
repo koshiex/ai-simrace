@@ -6,7 +6,7 @@
   "weatherBucket": "dry",
   "hasReference": false,
   "knownBad": false,
-  "referencePhraseRu": "В Пухоне плавнее руль и меньше скорости на входе — уходит в снос.",
+  "referencePhraseRu": "В первом Пухоне медленнее и меньше руля на входе — уходит в снос.",
   "event": {
     "cornerId": "spa_t10",
     "understeerScore": 0.82

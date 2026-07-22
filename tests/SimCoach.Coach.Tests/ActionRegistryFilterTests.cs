@@ -169,7 +169,7 @@ public sealed class ActionRegistryFilterTests
         // gloss is a string (not quantitative) so it never populates the overlay chip.
         CoachAction catchAll = _registry.Actions.Single(a => a.Id == "corner_catch_all");
 
-        RenderedAction rendered = PhraseRenderer.Render(catchAll, CatchAllGold(hasReference: true, "late_throttle"));
+        RenderedAction rendered = PhraseRenderer.Render(catchAll, CatchAllGold(hasReference: true, "late_throttle"), new CoachOptions());
 
         rendered.PhraseRu.Should().Be("В Eau Rouge теряешь: поздний газ на выходе.");
         rendered.PhraseRu.Should().NotContainAny("мс", "отклонение");

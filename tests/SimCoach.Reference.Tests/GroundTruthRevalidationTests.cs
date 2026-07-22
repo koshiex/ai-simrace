@@ -212,7 +212,7 @@ public sealed class GroundTruthRevalidationTests
             var view = new CornerGoldView(builder.BuildCorner(corner, ctx));
             foreach (CoachAction action in cornerActions)
             {
-                RenderedAction rendered = PhraseRenderer.Render(action, view);
+                RenderedAction rendered = PhraseRenderer.Render(action, view, new CoachOptions());
                 rendered.PhraseRu.Should().NotContain("3929", $"no corner tip may voice 3929 ({corner.CornerId})");
             }
         }

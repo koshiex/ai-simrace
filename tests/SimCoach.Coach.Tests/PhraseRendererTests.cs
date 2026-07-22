@@ -19,6 +19,8 @@ public sealed class PhraseRendererTests
             template,
             HintEn: "test_hint");
 
+    private static readonly CoachOptions _options = new();
+
     private static DictionaryGoldView Gold(
         IReadOnlyDictionary<string, double>? numbers = null,
         IReadOnlyDictionary<string, string>? strings = null) =>
@@ -36,11 +38,35 @@ public sealed class PhraseRendererTests
             action,
             Gold(
                 numbers: new Dictionary<string, double> { ["brake_point_diff_m"] = -3.4 },
-                strings: new Dictionary<string, string> { ["corner_name"] = "Eau Rouge" }));
+                strings: new Dictionary<string, string> { ["corner_name"] = "Eau Rouge" }),
+            _options);
 
         rendered.PhraseRu.Should().Be("В Eau Rouge тормози позже на 3м.");
         rendered.RenderedParam.Should().Be("3м");
         rendered.ActionLabelShort.Should().Be("test_label");
+    }
+
+    [Theory]
+    [InlineData(-8.5, "2 корпуса")]   // 8.5 / 4.6 → 1.85 → 2 (few)
+    [InlineData(-4.5, "1 корпус")]    // 4.5 / 4.6 → 0.98 → 1 (one)
+    [InlineData(-1.0, "1 корпус")]    // sub-half-car rounds up to a single length, never "0 корпусов"
+    [InlineData(-23.0, "5 корпусов")] // 23 / 4.6 → 5 (many)
+    public void CarLengths_converts_metres_to_the_pluralised_length(double meters, string expected)
+    {
+        CoachAction action = Action(
+            "В {corner} тормози позже на {dist}.",
+            new ParamBinding("corner", "corner_name", ParamTransform.None, null),
+            new ParamBinding("dist", "brake_point_diff_m", ParamTransform.CarLengths, null));
+
+        RenderedAction rendered = PhraseRenderer.Render(
+            action,
+            Gold(
+                numbers: new Dictionary<string, double> { ["brake_point_diff_m"] = meters },
+                strings: new Dictionary<string, string> { ["corner_name"] = "Ла-Сурс" }),
+            _options);
+
+        rendered.PhraseRu.Should().Be($"В Ла-Сурс тормози позже на {expected}.");
+        rendered.RenderedParam.Should().Be(expected);
     }
 
     [Fact]
@@ -49,7 +75,7 @@ public sealed class PhraseRendererTests
         CoachAction lapPb = ActionRegistry.Load().Actions.Single(a => a.Id == "lap_pb");
 
         RenderedAction rendered = PhraseRenderer.Render(
-            lapPb, new DictionaryGoldView(CoachCadence.Lap, hasReference: false));
+            lapPb, new DictionaryGoldView(CoachCadence.Lap, hasReference: false), _options);
 
         rendered.PhraseRu.Should().Be("Личный рекорд! Так держать.");
         rendered.PhraseRu.Should().NotContain("{");
@@ -66,7 +92,8 @@ public sealed class PhraseRendererTests
 
         RenderedAction rendered = PhraseRenderer.Render(
             action,
-            Gold(numbers: new Dictionary<string, double> { ["x"] = value }));
+            Gold(numbers: new Dictionary<string, double> { ["x"] = value }),
+            _options);
 
         rendered.PhraseRu.Should().Be(expected);
     }
@@ -83,7 +110,8 @@ public sealed class PhraseRendererTests
 
         RenderedAction rendered = PhraseRenderer.Render(
             action,
-            Gold(numbers: new Dictionary<string, double> { ["x"] = value }));
+            Gold(numbers: new Dictionary<string, double> { ["x"] = value }),
+            _options);
 
         rendered.PhraseRu.Should().Be(expected);
         rendered.RenderedParam.Should().Be(expected);
@@ -105,7 +133,8 @@ public sealed class PhraseRendererTests
             {
                 ["corner_name"] = "Eau Rouge",
                 ["reason"] = "early_brake",
-            }));
+            }),
+            _options);
 
         rendered.PhraseRu.Should().Be("В Eau Rouge теряешь: раннее торможение.");
         rendered.RenderedParam.Should().BeEmpty();
@@ -125,7 +154,8 @@ public sealed class PhraseRendererTests
 
             RenderedAction rendered = PhraseRenderer.Render(
                 action,
-                Gold(numbers: new Dictionary<string, double> { ["x"] = 0.5 }));
+                Gold(numbers: new Dictionary<string, double> { ["x"] = 0.5 }),
+            _options);
 
             rendered.PhraseRu.Should().Be("0.5");
         }

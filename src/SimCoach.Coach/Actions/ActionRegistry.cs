@@ -258,6 +258,7 @@ public sealed class ActionRegistry
         "abs_round0" => ParamTransform.AbsRound0,
         "signed_round0" => ParamTransform.SignedRound0,
         "reason_ru" => ParamTransform.ReasonRu,
+        "car_lengths" => ParamTransform.CarLengths,
         _ => throw new InvalidOperationException(
             $"actionRegistry.json: action '{id}' has an unknown param transform '{transform}'."),
     };
