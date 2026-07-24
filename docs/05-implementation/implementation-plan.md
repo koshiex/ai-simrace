@@ -64,6 +64,16 @@ Scope deferred out of the MVP: [mvp-deferrals.md](./mvp-deferrals.md).
 
 ## Phase 4 — Voice (week 5)
 
+Detailed plan: [phase-4-detailed-plan.md](./phase-4-detailed-plan.md) (work-items V0–V16, PR-A..M).
+Acceptance bar: [phase-4-acceptance.md](./phase-4-acceptance.md) (per-FR criteria, TTS-eval gate, GO/NO-GO).
+Design record: [ADR-0023](../02-architecture/adr/0023-tts-backend-selection-streamed-prose-eval-gate.md).
+Owner decisions locked 2026-07-23 (after adversarial review): **Silero-spike-first** (V0 gates the phase;
+on FAIL → Yandex primary); **Yandex SpeechKit built now behind a flag** (default Silero); **voicing is a
+general capability** — short structured tips **and** a route-agnostic streamed-prose voicer (debrief is the
+first consumer; the debrief *audio* + `StreamAsync` land in P4, the *window* stays P6); **blocking TTS-eval
+gate** (real-hardware FR-040 perf + golden-audio stress + scripted manual protocol). The global mute hotkey
+(FR-044) **moves to P5** (headless host has no HWND/pump); P4 ships mute state only.
+
 Carried from Phase 3 (PR-H): the **voice/TTS `ICoachTipSink`** — Coach already emits `CoachTip`s; P4 adds the
 speaking sink. See [mvp-deferrals.md](./mvp-deferrals.md) → "Carried from Phase 3 into later phases".
 
@@ -72,14 +82,15 @@ speaking sink. See [mvp-deferrals.md](./mvp-deferrals.md) → "Carried from Phas
 - [ ] `YandexSpeechKitClient` (behind feature flag, gRPC bidi)
 - [ ] `PriorityAudioQueue` preemption + fade-out
 - [ ] `NAudioPlayer` WASAPI shared
-- [ ] Hotkey to mute
+- [ ] Mute **state** (`IMuteState` + `voice.mute` / `voice.mute_on_startup` toggle); the global `Ctrl+Alt+M` **hotkey binding** → **Phase 5** (headless host has no HWND/message pump)
 - [ ] **M40 — streaming debrief:** stream the debrief LLM response token-by-token (`StreamAsync` /
       `RouteOptions.Stream`, `OpenRouterProvider.cs:73-74`) so TTS can begin speaking before the full
       text arrives — cuts perceived latency on the long (≤200-word) post-session summary. Deferred out
       of Phase 3 (no P3 win — nothing consumes the stream until a speaking sink exists); it is pure
       TTS-prep, so it lands with Voice. Note the existing seams: `StreamAsync` is already declared and
-      "streaming deferred to Phase 6" is noted for structured-output routes above — coordinate M40 with
-      the **Phase 6** debrief *delivery* + `StreamAsync` consumption so the two don't drift. Origin: P3
+      "streaming deferred to Phase 6" was noted for structured-output routes — but per owner D1
+      (2026-07-23) **M40 `StreamAsync` consumption + the voiced debrief audio land in Phase 4**; only the
+      debrief *window* stays P6. See [phase-4-detailed-plan.md](./phase-4-detailed-plan.md) (D1). Origin: P3
       master-backlog M40 `[LLM n25]`; owner scoped it to the TTS phase 2026-07-05.
 - [ ] Tests: cancellation latency, fade-out continuity
 
@@ -101,10 +112,17 @@ settings panel writing through `ISettingsStore` (the store + SQLite config-sourc
       → overlay`) is ratified now (Phase-3 P1); the rendering lands here with the overlay. Distinguish a
       *cadence-suppressed* tip (show) from a genuine *abstain* / below-materiality tip (drop). See the
       `Silent` point in `RuleEngine`/`CoachService`. Origin: owner idea from in-game testing 2026-07-04.
+- [ ] **Global mute hotkey (FR-044, `Ctrl+Alt+M`)** — moved here from Phase 4 (owner decision 2026-07-23):
+      a headless Generic Host has no HWND / message pump to receive `WM_HOTKEY`, so the global hotkey needs
+      the transparent overlay window built this phase (which provides the HWND + pump) — or a dedicated
+      message-only window + pump thread. Phase 4 ships mute **state** only (`IMuteState` +
+      `voice.mute`/`voice.mute_on_startup` settings toggle, `hotkey.mute` key **reserved**); this phase binds
+      the global hotkey to that state. See [phase-4-detailed-plan.md](./phase-4-detailed-plan.md) (D2) and
+      ADR-0023.
 
 ## Phase 6 — Post-Session Debrief (week 7)
 
-Carried from Phase 3 (PR-H): **debrief *delivery* + `StreamAsync` consumption**; the **`IReferenceQueryRepository`
+Carried from Phase 3 (PR-H): the **debrief *window*** (rendering + PDF/MD export) — note **`StreamAsync` consumption + the voiced debrief audio moved to Phase 4** per owner D1 (2026-07-23), so P6 carries only the window; the **`IReferenceQueryRepository`
 / `ISessionHistoryRepository` implementations** (declared with DTOs in PR-H); the **provisional best-of-session
 reference (richer FR-014)**, a `SimCoach.Reference` resample feature reassigned Post-MVP → Phase 6; and the
 tyre-degradation source (FR-060, below). See [mvp-deferrals.md](./mvp-deferrals.md) → "Carried from Phase 3
