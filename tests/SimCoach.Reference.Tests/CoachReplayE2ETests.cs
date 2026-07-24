@@ -97,7 +97,7 @@ public sealed class CoachReplayE2ETests : IDisposable
             new PromptBuilder(coachOptions, new PromptOptions()),
             llm,
             new RuleEngine(ruleOptions, TimeProvider.System),
-            sink,
+            [sink],
             ambient,
             names,
             coachOptions,
