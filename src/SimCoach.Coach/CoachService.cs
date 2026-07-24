@@ -16,7 +16,9 @@ namespace SimCoach.Coach;
 /// The coaching engine, wired into the live host as a <see cref="BackgroundService"/>. Subscribes to the
 /// lossless <see cref="DomainEventFanOut"/> in its constructor (so it cannot miss the opening events) and,
 /// per domain event, runs GoldArtifactBuilder → valid-subset → <see cref="RuleEngine"/> → (LLM | template)
-/// → cadence-aware validation/retry → <see cref="ICoachTipSink"/>. On shutdown it drains the buffered tail
+/// → cadence-aware validation/retry → every registered <see cref="ICoachTipSink"/> (the durable console sink
+/// first, then the P4 voice / P5 overlay sinks; a sink fault is isolated so it cannot starve the others).
+/// On shutdown it drains the buffered tail
 /// to channel completion (not on the cancelled token) so the final <c>SessionEvent</c> debrief survives stop.
 /// It always calls <c>ILlmClient</c>; the fake-vs-real provider choice lives in the router behind the single
 /// <c>Llm:Live</c> flag (off by default → FakeProvider, so replay/CI need no API key). The per-session and
@@ -33,7 +35,7 @@ public sealed class CoachService : BackgroundService
     private readonly PromptBuilder _promptBuilder;
     private readonly ILlmClient _llm;
     private readonly RuleEngine _ruleEngine;
-    private readonly ICoachTipSink _sink;
+    private readonly IReadOnlyList<ICoachTipSink> _sinks;
     private readonly ICoachAmbientState _ambient;
     private readonly CornerNameMap _names;
     private readonly CoachOptions _coachOptions;
@@ -54,7 +56,7 @@ public sealed class CoachService : BackgroundService
         PromptBuilder promptBuilder,
         ILlmClient llm,
         RuleEngine ruleEngine,
-        ICoachTipSink sink,
+        IEnumerable<ICoachTipSink> sinks,
         ICoachAmbientState ambient,
         CornerNameMap names,
         CoachOptions coachOptions,
@@ -69,7 +71,7 @@ public sealed class CoachService : BackgroundService
         ArgumentNullException.ThrowIfNull(promptBuilder);
         ArgumentNullException.ThrowIfNull(llm);
         ArgumentNullException.ThrowIfNull(ruleEngine);
-        ArgumentNullException.ThrowIfNull(sink);
+        ArgumentNullException.ThrowIfNull(sinks);
         ArgumentNullException.ThrowIfNull(ambient);
         ArgumentNullException.ThrowIfNull(names);
         ArgumentNullException.ThrowIfNull(coachOptions);
@@ -79,12 +81,19 @@ public sealed class CoachService : BackgroundService
         ArgumentNullException.ThrowIfNull(logger);
         coachOptions.EnsureValid();
 
+        // Snapshot the DI collection once: the fan-out order is the registration order, and the durable
+        // ConsoleTipSink is registered first so its persist never sits behind a later (voice/overlay) sink.
+        _sinks = [.. sinks];
+        if (_sinks.Count == 0)
+        {
+            throw new ArgumentException("At least one ICoachTipSink must be registered.", nameof(sinks));
+        }
+
         _builder = builder;
         _registry = registry;
         _promptBuilder = promptBuilder;
         _llm = llm;
         _ruleEngine = ruleEngine;
-        _sink = sink;
         _ambient = ambient;
         _names = names;
         _coachOptions = coachOptions;
@@ -155,6 +164,31 @@ public sealed class CoachService : BackgroundService
     // always processed on CancellationToken.None (see ExecuteAsync) — the shutdown transition is driven by the
     // token-bound *read*, not by a handler throwing — so any fault here is a genuine handler error, never a
     // cancellation: log it and move on.
+    // Fans the tip out to every registered sink in registration order. A sink fault is isolated per sink —
+    // the durable ConsoleTipSink is ordered first, so a throwing voice/overlay sink can neither cost the
+    // persist nor starve the sinks behind it (and cannot fault the host under StopHost). Cancellation is
+    // not a sink fault, so it propagates.
+    private async Task EmitToSinksAsync(CoachTip tip, CancellationToken ct)
+    {
+        for (int i = 0; i < _sinks.Count; i++)
+        {
+            ICoachTipSink sink = _sinks[i];
+            try
+            {
+                await sink.EmitTipAsync(tip, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex, "Coach tip sink {Sink} faulted for a {Cadence} tip", sink.GetType().Name, tip.Cadence);
+            }
+        }
+    }
+
     private async Task HandleSafelyAsync(DomainEvent domainEvent, string sessionId, CancellationToken ct)
     {
         try
@@ -278,7 +312,7 @@ public sealed class CoachService : BackgroundService
             return;
         }
 
-        await _sink.EmitTipAsync(tip, ct).ConfigureAwait(false);
+        await EmitToSinksAsync(tip, ct).ConfigureAwait(false);
         // M32: record the ACTUAL spoken action (BuildChosenTip may pick a non-lead subset member), so the
         // cross-lap memory reflects what the driver heard, not the lead the pre-LLM gate read.
         _ruleEngine.NoteTip(cadence, _clock.GetUtcNow(), tip.CornerId, tip.ActionId);
@@ -425,7 +459,7 @@ public sealed class CoachService : BackgroundService
         // it is the end-of-session summary.
         CoachTip tip = await CompleteDebriefAsync(gold, sessionId, ct).ConfigureAwait(false);
 
-        await _sink.EmitTipAsync(tip, ct).ConfigureAwait(false);
+        await EmitToSinksAsync(tip, ct).ConfigureAwait(false);
         await RefreshBudgetAsync(sessionId, ct).ConfigureAwait(false);
         // The debrief is intentionally un-gated (terminal once-per-session summary), so it is not cooldown-tracked.
     }
