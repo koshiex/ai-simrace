@@ -439,6 +439,75 @@ public sealed class CoachServiceTests
     }
 
     [Fact]
+    public async Task Every_registered_sink_receives_the_tip()
+    {
+        // PR-B: Voice (P4) and the overlay (P5) attach as ADDITIONAL ICoachTipSinks. A tip must reach all
+        // of them, not just the first-registered one.
+        IReadOnlyList<CoachAction> subset = CornerSubset(hasReference: true);
+        var durable = new CapturingSink();
+        var voice = new CapturingSink();
+        var harness = new Harness(
+            hasReference: true,
+            new ICoachTipSink[] { durable, voice },
+            Realtime(subset[0].Id, "Тормози позже немного."));
+
+        await RunToCompletionAsync(harness, DomainEvent.Corner(GoldTestData.Corner()));
+
+        durable.Tips.Should().ContainSingle();
+        voice.Tips.Should().ContainSingle();
+        voice.Tips[0].PhraseRu.Should().Be(durable.Tips[0].PhraseRu);
+    }
+
+    [Fact]
+    public async Task A_throwing_sink_does_not_starve_the_other_sinks()
+    {
+        // Per-sink FAULT isolation: the durable console sink is ordered first, so a later voice sink that
+        // throws must not cost the persist — and must not fault the host (BackgroundServiceExceptionBehavior
+        // .StopHost would tear it down).
+        IReadOnlyList<CoachAction> subset = CornerSubset(hasReference: true);
+        var durable = new CapturingSink();
+        var throwing = new AlwaysThrowingSink();
+        var lateVoice = new CapturingSink();
+        var harness = new Harness(
+            hasReference: true,
+            new ICoachTipSink[] { durable, throwing, lateVoice },
+            Realtime(subset[0].Id, "Тормози позже немного."));
+
+        Func<Task> run = () => RunToCompletionAsync(harness, DomainEvent.Corner(GoldTestData.Corner()));
+
+        await run.Should().NotThrowAsync();
+        durable.Tips.Should().ContainSingle();      // ordered before the fault
+        lateVoice.Tips.Should().ContainSingle();    // ordered after it — still served
+        throwing.Calls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Sinks_are_served_in_registration_order_so_the_durable_persist_runs_first()
+    {
+        // The durable persist must not sit behind an awaiting sink; registration order is the contract.
+        IReadOnlyList<CoachAction> subset = CornerSubset(hasReference: true);
+        List<string> order = [];
+        var durable = new RecordingSink("durable", order);
+        var voice = new RecordingSink("voice", order);
+        var harness = new Harness(
+            hasReference: true,
+            new ICoachTipSink[] { durable, voice },
+            Realtime(subset[0].Id, "Тормози позже немного."));
+
+        await RunToCompletionAsync(harness, DomainEvent.Corner(GoldTestData.Corner()));
+
+        order.Should().Equal("durable", "voice");
+    }
+
+    [Fact]
+    public void Constructing_without_any_sink_is_rejected()
+    {
+        Func<Harness> build = () => new Harness(hasReference: true, Array.Empty<ICoachTipSink>());
+
+        build.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
     public async Task Over_budget_emits_a_template_budget_tip_without_calling_the_llm()
     {
         // Session cost already over the 0.50 default cap → the gate downgrades before any LLM call.
@@ -664,12 +733,26 @@ public sealed class CoachServiceTests
         {
         }
 
+        // Multi-sink overload (PR-B): the service fans every tip out to ALL registered sinks, so the
+        // fan-out tests hand it an ordered list rather than the single-sink default.
+        public Harness(bool hasReference, IReadOnlyList<ICoachTipSink> sinks, params LlmResult[] responses)
+            : this(hasReference, null, null, null, sinks, responses)
+        {
+        }
+
         public Harness(
             bool hasReference, ICoachTipSink? sink, ICostQueryRepository? cost, RuleEngineOptions? ruleOptions,
             params LlmResult[] responses)
+            : this(hasReference, sink, cost, ruleOptions, null, responses)
+        {
+        }
+
+        private Harness(
+            bool hasReference, ICoachTipSink? sink, ICostQueryRepository? cost, RuleEngineOptions? ruleOptions,
+            IReadOnlyList<ICoachTipSink>? sinks, params LlmResult[] responses)
         {
             Llm = new ScriptedLlm(responses);
-            ICoachTipSink effectiveSink = sink ?? Sink;
+            IReadOnlyList<ICoachTipSink> effectiveSinks = sinks ?? [sink ?? Sink];
             Cost = cost ?? new StubCost();
             var coachOptions = new CoachOptions();
             var names = CornerNameMap.Load();
@@ -682,7 +765,7 @@ public sealed class CoachServiceTests
                 new PromptBuilder(coachOptions, new PromptOptions()),
                 Llm,
                 new RuleEngine(ruleOptions ?? new RuleEngineOptions(), TimeProvider.System),
-                effectiveSink,
+                effectiveSinks,
                 ambient,
                 names,
                 coachOptions,
@@ -744,6 +827,28 @@ public sealed class CoachServiceTests
         {
             ct.ThrowIfCancellationRequested();
             Tips.Add(tip);
+            return Task.CompletedTask;
+        }
+    }
+
+    // Fails on EVERY tip — proves the fan-out keeps serving the sinks ordered after a faulting one.
+    private sealed class AlwaysThrowingSink : ICoachTipSink
+    {
+        public int Calls { get; private set; }
+
+        public Task EmitTipAsync(CoachTip tip, CancellationToken ct)
+        {
+            Calls++;
+            throw new InvalidOperationException("sink boom");
+        }
+    }
+
+    // Appends its name on emit so a test can assert the fan-out preserves registration order.
+    private sealed class RecordingSink(string name, List<string> order) : ICoachTipSink
+    {
+        public Task EmitTipAsync(CoachTip tip, CancellationToken ct)
+        {
+            order.Add(name);
             return Task.CompletedTask;
         }
     }
