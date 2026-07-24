@@ -5,8 +5,16 @@ namespace SimCoach.RuEval;
 /// pass bar, the HARD groundedness floor, the judge route key, the per-fixture sample count, and the
 /// gate-vs-advisory switch. Every threshold is here — no magic numbers in the harness. The owner-decided
 /// stance is fixed (judge = <c>anthropic/claude-sonnet-4.6</c>, reference-anchored, 5-dim rubric + hard
-/// groundedness floor, hard-fail known-bad anchors, good-fixture bar release-blocking only after calibration);
-/// the concrete numbers below are the calibration knobs.
+/// groundedness floor, hard-fail known-bad anchors, good-fixture bar release-blocking after calibration).
+/// <para>
+/// CALIBRATED 2026-07-22 against 6 live judge runs on the committed fixtures (C1 / M18). Measured margins with
+/// the values below: good fixtures composite ≥ 4.10 (clear PassBar 3.5 by ≥ 0.6, every dimension ≥ 3 vs the
+/// 2.0 floor); the three known-bad anchors each tank exactly one dimension every run (fabricated groundedness
+/// 0, raw-number tone 1, transliteration natural_russian 0) so the per-dimension floor rejects them with ≥ 1.0
+/// margin regardless of composite. The good-fixture bar is now enforced (<see cref="EnforceGoodFixtureBar"/>).
+/// The one flaky good fixture found during calibration — the debrief candidate leaking raw "мс" into
+/// top_priority — was fixed at the source (debrief prompt rule 5), not by lowering the bar.
+/// </para>
 /// </summary>
 public sealed record RuEvalOptions
 {
@@ -44,10 +52,11 @@ public sealed record RuEvalOptions
 
     /// <summary>
     /// Gate-vs-advisory (M18-gate decision). The known-bad-anchor assertions are ALWAYS hard (they prove the
-    /// scale still discriminates). The good-fixture bar becomes release-blocking only once this is set true —
-    /// before calibration it is advisory (a below-bar good fixture logs, does not fail the run).
+    /// scale still discriminates). The good-fixture bar is release-blocking when true; it defaulted to advisory
+    /// (log, don't fail) until calibration proved the good fixtures clear the bar with margin. Enabled by default
+    /// after the 2026-07-22 calibration run (see the type summary) — a below-bar good fixture now fails the gate.
     /// </summary>
-    public bool EnforceGoodFixtureBar { get; init; }
+    public bool EnforceGoodFixtureBar { get; init; } = true;
 
     public void EnsureValid()
     {

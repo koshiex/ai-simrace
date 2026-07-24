@@ -70,9 +70,22 @@ public sealed class CornerNameMap
         return ResolveName(trackId, cornerId);
     }
 
-    /// <summary>The spoken RU form (trailing <c>(N)</c> expanded to an ordinal) for the voice path.</summary>
-    public string GetSpokenRu(string trackId, string cornerId) =>
-        CornerNameForms.Spoken(ResolveName(trackId, cornerId));
+    /// <summary>
+    /// The authored spoken Russian form the voice/prompt path uses (<c>corner_name_ru</c> contract): ordinal
+    /// word first, full name kept ("первый Пухон", "Ла-Сурс"). Falls back to the slim <see cref="GetShort"/>
+    /// form (and thence the positional name) for a corner with no authored RU form — e.g. the ghost-derived
+    /// tracks that carry geometry but no names yet.
+    /// </summary>
+    public string GetRu(string trackId, string cornerId)
+    {
+        CornerNameEntry? entry = TryGetEntry(trackId, cornerId);
+        if (entry is not null && !string.IsNullOrWhiteSpace(entry.Ru))
+        {
+            return entry.Ru;
+        }
+
+        return GetShort(trackId, cornerId);
+    }
 
     private CornerNameEntry? TryGetEntry(string trackId, string cornerId)
     {

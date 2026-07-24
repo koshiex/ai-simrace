@@ -6,7 +6,7 @@
   "weatherBucket": "dry",
   "hasReference": true,
   "knownBad": true,
-  "referencePhraseRu": "В Ла-Сурс тормози позже — примерно на восемь метров.",
+  "referencePhraseRu": "В Ла-Сурс тормози позже — почти на два корпуса.",
   "candidatePhraseRu": "Ты теряешь 320 миллисекунд, тормози на 8.5 метра позже в Ла-Сурс.",
   "event": {
     "cornerId": "spa_t01",

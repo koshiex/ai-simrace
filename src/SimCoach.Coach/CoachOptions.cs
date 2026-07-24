@@ -27,6 +27,13 @@ public sealed class CoachOptions
     public int MaxActionsInMenu { get; init; } = 5;
 
     /// <summary>
+    /// The car length (metres) braking distances are spoken in — the intuitive "корпус" unit that replaces raw
+    /// metres in voice tips (a GT3 car is ~4.6 m). Config-driven so a future class with a different length
+    /// re-scales without touching the renderer. See <see cref="CarLengthGloss"/>.
+    /// </summary>
+    public double CarLengthMeters { get; init; } = 4.6;
+
+    /// <summary>
     /// Tier-2 (internal/dev flag, NOT a user slider): when set, the real-time output schema requests a bounded
     /// self-reported <see cref="CoachConfidence"/> (<c>high</c>/<c>low</c>) on the chosen action and the RU prompt
     /// gains the high/low guidance. Observe-only (M31): the parsed value is logged for calibration and never
@@ -165,6 +172,11 @@ public sealed class CoachOptions
         if (MaxActionsInMenu <= 0)
         {
             throw new InvalidOperationException("CoachOptions.MaxActionsInMenu must be positive.");
+        }
+
+        if (CarLengthMeters <= 0)
+        {
+            throw new InvalidOperationException("CoachOptions.CarLengthMeters must be positive.");
         }
 
         if (CatchAllRank <= 0)

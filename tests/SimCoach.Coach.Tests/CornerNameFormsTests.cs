@@ -48,24 +48,20 @@ public sealed class CornerNameFormsTests
     }
 
     [Fact]
-    public void Spoken_strips_the_trailing_paren_and_expands_the_ordinal()
+    public void Ru_resolves_the_authored_spoken_form_ordinal_first()
     {
         var names = CornerNameMap.Load();
 
-        names.GetSpokenRu("spa", "spa_t03").Should().Be("Raidillon, первый");
+        names.GetRu("spa", "spa_t10").Should().Be("первый Пухон");
+        names.GetRu("spa", "spa_t01").Should().Be("Ла-Сурс");
     }
 
     [Fact]
-    public void Spoken_returns_the_full_name_when_there_is_no_paren()
+    public void Ru_falls_back_to_the_short_then_positional_form_when_unauthored()
     {
         var names = CornerNameMap.Load();
 
-        names.GetSpokenRu("spa", "spa_t02").Should().Be("Eau Rouge");
-    }
-
-    [Fact]
-    public void Spoken_keeps_the_raw_paren_when_no_ordinal_is_authored()
-    {
-        CornerNameForms.Spoken("Foo (7)").Should().Be("Foo (7)");
+        // A ghost-derived track carries no authored names → GetRu falls through GetShort to the positional name.
+        names.GetRu("silverstone", "silverstone_t07").Should().Be("поворот 7");
     }
 }

@@ -15,9 +15,9 @@
       ],
       "params": [
         { "name": "corner", "from": "corner_name" },
-        { "name": "meters", "from": "brake_point_diff_m", "transform": "abs_round0", "unit": "м" }
+        { "name": "dist", "from": "brake_point_diff_m", "transform": "car_lengths" }
       ],
-      "phrase_template_ru": "В {corner} тормози позже на {meters}."
+      "phrase_template_ru": "В {corner} тормози позже на {dist}."
     },
     {
       "id": "brake_release_too_early",
@@ -33,9 +33,9 @@
       ],
       "params": [
         { "name": "corner", "from": "corner_name" },
-        { "name": "meters", "from": "brake_release_diff_m", "transform": "abs_round0", "unit": "м" }
+        { "name": "dist", "from": "brake_release_diff_m", "transform": "car_lengths" }
       ],
-      "phrase_template_ru": "В {corner} дольше держи тормоз к апексу — отпускаешь на {meters} раньше."
+      "phrase_template_ru": "В {corner} дольше держи тормоз к апексу — отпускаешь на {dist} раньше."
     },
     {
       "id": "more_trail_brake",
@@ -199,7 +199,7 @@
       "params": [
         { "name": "corner", "from": "corner_name" }
       ],
-      "phrase_template_ru": "Снос в {corner}: плавнее руль, меньше скорости на входе."
+      "phrase_template_ru": "Снос в {corner}: медленнее и меньше руля на входе."
     },
     {
       "id": "higher_min_speed",

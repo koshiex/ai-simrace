@@ -75,10 +75,15 @@ accreplay-данных (без заездов владельца, без имё�
 
 ## Track C — Блокированное / пассивное (не автономно)
 
-- **C1. M18 калибровка** (`MinDimensionScore`/`PassBar` RU-eval) — нужен реальный сетевой прогон судьи
-  → **API-ключ на владельце**. Дать инструкцию запуска env-gated `SimCoach.RuEval`.
-- **C2. M26 fire-rate** (BalanceKernels steady-state) — «not empirically validated, watch in-game» —
-  финалить нечего без заездов; при желании добавить observability-лог частоты срабатывания.
+- **C1. M18 калибровка** (`MinDimensionScore`/`PassBar` RU-eval) — ✅ **СДЕЛАНО 2026-07-22** (6 живых
+  прогонов судьи `anthropic/claude-sonnet-4.6` через `OPENROUTER_API_KEY`). Итог: пороги `PassBar=3.5` /
+  `GroundednessFloor=3.0` / `MinDimensionScore=2.0` подтверждены данными — good-фикстуры composite ≥ 4.10
+  (маржа ≥ 0.6), три known-bad анкора топят по одному измерению каждый (fabricated g=0, raw-number tone=1,
+  transliteration ru=0) → per-dimension floor ловит с маржой ≥ 1.0. Флип `EnforceGoodFixtureBar=true` (гейт
+  теперь блокирующий). Найденный при калибровке флап — live-дебриф протекал сырое «мс» в `top_priority` —
+  починен в источнике (debrief-промпт правило 5), не понижением планки. См. [[rueval-gate-calibration]].
+- **C2. M26 fire-rate** (BalanceKernels steady-state) — ⛔ **не делаем сейчас** (macOS-разработка, нет
+  заездов ACC). «not empirically validated, watch in-game» — финалить нечего без телеметрии владельца.
 
 ---
 
