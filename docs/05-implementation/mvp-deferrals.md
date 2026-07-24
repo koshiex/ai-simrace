@@ -20,7 +20,7 @@ Convert relative dates to absolute; this file is the source of truth for "поч
 | → pit-advisor **timing** (design note, not deferred) | — | Deliver on the **main straight / pit-window approach with lead time** (~1 lap before optimal), event-driven on fuel/tyre/mandatory-pit-window thresholds, gated so it never collides with a corner tip. **Not** on corner exit. | — | — |
 | **Race-craft actions** (`defend_inside_at_corner`, `lift_coast_for_fuel`, `manage_brake_temp`, `gap_to_p2_holding`) | Phase 9+ | — | Requires opponents/strategy context beyond MVP. | action-registry.md |
 | **Provisional best-of-session reference** (richer FR-014) | **Phase 6 (Reference-layer)** | Phase 3 ships the `NoPbYet` label + ≥2 reference-free corner actions so a first-ever session still coaches. | It's a `SimCoach.Reference` feature (resample the in-progress fastest clean lap onto the 1 m grid as a provisional reference), not Coach; needs more compute. The no-PB path covers MVP. | FR-014; phase-3-detailed-plan.md |
-| **LLM token streaming** | Phase 6 (debrief delivery) | The `StreamAsync` seam is declared in the provider-agnostic contract in Phase 3 (throws `NotSupported` until P6). | Real-time tips are buffered (whole JSON needed before acting); streaming only helps long-form debrief. | phase-3-detailed-plan.md (reasoning/streaming decision) |
+| **LLM token streaming** | **Phase 4** (voiced debrief — pulled from P6 per owner 2026-07-23) | The `StreamAsync` seam was declared in Phase 3 (threw `NotSupported`); Phase 4 implements it + the family-aware OpenRouter SSE decode for the route-agnostic streamed-prose voicer. | Real-time tips stay buffered (whole JSON needed before acting); streaming feeds the long-form debrief prose voiced in P4 via the new plain-text `debrief_prose` route (a 2nd billable call). | phase-4-detailed-plan.md (D1); ADR-0023 |
 | **Prompt caching enablement** | Post-MVP tuning | Plumbing exists (`cached_input_tokens`, migration `002`); not enabled in Phase 3. | Cost is already under budget; enabling later only lowers it. | phase-3-detailed-plan.md |
 | **Premium real-time models** (`claude-haiku-4.5` for corner/sector/lap) | Opt-in, post-MVP default | Model id is config per cadence; swap is config-only. (Debrief default **is** premium — Sonnet 4.6 — because it's one cheap call/session.) | Cheap Gemini/DeepSeek is good enough real-time; premium is a paid-tier toggle. | ADR-0004; phase-3-detailed-plan.md (M1) |
 | **Gemini 3.x real-time** (3.5 Flash / 3 Flash) | Watch / not adopted | Default stays `gemini-2.5-flash-lite` (thinking fully off, TTFT ~0.26s, cheapest). **`gemini-3.1-flash-lite` is a named eval-gated UPGRADE** (~$0.014/session), not a hard deferral. | 3.x cannot fully disable thinking (`minimal` still reasons) → non-deterministic latency vs the hard 2000 ms buffered corner budget; task is reasoning-insensitive so the quality gain is marginal. 3.5 Flash overkill for an ≤8-word phrase. | phase-3-detailed-plan.md (m1) |
@@ -34,11 +34,16 @@ phase** (not as Phase-3 dirt). Consolidated here so the next phase's decompositi
 
 - **Voice / TTS sink** → **Phase 4.** Coach emits `CoachTip`s to `ICoachTipSink`; the speaking sink is P4.
 - **Avalonia overlay sink** → **Phase 5.** A second `ICoachTipSink` rendering tips on the transparent overlay.
-- **Debrief *delivery* + `StreamAsync` consumption** → **Phase 6.** The debrief headline tip **and** its
-  structured loss attribution (`top_losses_json`, `setup_hint`) are persisted now (migration `004`); the
-  post-session window that renders them, the remaining `004` columns (`debrief_prose`, `checklist_json`,
-  `per_sector_deltas_json`, `balance_verdict`, `audio_artifact_ref`), and token streaming are P6
-  (`StreamAsync` throws until then).
+- **Global mute hotkey (FR-044, `Ctrl+Alt+M`)** → **Phase 5** (moved from P4, 2026-07-23). A headless
+  Generic Host has no HWND / message pump for `WM_HOTKEY`; the overlay window (P5) provides the HWND + pump.
+  P4 ships mute **state** only (`IMuteState` + `voice.mute`/`voice.mute_on_startup` toggle; `hotkey.mute`
+  key reserved). See phase-4-detailed-plan.md (D2) / ADR-0023.
+- **Debrief *window* + remaining `004` columns** → **Phase 6.** The debrief headline tip, its structured loss
+  attribution (`top_losses_json`, `setup_hint`), **and now the voiced debrief AUDIO + `StreamAsync`
+  consumption land in Phase 4** (owner 2026-07-23 — the route-agnostic streamed-prose voicer, the plain-text
+  `debrief_prose` route, and the `audio_artifact_ref` write). What stays P6: the post-session **window** that
+  renders them and the remaining `004` columns (`debrief_prose` text, `checklist_json`,
+  `per_sector_deltas_json`, `balance_verdict`).
 - **`IReferenceQueryRepository` / `ISessionHistoryRepository` implementations** → **P6/P7.** Declared (with
   DTOs) in PR-H; the SQLite impls + the history/reference UI come with their screens.
 - **Provisional best-of-session reference (richer FR-014)** → **Phase 6 (Reference-layer)** — see the table above.
